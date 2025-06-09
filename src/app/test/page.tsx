@@ -1,11 +1,14 @@
-// src/app/test/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 
 interface ConnectionTest {
   success: boolean;
-  connection?: any;
+  connection?: {
+    database: string;
+    user: string;
+    current_time: string;
+  };
   counts?: {
     firms: number;
     reportingPeriods: number;
@@ -23,7 +26,7 @@ export default function TestPage() {
       const response = await fetch('/api/test-connection');
       const data = await response.json();
       setConnectionTest(data);
-    } catch (error) {
+    } catch {
       setConnectionTest({
         success: false,
         error: 'Failed to connect to API'
@@ -84,17 +87,13 @@ export default function TestPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="text-center p-3 bg-blue-50 rounded-lg">
                           <div className="text-2xl font-bold text-blue-600">
-                            {connectionTest.counts.firms.toLocaleString()}
+                            {connectionTest.counts.firms?.toLocaleString() || '0'}
                           </div>
                           <div className="text-sm text-blue-700">Firms</div>
                         </div>
                         <div className="text-center p-3 bg-green-50 rounded-lg">
                           <div className="text-2xl font-bold text-green-600">
-                            {connectionTest.counts && (
-  <div className="text-2xl font-bold text-green-600">
-    {connectionTest.counts.reportingPeriods?.toLocaleString() || '0'}
-  </div>
-)}
+                            {connectionTest.counts.reportingPeriods?.toLocaleString() || '0'}
                           </div>
                           <div className="text-sm text-green-700">Reporting Periods</div>
                         </div>
@@ -124,4 +123,3 @@ export default function TestPage() {
     </div>
   );
 }
-

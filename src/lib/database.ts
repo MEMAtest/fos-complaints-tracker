@@ -1,5 +1,5 @@
 // src/lib/database.ts
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL!,
@@ -12,7 +12,7 @@ const pool = new Pool({
 export { pool };
 
 export class DatabaseClient {
-  static async query<T = any>(text: string, params?: any[]): Promise<T[]> {
+  static async query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
     const client = await pool.connect();
     try {
       const result = await client.query(text, params);
@@ -22,7 +22,7 @@ export class DatabaseClient {
     }
   }
 
-  static async queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
+  static async queryOne<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T | null> {
     const rows = await this.query<T>(text, params);
     return rows[0] || null;
   }
@@ -36,20 +36,20 @@ export class DatabaseClient {
     }
   }
 
-  static async getConnectionInfo(): Promise<any> {
+  static async getConnectionInfo(): Promise<Record<string, unknown>> {
     return await this.queryOne(`
       SELECT 
         current_database() as database,
         current_user as user,
         version() as version,
         now() as current_time
-    `);
+    `) || {};
   }
 }
 
 export async function testDatabaseConnection(): Promise<{
   success: boolean;
-  info?: any;
+  info?: Record<string, unknown>;
   error?: string;
 }> {
   try {
