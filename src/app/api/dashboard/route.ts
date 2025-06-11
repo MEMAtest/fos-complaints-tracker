@@ -105,9 +105,9 @@ const getFallbackData = (error: string) => ({
   error,
   data: {
     kpis: {
-      total_complaints: 534037,
+      total_complaints: 4735,
       total_firms: 247,
-      avg_upheld_rate: 29.8,
+      avg_upheld_rate: 35.4,
       total_rows: 4735
     },
     topPerformers: [
@@ -231,12 +231,12 @@ const getFallbackData = (error: string) => ({
     ]
   },
   debug: {
-  timestamp: new Date().toISOString(),
-  dataSource: 'fallback_data',
-  executionTime: '0ms',
-  error,
-  note: 'Using fallback data due to database error'
-}
+    timestamp: new Date().toISOString(),
+    dataSource: 'fallback_data',
+    executionTime: '0ms',
+    error,
+    note: 'Using fallback data due to database error'
+  }
 });
 
 export async function GET(request: NextRequest) {
@@ -258,6 +258,21 @@ export async function GET(request: NextRequest) {
     await executeQueryWithTimeout(client, 'SELECT 1 as test', [], 5000);
     console.log('✅ Database responsive');
 
+    // Smart date filtering for all formats in your database
+    const dateFilter = `
+      reporting_period IS NOT NULL 
+      AND reporting_period != ''
+      AND (
+        reporting_period LIKE '2024%' 
+        OR reporting_period LIKE '%2024%'
+        OR reporting_period LIKE '%-2024%'
+        OR reporting_period LIKE '%2024-%'
+        OR reporting_period LIKE '%to 2024%'
+        OR reporting_period LIKE '%2024-07-01%'
+        OR reporting_period LIKE '%2024-12-31%'
+      )
+    `;
+
     // Get all data in parallel with error handling for each query
     const [kpisResult, topPerformersResult, productCategoriesResult, industryComparisonResult, consumerCreditResult] = await Promise.allSettled([
       
@@ -268,7 +283,7 @@ export async function GET(request: NextRequest) {
           COUNT(*)::text as total_rows,
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 2), 0)::text as avg_upheld_rate
         FROM complaint_metrics_staging
-        WHERE reporting_period LIKE '2024%'
+        WHERE ${dateFilter}
           AND firm_name IS NOT NULL
           AND firm_name != ''
       `, [], 10000),
@@ -281,14 +296,14 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed
         FROM complaint_metrics_staging
-        WHERE reporting_period LIKE '2024%'
+        WHERE ${dateFilter}
           AND firm_name IS NOT NULL
           AND firm_name != ''
           AND upheld_rate_pct IS NOT NULL
         GROUP BY firm_name
         HAVING COUNT(*) >= 1
         ORDER BY AVG(COALESCE(upheld_rate_pct, 100)::numeric) ASC
-        LIMIT 10
+        LIMIT 15
       `, [], 10000),
 
       // 3. Product Categories Query
@@ -299,7 +314,7 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed
         FROM complaint_metrics_staging
-        WHERE reporting_period LIKE '2024%'
+        WHERE ${dateFilter}
           AND product_category IS NOT NULL
           AND product_category != ''
         GROUP BY product_category
@@ -316,13 +331,13 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed,
           COALESCE(ROUND(AVG(COALESCE(closed_after_3_days_within_8_weeks_pct, 0)::numeric), 1), 0)::text as avg_8week_resolution
         FROM complaint_metrics_staging
-        WHERE reporting_period LIKE '2024%'
+        WHERE ${dateFilter}
           AND firm_name IS NOT NULL
           AND firm_name != ''
         GROUP BY firm_name
         HAVING COUNT(*) >= 1
         ORDER BY AVG(COALESCE(upheld_rate_pct, 100)::numeric) ASC
-        LIMIT 20
+        LIMIT 30
       `, [], 10000),
 
       // 5. Consumer Credit Query - Focus on banking/credit products
@@ -333,7 +348,7 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_upheld_pct,
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed
         FROM complaint_metrics_staging
-        WHERE reporting_period LIKE '2024%'
+        WHERE ${dateFilter}
           AND firm_name IS NOT NULL
           AND firm_name != ''
           AND (
@@ -341,10 +356,13 @@ export async function GET(request: NextRequest) {
             OR LOWER(product_category) LIKE '%credit%'
             OR LOWER(firm_name) LIKE '%financial%'
             OR LOWER(firm_name) LIKE '%credit%'
+            OR LOWER(firm_name) LIKE '%horse%'
+            OR LOWER(firm_name) LIKE '%bmw%'
+            OR LOWER(firm_name) LIKE '%motor%'
           )
         GROUP BY firm_name
         ORDER BY COUNT(*) DESC
-        LIMIT 10
+        LIMIT 15
       `, [], 10000)
     ]);
 
@@ -419,7 +437,7 @@ export async function GET(request: NextRequest) {
       },
       debug: {
         timestamp: new Date().toISOString(),
-        dataSource: 'real_database',
+        dataSource: 'real_database_all_years',
         executionTime: `${Date.now() - startTime}ms`,
         queryResults: {
           kpis: kpisResult.status === 'fulfilled' ? kpisResult.value.rowCount : 0,
@@ -435,13 +453,15 @@ export async function GET(request: NextRequest) {
           industryComparisonResult.status === 'rejected' ? 'industryComparison' : null,
           consumerCreditResult.status === 'rejected' ? 'consumerCredit' : null
         ].filter(Boolean),
-        totalRecordsFound: validateNumber(kpis.total_rows)
+        totalRecordsFound: validateNumber(kpis.total_rows),
+        dateFilter: 'Smart 2024 pattern matching'
       }
     };
 
     console.log('✅ Data processed successfully:', {
       executionTime: responseData.debug.executionTime,
       totalRecords: responseData.debug.totalRecordsFound,
+      totalFirms: responseData.data.kpis.total_firms,
       failedQueries: responseData.debug.failedQueries.length
     });
 
