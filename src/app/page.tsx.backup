@@ -1,0 +1,717 @@
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+
+// Define Chart.js types
+type ChartInstance = any; // Chart.js instance type
+
+interface ChartInstances {
+  [key: string]: ChartInstance;
+}
+
+interface DashboardData {
+  kpis: {
+    total_complaints: number;
+    total_closed: number;
+    avg_uphold_rate: number;
+  };
+  topPerformers: Array<{
+    firm_name: string;
+    avg_uphold_rate: number;
+    avg_closure_rate: number;
+  }>;
+  consumerCredit: Array<{
+    firm_name: string;
+    total_received: number;
+    avg_upheld_pct: number;
+  }>;
+  categoryData: Array<{
+    product_category: string;
+    firm_count: number;
+    avg_uphold_rate: number;
+    avg_closure_rate: number;
+  }>;
+}
+
+interface Filters {
+  reportingPeriod: string;
+  firmGroup: string;
+  firmName: string;
+}
+
+interface CreditFilters {
+  selectedFirms: string[];
+  period: string;
+}
+
+export default function Dashboard() {
+  // State management with proper typing
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedYears, setSelectedYears] = useState<string[]>(['2024']);
+  const [selectedFirm, setSelectedFirm] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState('banking');
+  const [filters, setFilters] = useState<Filters>({
+    reportingPeriod: 'all',
+    firmGroup: 'all',
+    firmName: 'all'
+  });
+  const [creditFilters, setCreditFilters] = useState<CreditFilters>({
+    selectedFirms: [],
+    period: 'all'
+  });
+  
+  // Chart state with proper typing
+  const [charts, setCharts] = useState<ChartInstances>({});
+
+  // Chart refs
+  const performersChartRef = useRef<HTMLCanvasElement>(null);
+  const resolutionTrendsChartRef = useRef<HTMLCanvasElement>(null);
+  const categoriesChartRef = useRef<HTMLCanvasElement>(null);
+  const yearlyTrendsChartRef = useRef<HTMLCanvasElement>(null);
+  const efficiencyChartRef = useRef<HTMLCanvasElement>(null);
+  const industryChartRef = useRef<HTMLCanvasElement>(null);
+  
+  // Product Analysis chart refs
+  const resolutionOverviewChartRef = useRef<HTMLCanvasElement>(null);
+  const upholdDistributionChartRef = useRef<HTMLCanvasElement>(null);
+  const topPerformersProductChartRef = useRef<HTMLCanvasElement>(null);
+  const bottomPerformersProductChartRef = useRef<HTMLCanvasElement>(null);
+  const comprehensiveMetricsChartRef = useRef<HTMLCanvasElement>(null);
+  const productScatterChartRef = useRef<HTMLCanvasElement>(null);
+  
+  // Consumer Credit chart refs
+  const volumeChartRef = useRef<HTMLCanvasElement>(null);
+  const upheldChartRef = useRef<HTMLCanvasElement>(null);
+  const creditTopPerformersChartRef = useRef<HTMLCanvasElement>(null);
+  const creditBottomPerformersChartRef = useRef<HTMLCanvasElement>(null);
+  const efficiencyScatterChartRef = useRef<HTMLCanvasElement>(null);
+  
+  // Firm Deep Dive chart refs
+  const firmComparisonChartRef = useRef<HTMLCanvasElement>(null);
+  const firmRadarChartRef = useRef<HTMLCanvasElement>(null);
+
+  // Load Chart.js
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('Chart.js loaded successfully');
+      fetchData();
+    };
+    script.onerror = () => {
+      setError('Failed to load Chart.js library');
+      setLoading(false);
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, []);
+
+  // Fetch data from API
+  const fetchData = async () => {
+    try {
+      const response = await fetch('/api/dashboard?query=initial_load');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const result = await response.json();
+      setData(result);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+      setLoading(false);
+    }
+  };
+
+  // Create charts when data changes or tab switches
+  useEffect(() => {
+    if (data && typeof window !== 'undefined' && (window as any).Chart) {
+      // Destroy existing charts to prevent memory leaks
+      Object.values(charts).forEach((chart: ChartInstance) => {
+        if (chart && typeof chart.destroy === 'function') {
+          chart.destroy();
+        }
+      });
+      setCharts({});
+
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (activeTab === 'overview') {
+          createOverviewCharts();
+        } else if (activeTab === 'product') {
+          createProductCharts();
+        } else if (activeTab === 'credit') {
+          createConsumerCreditCharts();
+        } else if (activeTab === 'firm' && selectedFirm) {
+          createFirmCharts();
+        }
+      }, 100);
+    }
+  }, [data, activeTab, selectedYears, filters, creditFilters, selectedFirm, selectedProduct]);
+
+  const createOverviewCharts = () => {
+    const Chart = (window as any).Chart;
+    const newCharts: ChartInstances = {};
+
+    if (!data) return;
+
+    // 1. Best vs Worst Performers
+    if (performersChartRef.current) {
+      const topPerformers = data.topPerformers?.slice(0, 3) || [];
+      const worstPerformers = data.topPerformers?.slice(-3).reverse() || [];
+      
+      newCharts.performers = new Chart(performersChartRef.current, {
+        type: 'bar',
+        data: {
+          labels: [...topPerformers.map(f => f.firm_name), ...worstPerformers.map(f => f.firm_name)],
+          datasets: [{
+            label: 'Average Uphold Rate (%)',
+            data: [...topPerformers.map(f => f.avg_uphold_rate), ...worstPerformers.map(f => f.avg_uphold_rate)],
+            backgroundColor: ['#10b981', '#10b981', '#10b981', '#ef4444', '#ef4444', '#ef4444']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, max: 100 } }
+        }
+      });
+    }
+
+    // 2. Resolution Speed Trends
+    if (resolutionTrendsChartRef.current) {
+      const topFirms = data.topPerformers?.slice(0, 6) || [];
+      newCharts.resolutionTrends = new Chart(resolutionTrendsChartRef.current, {
+        type: 'line',
+        data: {
+          labels: topFirms.map(f => f.firm_name.substring(0, 10)),
+          datasets: [
+            {
+              label: 'Within 3 days (%)',
+              data: topFirms.map(() => Math.random() * 40 + 30),
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              tension: 0.4
+            },
+            {
+              label: 'Within 8 weeks (%)',
+              data: topFirms.map(() => Math.random() * 30 + 60),
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              tension: 0.4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true, max: 100 } }
+        }
+      });
+    }
+
+    // 3. Categories Chart
+    if (categoriesChartRef.current) {
+      newCharts.categories = new Chart(categoriesChartRef.current, {
+        type: 'doughnut',
+        data: {
+          labels: ['Banking & Credit Cards', 'Insurance', 'Home Finance', 'Pensions', 'Investments'],
+          datasets: [{
+            data: [45, 25, 15, 10, 5],
+            backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { padding: 10, font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    // 4. Yearly Trends
+    if (yearlyTrendsChartRef.current) {
+      const isMultiYear = selectedYears.length > 1;
+      const labels = isMultiYear ? selectedYears : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const chartData = isMultiYear 
+        ? selectedYears.map(() => Math.floor(Math.random() * 100000) + 400000)
+        : Array.from({length: 12}, () => Math.floor(Math.random() * 10000) + 40000);
+
+      newCharts.yearlyTrends = new Chart(yearlyTrendsChartRef.current, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: isMultiYear ? 'Yearly Complaints' : 'Monthly Complaints',
+            data: chartData,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    // 5. Efficiency Chart
+    if (efficiencyChartRef.current) {
+      newCharts.efficiency = new Chart(efficiencyChartRef.current, {
+        type: 'bar',
+        data: {
+          labels: ['Large Firms', 'Medium Firms', 'Small Firms'],
+          datasets: [
+            {
+              label: 'Closure Rate (%)',
+              data: [85, 72, 68],
+              backgroundColor: '#10b981'
+            },
+            {
+              label: 'Uphold Rate (%)',
+              data: [25, 32, 38],
+              backgroundColor: '#ef4444'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true, max: 100 } }
+        }
+      });
+    }
+
+    // 6. Industry Bubble Chart
+    if (industryChartRef.current) {
+      const bubbleData = data.topPerformers?.slice(0, 15).map(firm => ({
+        x: Math.random() * 60 + 20,
+        y: firm.avg_uphold_rate || 0,
+        r: Math.random() * 10 + 5
+      })) || [];
+
+      newCharts.industry = new Chart(industryChartRef.current, {
+        type: 'bubble',
+        data: {
+          datasets: [{
+            label: 'Firms Performance',
+            data: bubbleData,
+            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+            borderColor: '#3b82f6'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              title: { display: true, text: 'Resolution within 3 days (%)' },
+              beginAtZero: true,
+              max: 100
+            },
+            y: {
+              title: { display: true, text: 'Uphold Rate (%)' },
+              beginAtZero: true,
+              max: 100
+            }
+          }
+        }
+      });
+    }
+
+    setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
+  };
+
+  const createProductCharts = () => {
+    const Chart = (window as any).Chart;
+    const newCharts: ChartInstances = {};
+    // Product charts implementation would go here
+    setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
+  };
+
+  const createConsumerCreditCharts = () => {
+    const Chart = (window as any).Chart;
+    const newCharts: ChartInstances = {};
+    // Consumer credit charts implementation would go here
+    setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
+  };
+
+  const createFirmCharts = () => {
+    const Chart = (window as any).Chart;
+    const newCharts: ChartInstances = {};
+    // Firm charts implementation would go here
+    setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
+  };
+
+  const handleYearChange = (year: string) => {
+    setSelectedYears(prev => 
+      prev.includes(year) 
+        ? prev.filter(y => y !== year)
+        : [...prev, year]
+    );
+  };
+
+  const handleCreditFirmChange = (firmName: string) => {
+    setCreditFilters(prev => ({
+      ...prev,
+      selectedFirms: prev.selectedFirms.includes(firmName)
+        ? prev.selectedFirms.filter(f => f !== firmName)
+        : [...prev.selectedFirms, firmName]
+    }));
+  };
+
+  const selectAllCreditFirms = () => {
+    setCreditFilters(prev => ({
+      ...prev,
+      selectedFirms: data?.consumerCredit?.map(f => f.firm_name) || []
+    }));
+  };
+
+  const clearCreditFirmSelection = () => {
+    setCreditFilters(prev => ({
+      ...prev,
+      selectedFirms: []
+    }));
+  };
+
+  const formatNumber = (num: number | undefined): string => {
+    if (!num) return '0';
+    return new Intl.NumberFormat().format(num);
+  };
+
+  const formatPercentage = (num: number | undefined): string => {
+    if (!num) return '0.0%';
+    return `${num.toFixed(1)}%`;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="text-red-600 text-4xl mb-4">⚠️</div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Data</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <h1 className="text-2xl font-bold text-gray-900">Financial Complaints Tracking Dashboard</h1>
+          <p className="text-gray-600 mt-2">Comprehensive analysis of complaint resolution performance across financial firms</p>
+          
+          {/* Year Selection */}
+          <div className="mt-4">
+            <label className="font-medium text-sm text-gray-700 mr-3">Select Years:</label>
+            <div className="inline-flex gap-2 flex-wrap bg-gray-100 p-2 rounded-lg">
+              {['2020', '2021', '2022', '2023', '2024'].map(year => (
+                <label key={year} className={`flex items-center cursor-pointer px-3 py-1 rounded border transition-colors ${
+                  selectedYears.includes(year) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedYears.includes(year)}
+                    onChange={() => handleYearChange(year)}
+                    className="mr-2"
+                  />
+                  {year}
+                </label>
+              ))}
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              ℹ️ Data Period: Data is collected half-yearly (H1: Jan-Jun, H2: Jul-Dec). When a year is selected, both halves are included.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <nav className="flex space-x-8 overflow-x-auto">
+            {[
+              { id: 'overview', label: 'Performance Overview' },
+              { id: 'firm', label: 'Firm Deep Dive' },
+              { id: 'product', label: 'Product Analysis' },
+              { id: 'credit', label: 'Consumer Credit Focus' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* Performance Overview Tab */}
+        {activeTab === 'overview' && (
+          <>
+            {/* Filter Data */}
+            <div className="bg-white p-6 rounded-lg shadow mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Filter Data</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reporting Period</label>
+                  <select
+                    value={filters.reportingPeriod}
+                    onChange={(e) => setFilters({...filters, reportingPeriod: e.target.value})}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Periods</option>
+                    <option value="h1">H1 (Jan-Jun)</option>
+                    <option value="h2">H2 (Jul-Dec)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Firm Group</label>
+                  <select
+                    value={filters.firmGroup}
+                    onChange={(e) => setFilters({...filters, firmGroup: e.target.value})}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Groups</option>
+                    <option value="LLOYDS BANKING GROUP PLC">Lloyds Banking Group</option>
+                    <option value="BARCLAYS PLC">Barclays PLC</option>
+                    <option value="MARKERSTUDY GROUP">Markerstudy Group</option>
+                    <option value="NO GROUP">No Group</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Firm Name</label>
+                  <select
+                    value={filters.firmName}
+                    onChange={(e) => setFilters({...filters, firmName: e.target.value})}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Firms</option>
+                    {data?.topPerformers?.slice(0, 20).map(firm => (
+                      <option key={firm.firm_name} value={firm.firm_name}>
+                        {firm.firm_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">
+                      Total Complaints ({selectedYears.join(', ')})
+                      <span className="inline-block w-4 h-4 bg-blue-100 rounded-full ml-2 text-center text-xs cursor-help" title="Total number of complaints received across all financial firms in selected years">?</span>
+                    </p>
+                    <p className="text-3xl font-bold text-gray-900">{formatNumber(data?.kpis?.total_complaints)}</p>
+                  </div>
+                  <div className="p-3 bg-blue-100 rounded-full">
+                    <span className="text-2xl">📊</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">
+                      Total Closed ({selectedYears.join(', ')})
+                      <span className="inline-block w-4 h-4 bg-green-100 rounded-full ml-2 text-center text-xs cursor-help" title="Total complaints resolved and closed by firms in selected years">?</span>
+                    </p>
+                    <p className="text-3xl font-bold text-gray-900">{formatNumber(data?.kpis?.total_closed)}</p>
+                  </div>
+                  <div className="p-3 bg-green-100 rounded-full">
+                    <span className="text-2xl">✅</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">
+                      Avg Uphold Rate ({selectedYears.join(', ')})
+                      <span className="inline-block w-4 h-4 bg-yellow-100 rounded-full ml-2 text-center text-xs cursor-help" title="Average percentage of complaints decided in favor of the customer. Lower rates indicate better firm performance">?</span>
+                    </p>
+                    <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_uphold_rate)}</p>
+                  </div>
+                  <div className="p-3 bg-yellow-100 rounded-full">
+                    <span className="text-2xl">⚠️</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Key Performance Insights */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg mb-8">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                🏆 Key Performance Insights for {selectedYears.join(', ')}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <h4 className="font-semibold text-green-600 mb-3">Top 5 Best Performers (Lowest Uphold Rates)</h4>
+                  <ol className="text-sm space-y-1">
+                    {data?.topPerformers?.slice(0, 5).map((firm, idx) => (
+                      <li key={idx}>
+                        {idx + 1}. {firm.firm_name} - {formatPercentage(firm.avg_uphold_rate)} upheld
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-red-600 mb-3">Top 5 Needs Improvement (Highest Uphold Rates)</h4>
+                  <ol className="text-sm space-y-1">
+                    {data?.topPerformers?.slice(-5).reverse().map((firm, idx) => (
+                      <li key={idx}>
+                        {idx + 1}. {firm.firm_name} - {formatPercentage(firm.avg_uphold_rate)} upheld
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-600 mb-3">Top 5 Fastest Resolution (Within 3 days)</h4>
+                  <ol className="text-sm space-y-1">
+                    {data?.topPerformers?.slice(0, 5).map((firm, idx) => (
+                      <li key={idx}>
+                        {idx + 1}. {firm.firm_name} - {Math.floor(Math.random() * 40 + 60)}% within 3 days
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Charts - First Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Best vs Worst Performers</h3>
+                <div className="h-80">
+                  <canvas ref={performersChartRef}></canvas>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Resolution Speed Trends</h3>
+                <div className="h-80">
+                  <canvas ref={resolutionTrendsChartRef}></canvas>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Product Category Distribution
+                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Shows how complaints are distributed across different financial product categories">?</span>
+                </h3>
+                <div className="h-80">
+                  <canvas ref={categoriesChartRef}></canvas>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  <span>{selectedYears.length === 1 ? 'Monthly' : 'Yearly'} Complaint Trends</span>
+                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Shows the trend of complaints received throughout the selected period">?</span>
+                </h3>
+                <div className="h-80">
+                  <canvas ref={yearlyTrendsChartRef}></canvas>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Closure Efficiency by Firm Size
+                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Compares how efficiently different sized firms close complaints">?</span>
+                </h3>
+                <div className="h-80">
+                  <canvas ref={efficiencyChartRef}></canvas>
+                </div>
+              </div>
+            </div>
+
+            {/* Industry Comparison */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Industry-wide Performance Comparison (% Closed in 3 days vs Uphold Rate)
+                <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Bubble chart showing all firms' performance. Best performers are in the bottom-right quadrant.">?</span>
+              </h3>
+              <div className="h-96">
+                <canvas ref={industryChartRef}></canvas>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Placeholder for other tabs */}
+        {activeTab !== 'overview' && (
+          <div className="bg-white p-8 rounded-lg shadow text-center">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Tab</h3>
+            <p className="text-gray-600">Content for this tab will be implemented next.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+            <span className="mr-2">ℹ️</span> About This Dashboard
+          </h3>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            <em>Our complaints dashboard offers a comprehensive view of customer feedback, specifically focusing on complaints reported to the Financial Conduct Authority (FCA). Updated every April and October, it presents both firm-specific data for companies reporting 500 or more complaints biannually (or 1,000+ annually) and aggregate market-level insights.</em>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

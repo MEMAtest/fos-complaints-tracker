@@ -1,232 +1,483 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { Pool } from 'pg';
 
-export const dynamic = 'force-dynamic';
+// Type definitions
+interface DatabaseConfig {
+  connectionString: string;
+  ssl?: { rejectUnauthorized: boolean };
+  max?: number;
+  idleTimeoutMillis?: number;
+  connectionTimeoutMillis?: number;
+}
 
-const sql = neon(process.env.DATABASE_URL!);
+interface QueryResult {
+  rows: any[];
+  rowCount: number;
+}
+
+interface KPIData {
+  total_firms: string;
+  total_rows: string;
+  avg_upheld_rate: string;
+}
+
+interface FirmData {
+  firm_name: string;
+  complaint_count: string;
+  avg_uphold_rate: string;
+  avg_resolution_speed?: string;
+}
+
+interface ProductData {
+  category_name: string;
+  complaint_count: string;
+  avg_uphold_rate: string;
+  avg_resolution_speed?: string;
+}
+
+interface ConsumerCreditData {
+  firm_name: string;
+  total_records: string;
+  avg_upheld_pct: string;
+  avg_resolution_speed?: string;
+}
+
+// Database connection with robust configuration
+const createPool = (): Pool => {
+  const config: DatabaseConfig = {
+    connectionString: process.env.DATABASE_URL || '',
+    max: 10, // Maximum number of connections
+    idleTimeoutMillis: 30000, // Close idle connections after 30s
+    connectionTimeoutMillis: 10000, // Connection timeout 10s
+  };
+
+  if (process.env.NODE_ENV === 'production') {
+    config.ssl = { rejectUnauthorized: false };
+  }
+
+  return new Pool(config);
+};
+
+const pool = createPool();
+
+// Query timeout wrapper
+const executeQueryWithTimeout = async (
+  client: any, 
+  query: string, 
+  params: any[] = [], 
+  timeoutMs: number = 15000
+): Promise<QueryResult> => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Query timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    client.query(query, params)
+      .then((result: QueryResult) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch((error: Error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+};
+
+// Data validation and sanitization functions
+const validateNumber = (value: any, defaultValue: number = 0): number => {
+  const num = parseFloat(String(value || defaultValue));
+  return isNaN(num) ? defaultValue : Math.max(0, num);
+};
+
+const validateString = (value: any, maxLength: number = 100): string => {
+  return String(value || 'Unknown').substring(0, maxLength).trim();
+};
+
+const validatePercentage = (value: any): number => {
+  const num = validateNumber(value);
+  return Math.min(100, Math.max(0, num));
+};
+
+// Fallback data for when database queries fail
+const getFallbackData = (error: string) => ({
+  success: false,
+  error,
+  data: {
+    kpis: {
+      total_complaints: 534037,
+      total_firms: 247,
+      avg_upheld_rate: 29.8,
+      total_rows: 4735
+    },
+    topPerformers: [
+      { 
+        firm_name: "Adrian Flux Insurance", 
+        complaint_count: 890, 
+        avg_uphold_rate: "20.1", 
+        avg_resolution_speed: "93.7" 
+      },
+      { 
+        firm_name: "Bank of Scotland plc", 
+        complaint_count: 1250, 
+        avg_uphold_rate: "43.3", 
+        avg_resolution_speed: "63.1" 
+      },
+      { 
+        firm_name: "AJ Bell Securities", 
+        complaint_count: 567, 
+        avg_uphold_rate: "50.1", 
+        avg_resolution_speed: "42.1" 
+      },
+      { 
+        firm_name: "Allianz Insurance Plc", 
+        complaint_count: 423, 
+        avg_uphold_rate: "57.2", 
+        avg_resolution_speed: "38.5" 
+      },
+      { 
+        firm_name: "Aldermore Bank Plc", 
+        complaint_count: 345, 
+        avg_uphold_rate: "66.2", 
+        avg_resolution_speed: "35.8" 
+      }
+    ],
+    productCategories: [
+      { 
+        category_name: "Banking and credit cards", 
+        complaint_count: 2150, 
+        avg_uphold_rate: "35.2", 
+        avg_resolution_speed: "45.8" 
+      },
+      { 
+        category_name: "Insurance & pure protection", 
+        complaint_count: 1340, 
+        avg_uphold_rate: "28.1", 
+        avg_resolution_speed: "52.3" 
+      },
+      { 
+        category_name: "Home finance", 
+        complaint_count: 890, 
+        avg_uphold_rate: "42.7", 
+        avg_resolution_speed: "38.9" 
+      },
+      { 
+        category_name: "Decumulation & pensions", 
+        complaint_count: 567, 
+        avg_uphold_rate: "31.4", 
+        avg_resolution_speed: "41.2" 
+      },
+      { 
+        category_name: "Investments", 
+        complaint_count: 345, 
+        avg_uphold_rate: "29.8", 
+        avg_resolution_speed: "48.7" 
+      }
+    ],
+    industryComparison: [
+      { 
+        firm_name: "Adrian Flux Insurance", 
+        complaint_count: 890, 
+        avg_uphold_rate: "20.1", 
+        avg_resolution_speed: "93.7", 
+        avg_8week_resolution: "98.2" 
+      },
+      { 
+        firm_name: "Bank of Scotland plc", 
+        complaint_count: 1250, 
+        avg_uphold_rate: "43.3", 
+        avg_resolution_speed: "63.1", 
+        avg_8week_resolution: "89.4" 
+      },
+      { 
+        firm_name: "AJ Bell Securities", 
+        complaint_count: 567, 
+        avg_uphold_rate: "50.1", 
+        avg_resolution_speed: "42.1", 
+        avg_8week_resolution: "87.3" 
+      }
+    ],
+    consumerCredit: [
+      { 
+        firm_name: "Black Horse Limited", 
+        total_received: 132936, 
+        avg_upheld_pct: "48.4", 
+        avg_resolution_speed: "35.2" 
+      },
+      { 
+        firm_name: "BMW Financial Services", 
+        total_received: 72229, 
+        avg_upheld_pct: "12.5", 
+        avg_resolution_speed: "78.9" 
+      },
+      { 
+        firm_name: "Close Brothers Limited", 
+        total_received: 37646, 
+        avg_upheld_pct: "13.8", 
+        avg_resolution_speed: "65.4" 
+      },
+      { 
+        firm_name: "Clydesdale Financial", 
+        total_received: 26492, 
+        avg_upheld_pct: "15.5", 
+        avg_resolution_speed: "58.7" 
+      },
+      { 
+        firm_name: "Blue Motor Finance", 
+        total_received: 13885, 
+        avg_upheld_pct: "13.1", 
+        avg_resolution_speed: "72.3" 
+      }
+    ]
+  },
+  debug: {
+  timestamp: new Date().toISOString(),
+  dataSource: 'fallback_data',
+  executionTime: '0ms',
+  error,
+  note: 'Using fallback data due to database error'
+}
+});
 
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  let client: any = null;
+
   try {
-    const { searchParams } = new URL(request.url);
-    const query = searchParams.get('query') || 'initial_load';
+    // Get database client with timeout
+    client = await Promise.race([
+      pool.connect(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), 5000)
+      )
+    ]);
 
-    console.log(`📊 API Request - Query: ${query}`);
+    console.log('✅ Database connected');
 
-    if (query === 'initial_load') {
-      try {
-        // STEP 1: Discover actual schema for each table
-        console.log('🔍 Discovering database schema...');
-        
-        const tableSchemas: any = {};
-        const tableNames = ['firms', 'complaint_metrics', 'complaint_metrics_staging', 'consumer_credit_metrics', 'product_categories', 'reporting_periods', 'dashboard_kpis'];
-        
-        for (const tableName of tableNames) {
-          try {
-            const columns = await sql`
-              SELECT column_name, data_type, is_nullable
-              FROM information_schema.columns 
-              WHERE table_name = ${tableName}
-              ORDER BY ordinal_position
-            `;
-            
-            const sampleData = await sql`SELECT * FROM ${sql(tableName)} LIMIT 2`;
-            
-            tableSchemas[tableName] = {
-              columns: columns.map(c => c.column_name),
-              columnDetails: columns,
-              sampleData: sampleData,
-              rowCount: sampleData.length
-            };
-            
-            console.log(`✅ ${tableName}: ${columns.length} columns, ${sampleData.length} sample rows`);
-            
-          } catch (tableError) {
-            console.log(`⚠️ Could not access ${tableName}:`, tableError);
-            tableSchemas[tableName] = { error: tableError instanceof Error ? tableError.message : String(tableError) };
-          }
-        }
-        
-        // STEP 2: Build queries based on actual schema
-        let data = {
-          kpis: { total_complaints: 0, avg_upheld_rate: 0, total_rows: 0 },
-          topPerformers: [] as any[],
-          productCategories: [] as any[],
-          industryComparison: [] as any[],
-          consumerCredit: [] as any[]
-        };
-        
-        // Try to get firms data using discovered schema
-        if (tableSchemas.firms && !tableSchemas.firms.error) {
-          const firmsColumns = tableSchemas.firms.columns;
-          console.log(`🏢 Firms columns:`, firmsColumns);
-          
-          // Find name column (could be 'name', 'firm_name', 'company_name', etc.)
-          const nameColumn = firmsColumns.find((col: string) => 
-            col.toLowerCase().includes('name') || 
-            col.toLowerCase().includes('firm') ||
-            col.toLowerCase() === 'name'
-          );
-          
-          if (nameColumn) {
-            const firmsData = await sql`SELECT ${sql(nameColumn)} as name FROM firms LIMIT 20`;
-            data.topPerformers = firmsData.map((f: any, i: number) => ({
-              firm_name: f.name || `Firm ${i + 1}`,
-              complaint_count: Math.floor(Math.random() * 1000) + 100,
-              avg_uphold_rate: Math.round(Math.random() * 80 + 10)
-            }));
-            data.industryComparison = [...data.topPerformers];
-            console.log(`✅ Got ${data.topPerformers.length} firms using column: ${nameColumn}`);
-          }
-        }
-        
-        // Try to get product categories using discovered schema
-        if (tableSchemas.product_categories && !tableSchemas.product_categories.error) {
-          const categoriesColumns = tableSchemas.product_categories.columns;
-          console.log(`📦 Product categories columns:`, categoriesColumns);
-          
-          const nameColumn = categoriesColumns.find((col: string) => 
-            col.toLowerCase().includes('name') || 
-            col.toLowerCase().includes('category')
-          );
-          
-          if (nameColumn) {
-            const categoriesData = await sql`SELECT ${sql(nameColumn)} as name FROM product_categories LIMIT 20`;
-            data.productCategories = categoriesData.map((c: any, i: number) => ({
-              category_name: c.name || `Category ${i + 1}`,
-              complaint_count: Math.floor(Math.random() * 5000) + 500
-            }));
-            console.log(`✅ Got ${data.productCategories.length} categories using column: ${nameColumn}`);
-          }
-        }
-        
-        // Try to get consumer credit data
-        if (tableSchemas.consumer_credit_metrics && !tableSchemas.consumer_credit_metrics.error) {
-          const ccmColumns = tableSchemas.consumer_credit_metrics.columns;
-          console.log(`💳 Consumer credit columns:`, ccmColumns);
-          
-          const receivedColumn = ccmColumns.find((col: string) => 
-            col.toLowerCase().includes('received') || 
-            col.toLowerCase().includes('complaint')
-          );
-          
-          const upheldColumn = ccmColumns.find((col: string) => 
-            col.toLowerCase().includes('upheld') || 
-            col.toLowerCase().includes('uphold')
-          );
-          
-          if (receivedColumn) {
-            const ccData = await sql`
-              SELECT ${sql(receivedColumn)} as received, 
-                     ${upheldColumn ? sql(upheldColumn) : sql`0`} as upheld
-              FROM consumer_credit_metrics 
-              LIMIT 10
-            `;
-            
-            data.consumerCredit = ccData.map((c: any, i: number) => ({
-              firm_name: `Credit Firm ${i + 1}`,
-              total_received: Number(c.received) || 0,
-              avg_upheld_pct: Number(c.upheld) || Math.random() * 50
-            }));
-            console.log(`✅ Got ${data.consumerCredit.length} consumer credit entries`);
-          }
-        }
-        
-        // Try to get KPIs from dashboard_kpis or calculate from other tables
-        if (tableSchemas.dashboard_kpis && !tableSchemas.dashboard_kpis.error) {
-          const kpisData = await sql`SELECT * FROM dashboard_kpis LIMIT 1`;
-          if (kpisData.length > 0) {
-            const kpi = kpisData[0];
-            const kpiColumns = Object.keys(kpi);
-            
-            data.kpis = {
-              total_complaints: Number(kpi[kpiColumns.find(c => c.toLowerCase().includes('complaint')) || ''] || 0),
-              avg_upheld_rate: Number(kpi[kpiColumns.find(c => c.toLowerCase().includes('upheld')) || ''] || 0),
-              total_rows: 1
-            };
-          }
-        }
-        
-        // Add fallback data if needed
-        if (data.topPerformers.length === 0) {
-          data.topPerformers = [
-            { firm_name: 'Sample Firm A', complaint_count: 890, avg_uphold_rate: 20.1 },
-            { firm_name: 'Sample Firm B', complaint_count: 1250, avg_uphold_rate: 43.2 },
-            { firm_name: 'Sample Firm C', complaint_count: 567, avg_uphold_rate: 50.1 }
-          ];
-          data.industryComparison = [...data.topPerformers];
-        }
-        
-        if (data.productCategories.length === 0) {
-          data.productCategories = [
-            { category_name: 'Banking and credit cards', complaint_count: 15420 },
-            { category_name: 'Insurance & pure protection', complaint_count: 8930 },
-            { category_name: 'Home finance', complaint_count: 5670 }
-          ];
-        }
-        
-        if (data.consumerCredit.length === 0) {
-          data.consumerCredit = [
-            { firm_name: 'Black Horse Limited', total_received: 132936, avg_upheld_pct: 48.4 },
-            { firm_name: 'BMW Financial Services', total_received: 72229, avg_upheld_pct: 12.5 }
-          ];
-        }
+    // Test database connectivity
+    await executeQueryWithTimeout(client, 'SELECT 1 as test', [], 5000);
+    console.log('✅ Database responsive');
 
-        return NextResponse.json({
-          success: true,
-          data: data,
-          debug: {
-            timestamp: new Date().toISOString(),
-            schemaDiscovered: tableSchemas,
-            dataSource: 'schema_discovery',
-            tablesAnalyzed: Object.keys(tableSchemas),
-            workingTables: Object.keys(tableSchemas).filter(t => !tableSchemas[t].error)
-          }
-        });
-        
-      } catch (error) {
-        console.error('❌ Schema discovery error:', error);
-        
-        // Complete fallback with mock data
-        return NextResponse.json({
-          success: true,
-          data: {
-            kpis: { total_complaints: 534037, avg_upheld_rate: 29.8, total_rows: 0 },
-            topPerformers: [
-              { firm_name: 'Adrian Flux Insurance', complaint_count: 890, avg_uphold_rate: 20.1 },
-              { firm_name: 'Bank of Scotland plc', complaint_count: 1250, avg_uphold_rate: 43.2 }
-            ],
-            productCategories: [
-              { category_name: 'Banking and credit cards', complaint_count: 15420 },
-              { category_name: 'Insurance & pure protection', complaint_count: 8930 }
-            ],
-            industryComparison: [
-              { firm_name: 'Adrian Flux Insurance', complaint_count: 890, avg_uphold_rate: 20.1 }
-            ],
-            consumerCredit: [
-              { firm_name: 'Black Horse Limited', total_received: 132936, avg_upheld_pct: 48.4 }
-            ]
-          },
-          debug: {
-            timestamp: new Date().toISOString(),
-            dataSource: 'complete_fallback',
-            error: error instanceof Error ? error.message : String(error)
-          }
-        });
+    // Get all data in parallel with error handling for each query
+    const [kpisResult, topPerformersResult, productCategoriesResult, industryComparisonResult, consumerCreditResult] = await Promise.allSettled([
+      
+      // 1. KPIs Query - Safe with COALESCE for NULL handling
+      executeQueryWithTimeout(client, `
+        SELECT 
+          COUNT(DISTINCT firm_name)::text as total_firms,
+          COUNT(*)::text as total_rows,
+          COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 2), 0)::text as avg_upheld_rate
+        FROM complaint_metrics_staging
+        WHERE reporting_period LIKE '2024%'
+          AND firm_name IS NOT NULL
+          AND firm_name != ''
+      `, [], 10000),
+
+      // 2. Top Performers Query - Best performers (lowest uphold rates)
+      executeQueryWithTimeout(client, `
+        SELECT 
+          firm_name,
+          COUNT(*)::text as complaint_count,
+          COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
+          COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed
+        FROM complaint_metrics_staging
+        WHERE reporting_period LIKE '2024%'
+          AND firm_name IS NOT NULL
+          AND firm_name != ''
+          AND upheld_rate_pct IS NOT NULL
+        GROUP BY firm_name
+        HAVING COUNT(*) >= 1
+        ORDER BY AVG(COALESCE(upheld_rate_pct, 100)::numeric) ASC
+        LIMIT 10
+      `, [], 10000),
+
+      // 3. Product Categories Query
+      executeQueryWithTimeout(client, `
+        SELECT 
+          product_category as category_name,
+          COUNT(*)::text as complaint_count,
+          COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
+          COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed
+        FROM complaint_metrics_staging
+        WHERE reporting_period LIKE '2024%'
+          AND product_category IS NOT NULL
+          AND product_category != ''
+        GROUP BY product_category
+        ORDER BY COUNT(*) DESC
+        LIMIT 10
+      `, [], 10000),
+
+      // 4. Industry Comparison Query - All firms for scatter plot
+      executeQueryWithTimeout(client, `
+        SELECT 
+          firm_name,
+          COUNT(*)::text as complaint_count,
+          COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
+          COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed,
+          COALESCE(ROUND(AVG(COALESCE(closed_after_3_days_within_8_weeks_pct, 0)::numeric), 1), 0)::text as avg_8week_resolution
+        FROM complaint_metrics_staging
+        WHERE reporting_period LIKE '2024%'
+          AND firm_name IS NOT NULL
+          AND firm_name != ''
+        GROUP BY firm_name
+        HAVING COUNT(*) >= 1
+        ORDER BY AVG(COALESCE(upheld_rate_pct, 100)::numeric) ASC
+        LIMIT 20
+      `, [], 10000),
+
+      // 5. Consumer Credit Query - Focus on banking/credit products
+      executeQueryWithTimeout(client, `
+        SELECT 
+          firm_name,
+          COUNT(*)::text as total_records,
+          COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_upheld_pct,
+          COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_resolution_speed
+        FROM complaint_metrics_staging
+        WHERE reporting_period LIKE '2024%'
+          AND firm_name IS NOT NULL
+          AND firm_name != ''
+          AND (
+            LOWER(product_category) LIKE '%banking%' 
+            OR LOWER(product_category) LIKE '%credit%'
+            OR LOWER(firm_name) LIKE '%financial%'
+            OR LOWER(firm_name) LIKE '%credit%'
+          )
+        GROUP BY firm_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 10
+      `, [], 10000)
+    ]);
+
+    console.log('✅ All queries completed');
+
+    // Process results with error handling
+    const kpis: KPIData = kpisResult.status === 'fulfilled' && kpisResult.value.rows.length > 0
+      ? kpisResult.value.rows[0]
+      : { total_firms: '0', total_rows: '0', avg_upheld_rate: '0' };
+
+    const topPerformers: FirmData[] = topPerformersResult.status === 'fulfilled'
+      ? topPerformersResult.value.rows
+      : [];
+
+    const productCategories: ProductData[] = productCategoriesResult.status === 'fulfilled'
+      ? productCategoriesResult.value.rows
+      : [];
+
+    const industryComparison: FirmData[] = industryComparisonResult.status === 'fulfilled'
+      ? industryComparisonResult.value.rows
+      : [];
+
+    const consumerCredit: ConsumerCreditData[] = consumerCreditResult.status === 'fulfilled'
+      ? consumerCreditResult.value.rows
+      : [];
+
+    // Validate and format data
+    const responseData = {
+      success: true,
+      data: {
+        kpis: {
+          total_complaints: validateNumber(kpis.total_rows),
+          total_firms: validateNumber(kpis.total_firms),
+          avg_upheld_rate: validatePercentage(kpis.avg_upheld_rate),
+          total_rows: validateNumber(kpis.total_rows)
+        },
+        topPerformers: topPerformers.map((row: FirmData) => ({
+          firm_name: validateString(row.firm_name, 150),
+          complaint_count: validateNumber(row.complaint_count),
+          avg_uphold_rate: validatePercentage(row.avg_uphold_rate).toFixed(1),
+          avg_resolution_speed: row.avg_resolution_speed 
+            ? validatePercentage(row.avg_resolution_speed).toFixed(1) 
+            : undefined
+        })),
+        productCategories: productCategories.map((row: ProductData) => ({
+          category_name: validateString(row.category_name, 100),
+          complaint_count: validateNumber(row.complaint_count),
+          avg_uphold_rate: validatePercentage(row.avg_uphold_rate).toFixed(1),
+          avg_resolution_speed: row.avg_resolution_speed 
+            ? validatePercentage(row.avg_resolution_speed).toFixed(1) 
+            : undefined
+        })),
+        industryComparison: industryComparison.map((row: FirmData) => ({
+          firm_name: validateString(row.firm_name, 150),
+          complaint_count: validateNumber(row.complaint_count),
+          avg_uphold_rate: validatePercentage(row.avg_uphold_rate).toFixed(1),
+          avg_resolution_speed: row.avg_resolution_speed 
+            ? validatePercentage(row.avg_resolution_speed).toFixed(1) 
+            : undefined,
+          avg_8week_resolution: (row as any).avg_8week_resolution 
+            ? validatePercentage((row as any).avg_8week_resolution).toFixed(1) 
+            : undefined
+        })),
+        consumerCredit: consumerCredit.map((row: ConsumerCreditData) => ({
+          firm_name: validateString(row.firm_name, 150),
+          total_received: validateNumber(row.total_records),
+          avg_upheld_pct: validatePercentage(row.avg_upheld_pct).toFixed(1),
+          avg_resolution_speed: row.avg_resolution_speed 
+            ? validatePercentage(row.avg_resolution_speed).toFixed(1) 
+            : undefined
+        }))
+      },
+      debug: {
+        timestamp: new Date().toISOString(),
+        dataSource: 'real_database',
+        executionTime: `${Date.now() - startTime}ms`,
+        queryResults: {
+          kpis: kpisResult.status === 'fulfilled' ? kpisResult.value.rowCount : 0,
+          topPerformers: topPerformersResult.status === 'fulfilled' ? topPerformersResult.value.rowCount : 0,
+          productCategories: productCategoriesResult.status === 'fulfilled' ? productCategoriesResult.value.rowCount : 0,
+          industryComparison: industryComparisonResult.status === 'fulfilled' ? industryComparisonResult.value.rowCount : 0,
+          consumerCredit: consumerCreditResult.status === 'fulfilled' ? consumerCreditResult.value.rowCount : 0
+        },
+        failedQueries: [
+          kpisResult.status === 'rejected' ? 'kpis' : null,
+          topPerformersResult.status === 'rejected' ? 'topPerformers' : null,
+          productCategoriesResult.status === 'rejected' ? 'productCategories' : null,
+          industryComparisonResult.status === 'rejected' ? 'industryComparison' : null,
+          consumerCreditResult.status === 'rejected' ? 'consumerCredit' : null
+        ].filter(Boolean),
+        totalRecordsFound: validateNumber(kpis.total_rows)
       }
-    }
+    };
 
-    return NextResponse.json({ 
-      success: true, 
-      message: `${query} endpoint ready`,
-      available_queries: ['initial_load']
+    console.log('✅ Data processed successfully:', {
+      executionTime: responseData.debug.executionTime,
+      totalRecords: responseData.debug.totalRecordsFound,
+      failedQueries: responseData.debug.failedQueries.length
     });
 
+    return NextResponse.json(responseData);
+
   } catch (error) {
-    console.error('❌ API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
+    console.error('❌ Database error:', errorMessage);
     
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    }, { status: 500 });
+    // Return fallback data with error info
+    const fallbackResponse = getFallbackData(errorMessage);
+    fallbackResponse.debug.executionTime = `${Date.now() - startTime}ms`;
+    
+    return NextResponse.json(fallbackResponse, { status: 200 }); // Still return 200 with fallback data
+    
+  } finally {
+    // Always release the client
+    if (client) {
+      try {
+        client.release();
+        console.log('✅ Database client released');
+      } catch (releaseError) {
+        console.warn('⚠️ Error releasing client:', releaseError);
+      }
+    }
+  }
+}
+
+// Health check endpoint
+export async function HEAD(request: NextRequest) {
+  try {
+    const client = await pool.connect();
+    await client.query('SELECT 1');
+    client.release();
+    return new NextResponse(null, { status: 200 });
+  } catch (error) {
+    return new NextResponse(null, { status: 503 });
   }
 }
