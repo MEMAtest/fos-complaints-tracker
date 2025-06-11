@@ -88,17 +88,17 @@ export default function DashboardPage() {
 
     // Clear existing charts
     Object.values(chartsRef.current).forEach(chart => {
-      if (chart && chart.destroy) chart.destroy();
+      if (chart && typeof chart.destroy === 'function') chart.destroy();
     });
     chartsRef.current = {};
 
     // Filter data by selected years
     const filteredFirmData = dashboardData.firmMetrics.filter(
-      item => selectedYears.includes(item.year?.toString())
+      item => item.year && selectedYears.includes(item.year.toString())
     );
 
     const filteredCreditData = dashboardData.consumerCredit.filter(
-      item => selectedYears.includes(item.year?.toString())
+      item => item.year && selectedYears.includes(item.year.toString())
     );
 
     // Aggregate performance data by firm
@@ -166,9 +166,10 @@ export default function DashboardPage() {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                afterLabel: function(context) {
-                  const firm = [...best5, ...worst5][context.dataIndex];
-                  return `Group: ${firm.group}`;
+                afterLabel: function(context: any) {
+                  const allFirms = [...best5, ...worst5];
+                  const firm = allFirms[context.dataIndex];
+                  return firm ? `Group: ${firm.group}` : '';
                 }
               }
             }
@@ -210,7 +211,7 @@ export default function DashboardPage() {
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              position: 'bottom',
+              position: 'bottom' as const,
               labels: { padding: 10, font: { size: 11 } }
             }
           }
@@ -248,11 +249,12 @@ export default function DashboardPage() {
               callbacks: {
                 label: function(context: any) {
                   const point = context.raw;
+                  if (!point) return '';
                   return [
-                    `${point.firmName}`,
-                    `Group: ${point.firmGroup}`,
-                    `3-day resolution: ${point.x.toFixed(1)}%`,
-                    `Uphold rate: ${point.y.toFixed(1)}%`
+                    `${point.firmName || 'Unknown Firm'}`,
+                    `Group: ${point.firmGroup || 'Unknown'}`,
+                    `3-day resolution: ${(point.x || 0).toFixed(1)}%`,
+                    `Uphold rate: ${(point.y || 0).toFixed(1)}%`
                   ];
                 }
               }
@@ -304,8 +306,8 @@ export default function DashboardPage() {
           count: 0
         };
       }
-      firmCreditData[item.firm_name].totalReceived += item.complaints_received;
-      firmCreditData[item.firm_name].totalClosed += item.complaints_closed;
+      firmCreditData[item.firm_name].totalReceived += item.complaints_received || 0;
+      firmCreditData[item.firm_name].totalClosed += item.complaints_closed || 0;
       firmCreditData[item.firm_name].avgUpheld += item.complaints_upheld_pct || 0;
       firmCreditData[item.firm_name].count += 1;
     });
@@ -343,9 +345,9 @@ export default function DashboardPage() {
           plugins: {
             tooltip: {
               callbacks: {
-                afterLabel: function(context) {
+                afterLabel: function(context: any) {
                   const firm = byVolume[context.dataIndex];
-                  return `Group: ${firm.firmGroup}`;
+                  return firm ? `Group: ${firm.firmGroup}` : '';
                 }
               }
             }
@@ -379,16 +381,16 @@ export default function DashboardPage() {
           }]
         },
         options: {
-          indexAxis: 'y',
+          indexAxis: 'y' as const,
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                afterLabel: function(context) {
+                afterLabel: function(context: any) {
                   const firm = byUpheld[context.dataIndex];
-                  return `Group: ${firm.firmGroup}`;
+                  return firm ? `Group: ${firm.firmGroup}` : '';
                 }
               }
             }
@@ -431,12 +433,12 @@ export default function DashboardPage() {
 
     switch (activeTab) {
       case 'overview':
-        // Get available years from the data
-        const availableYears = [...new Set(
-          [...dashboardData.firmMetrics, ...dashboardData.consumerCredit]
-            .map(item => item.year?.toString())
-            .filter(Boolean)
-        )].sort();
+        // Get available years from the data - FIXED SET ITERATION
+        const yearStrings = [
+          ...dashboardData.firmMetrics.map(item => item.year?.toString()).filter(Boolean),
+          ...dashboardData.consumerCredit.map(item => item.year?.toString()).filter(Boolean)
+        ] as string[];
+        const availableYears = Array.from(new Set(yearStrings)).sort();
 
         return (
           <div>
@@ -525,13 +527,13 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-blue-600">
-                    {new Set(dashboardData.firmMetrics.map(f => f.firm_name).filter(Boolean)).size}
+                    {Array.from(new Set(dashboardData.firmMetrics.map(f => f.firm_name).filter(Boolean))).length}
                   </div>
                   <div className="text-sm text-blue-800">Unique Firms</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-blue-600">
-                    {new Set(dashboardData.firmMetrics.map(f => f.category_name).filter(Boolean)).size}
+                    {Array.from(new Set(dashboardData.firmMetrics.map(f => f.category_name).filter(Boolean))).length}
                   </div>
                   <div className="text-sm text-blue-800">Product Categories</div>
                 </div>
@@ -583,8 +585,8 @@ export default function DashboardPage() {
         );
 
       case 'credit':
-        const uniqueFirms = new Set(dashboardData.consumerCredit.map(item => item.firm_name).filter(Boolean)).size;
-        const totalComplaints = dashboardData.consumerCredit.reduce((sum, item) => sum + item.complaints_received, 0);
+        const uniqueFirms = Array.from(new Set(dashboardData.consumerCredit.map(item => item.firm_name).filter(Boolean))).length;
+        const totalComplaints = dashboardData.consumerCredit.reduce((sum, item) => sum + (item.complaints_received || 0), 0);
         const avgUpheld = dashboardData.consumerCredit.length > 0 ? 
           dashboardData.consumerCredit.reduce((sum, item) => sum + (item.complaints_upheld_pct || 0), 0) / dashboardData.consumerCredit.length : 0;
 

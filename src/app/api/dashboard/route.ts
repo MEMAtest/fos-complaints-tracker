@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+// This is the corrected import, reverting to your original correct implementation.
 import { neon } from '@neondatabase/serverless';
 
+// --- THIS IS STILL REQUIRED ---
+// This line tells Next.js to always run this route dynamically at request time.
+export const dynamic = 'force-dynamic';
+
+// Instantiate the `sql` function correctly by calling `neon`.
+// This requires your DATABASE_URL to be set in your .env.local file.
 const sql = neon(process.env.DATABASE_URL!);
+
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    // Correctly using nextUrl.searchParams which is recommended for App Router
+    const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('query');
 
     switch (query) {
@@ -80,17 +89,17 @@ export async function GET(request: NextRequest) {
           LEFT JOIN firms f ON cm.firm_id = f.id
           LEFT JOIN product_categories pc ON cm.product_category_id = pc.id
           LEFT JOIN reporting_periods rp ON cm.reporting_period_id = rp.id
-          WHERE rp.year = ${year}
+          WHERE rp.year::text = ${year}
           ORDER BY f.firm_name, pc.category_name
         `;
         return NextResponse.json(firmPerformance);
 
       case 'consumer_credit':
-        const firms = searchParams.get('firms')?.split(',') || [];
+        const selectedFirms = searchParams.get('firms')?.split(',') || [];
         const ccYear = searchParams.get('year') || '2024';
         
         let consumerCreditQuery;
-        if (firms.length > 0 && firms[0] !== '') {
+        if (selectedFirms.length > 0 && selectedFirms[0] !== '') {
           consumerCreditQuery = sql`
             SELECT 
               ccm.firm_id,
@@ -105,7 +114,7 @@ export async function GET(request: NextRequest) {
             FROM consumer_credit_metrics ccm
             LEFT JOIN firms f ON ccm.firm_id = f.id
             LEFT JOIN reporting_periods rp ON ccm.reporting_period_id = rp.id
-            WHERE f.firm_name = ANY(${firms}) AND rp.year = ${ccYear}
+            WHERE f.firm_name = ANY(${selectedFirms}) AND rp.year::text = ${ccYear}
             ORDER BY ccm.complaints_received DESC
           `;
         } else {
@@ -123,7 +132,7 @@ export async function GET(request: NextRequest) {
             FROM consumer_credit_metrics ccm
             LEFT JOIN firms f ON ccm.firm_id = f.id
             LEFT JOIN reporting_periods rp ON ccm.reporting_period_id = rp.id
-            WHERE rp.year = ${ccYear}
+            WHERE rp.year::text = ${ccYear}
             ORDER BY ccm.complaints_received DESC
           `;
         }
@@ -133,13 +142,17 @@ export async function GET(request: NextRequest) {
 
       case 'lookup_data':
         // Get all lookup table data for dropdowns/filters
-        const [firms, categories, periods] = await Promise.all([
+        const [firmsData, categoriesData, periodsData] = await Promise.all([
           sql`SELECT id, firm_name, firm_group FROM firms ORDER BY firm_name`,
           sql`SELECT id, category_name FROM product_categories ORDER BY category_name`,
           sql`SELECT id, period_name, year FROM reporting_periods ORDER BY year DESC, period_name`
         ]);
 
-        return NextResponse.json({ firms, categories, periods });
+        return NextResponse.json({ 
+          firms: firmsData, 
+          categories: categoriesData, 
+          periods: periodsData 
+        });
 
       case 'dashboard_kpis':
         // Get pre-calculated KPIs if available
@@ -149,11 +162,13 @@ export async function GET(request: NextRequest) {
       default:
         return NextResponse.json({ error: 'Invalid query parameter' }, { status: 400 });
     }
-  } catch (error) {
-    console.error('Database error:', error);
+  } catch (err) {
+    console.error('Database error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
     return NextResponse.json({ 
       error: 'Database error', 
-      details: error.message 
+      details: errorMessage 
     }, { status: 500 });
   }
 }
+

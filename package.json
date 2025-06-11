@@ -1,38 +1,31 @@
 {
   "name": "fos-complaints-tracker",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "FOS Complaints Tracker Dashboard and Data Import Scripts",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "db:test": "echo \"Running database connection test...\" && npx tsx ./scripts/data-import/import-complaints-neon.ts test",
-    "db:import:consumer": "npx tsx ./scripts/data-import/import-complaints-neon.ts ./data/consumer-credit consumer_credit",
-    "db:import:all": "npm run db:import:consumer"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.9.5",
-    "chart.js": "^4.4.3",
-    "csv-parser": "^3.0.0",
-    "dotenv": "^16.4.5",
+    "@neondatabase/serverless": "^0.9.0",
+    "clsx": "^2.1.1",
     "next": "14.2.3",
-    "papaparse": "^5.4.1",
     "react": "^18",
-    "react-chartjs-2": "^5.2.0",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
-    "@types/node": "^20.14.2",
-    "@types/papaparse": "^5.3.14",
+    "@types/chart.js": "^2.9.41",
+    "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.21",
     "eslint": "^8",
     "eslint-config-next": "14.2.3",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1",
-    "tsx": "^4.11.0",
-    "typescript": "^5.4.5"
+    "postcss": "^8.5.4",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
   }
 }
