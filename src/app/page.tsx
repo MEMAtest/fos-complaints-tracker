@@ -11,17 +11,16 @@ interface ChartInstances {
   [key: string]: ChartInstance;
 }
 
-// ✅ FIXED: Interface matches actual API response structure
 interface DashboardData {
   kpis: {
     total_complaints: number;
     total_closed: number;
-    avg_upheld_rate: number;
+    avg_uphold_rate: number;  // 
     total_firms?: number;
   };
   topPerformers: Array<{
     firm_name: string;
-    avg_uphold_rate: number; // Note: API returns avg_uphold_rate
+    avg_uphold_rate: number;
     avg_closure_rate: number;
     complaint_count?: number;
   }>;
@@ -32,7 +31,7 @@ interface DashboardData {
     avg_closure_rate?: number;
   }>;
   categoryData: Array<{
-    category_name: string; // Note: API returns category_name, not product_category
+    category_name: string;
     complaint_count: number;
     avg_uphold_rate: number;
     avg_closure_rate: number;
@@ -73,31 +72,31 @@ export default function Dashboard() {
   const data: DashboardData | null = apiData ? {
     kpis: {
       total_complaints: apiData.data.kpis?.total_complaints || 0,
-      total_closed: apiData.data.kpis?.total_complaints || 0, // Fallback
-      avg_upheld_rate: apiData.data.kpis?.avg_upheld_rate || 0,
+      total_closed: apiData.data.kpis?.total_complaints || 0,
+      avg_uphold_rate: apiData.data.kpis?.avg_upheld_rate || 0, // interface without 'd'
       total_firms: apiData.data.kpis?.total_firms || 0
     },
-    topPerformers: (apiData.data.topPerformers || []).map(item => ({
+    topPerformers: (apiData.data.topPerformers || []).map((item: any) => ({
       firm_name: item.firm_name,
-      avg_uphold_rate: item.avg_uphold_rate, // API field name
+      avg_uphold_rate: item.avg_uphold_rate,
       avg_closure_rate: item.avg_closure_rate,
       complaint_count: item.complaint_count
     })),
-    consumerCredit: (apiData.data.consumerCredit || []).map(item => ({
+    consumerCredit: (apiData.data.consumerCredit || []).map((item: any) => ({
       firm_name: item.firm_name,
-      total_received: item.total_received || 0,
+      total_received: item.total_records || 0, // API returns total_records
       avg_upheld_pct: item.avg_upheld_pct,
       avg_closure_rate: item.avg_closure_rate
     })),
-    categoryData: (apiData.data.productCategories || []).map(item => ({
-      category_name: item.category_name, // API field name
+    categoryData: (apiData.data.productCategories || []).map((item: any) => ({
+      category_name: item.category_name,
       complaint_count: item.complaint_count,
       avg_uphold_rate: item.avg_uphold_rate,
       avg_closure_rate: item.avg_closure_rate
     })),
-    industryComparison: (apiData.data.industryComparison || []).map(item => ({
+    industryComparison: (apiData.data.industryComparison || []).map((item: any) => ({
       firm_name: item.firm_name,
-      avg_uphold_rate: item.avg_uphold_rate, // API field name
+      avg_uphold_rate: item.avg_uphold_rate,
       avg_closure_rate: item.avg_closure_rate,
       complaint_count: item.complaint_count
     })),
