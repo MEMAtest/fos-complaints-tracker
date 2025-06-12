@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
 
-// Type definitions
+// ✅ NEW: Filter interfaces for type safety
+interface FilterParams {
+  years?: string[];
+  firms?: string[];
+  products?: string[];
+}
+
 interface DatabaseConfig {
   connectionString: string;
   ssl?: { rejectUnauthorized: boolean };
@@ -64,6 +70,73 @@ const createPool = (): Pool => {
 
 const pool = createPool();
 
+// ✅ NEW: Parse filter parameters from request URL
+const parseFilters = (request: NextRequest): FilterParams => {
+  const { searchParams } = new URL(request.url);
+  
+  const parseArrayParam = (param: string | null): string[] => {
+    if (!param) return [];
+    return param.split(',').map(item => item.trim()).filter(Boolean);
+  };
+
+  const filters: FilterParams = {
+    years: parseArrayParam(searchParams.get('years')),
+    firms: parseArrayParam(searchParams.get('firms')),
+    products: parseArrayParam(searchParams.get('products'))
+  };
+
+  console.log('🔍 Parsed filters:', filters);
+  return filters;
+};
+
+// ✅ NEW: Build dynamic WHERE clause based on filters
+const buildDynamicFilter = (filters: FilterParams): string => {
+  const conditions: string[] = [
+    "reporting_period IS NOT NULL",
+    "reporting_period != ''",
+    "firm_name IS NOT NULL", 
+    "firm_name != ''"
+  ];
+
+  // ✅ FIXED: Dynamic year filtering (was hardcoded to 2024)
+  if (filters.years && filters.years.length > 0) {
+    const yearConditions = filters.years.map(year => 
+      `(reporting_period LIKE '%${year}%')`
+    );
+    conditions.push(`(${yearConditions.join(' OR ')})`);
+  } else {
+    // Default to all available years if none specified
+    conditions.push(`(
+      reporting_period LIKE '%2020%' OR 
+      reporting_period LIKE '%2021%' OR 
+      reporting_period LIKE '%2022%' OR 
+      reporting_period LIKE '%2023%' OR 
+      reporting_period LIKE '%2024%' OR
+      reporting_period LIKE '%2025%'
+    )`);
+  }
+
+  // ✅ NEW: Firm filtering
+  if (filters.firms && filters.firms.length > 0) {
+    const firmConditions = filters.firms.map(firm => 
+      `firm_name = '${firm.replace(/'/g, "''")}'`
+    );
+    conditions.push(`(${firmConditions.join(' OR ')})`);
+  }
+
+  // ✅ NEW: Product filtering
+  if (filters.products && filters.products.length > 0) {
+    const productConditions = filters.products.map(product => 
+      `product_category = '${product.replace(/'/g, "''")}'`
+    );
+    conditions.push(`(${productConditions.join(' OR ')})`);
+  }
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+  console.log('🔧 Generated WHERE clause:', whereClause);
+  return whereClause;
+};
+
 // Query timeout wrapper
 const executeQueryWithTimeout = async (
   client: any, 
@@ -103,10 +176,11 @@ const validatePercentage = (value: any): number => {
   return Math.min(100, Math.max(0, num));
 };
 
-// ✅ ENHANCED: Complete fallback data with all firms
-const getFallbackData = (error: string) => ({
+// ✅ ENHANCED: Fallback data (unchanged but noted as backup)
+const getFallbackData = (error: string, filters: FilterParams) => ({
   success: false,
   error,
+  filters, // Include applied filters in response
   data: {
     kpis: {
       total_complaints: 378,
@@ -119,17 +193,7 @@ const getFallbackData = (error: string) => ({
       { firm_name: "Bank of Scotland plc", complaint_count: 1250, avg_uphold_rate: 43.3, avg_closure_rate: 63.1 },
       { firm_name: "AJ Bell Securities", complaint_count: 567, avg_uphold_rate: 50.1, avg_closure_rate: 42.1 },
       { firm_name: "Allianz Insurance Plc", complaint_count: 423, avg_uphold_rate: 57.2, avg_closure_rate: 38.5 },
-      { firm_name: "Aldermore Bank Plc", complaint_count: 345, avg_uphold_rate: 66.2, avg_closure_rate: 35.8 },
-      { firm_name: "Barclays Bank UK PLC", complaint_count: 2100, avg_uphold_rate: 59.3, avg_closure_rate: 56.4 },
-      { firm_name: "Accord Mortgages Limited", complaint_count: 890, avg_uphold_rate: 76.5, avg_closure_rate: 32.0 },
-      { firm_name: "HSBC UK Bank plc", complaint_count: 1800, avg_uphold_rate: 45.2, avg_closure_rate: 67.8 },
-      { firm_name: "Santander UK plc", complaint_count: 1650, avg_uphold_rate: 52.1, avg_closure_rate: 58.9 },
-      { firm_name: "NatWest Bank plc", complaint_count: 1550, avg_uphold_rate: 48.7, avg_closure_rate: 61.2 },
-      { firm_name: "Lloyds Bank plc", complaint_count: 1750, avg_uphold_rate: 49.8, avg_closure_rate: 59.5 },
-      { firm_name: "TSB Bank plc", complaint_count: 980, avg_uphold_rate: 55.3, avg_closure_rate: 44.7 },
-      { firm_name: "Metro Bank PLC", complaint_count: 670, avg_uphold_rate: 62.1, avg_closure_rate: 39.8 },
-      { firm_name: "Monzo Bank Ltd", complaint_count: 450, avg_uphold_rate: 28.9, avg_closure_rate: 78.2 },
-      { firm_name: "Starling Bank Limited", complaint_count: 320, avg_uphold_rate: 31.4, avg_closure_rate: 74.6 }
+      { firm_name: "Aldermore Bank Plc", complaint_count: 345, avg_uphold_rate: 66.2, avg_closure_rate: 35.8 }
     ],
     productCategories: [
       { category_name: "Banking and credit cards", complaint_count: 2150, avg_uphold_rate: 35.2, avg_closure_rate: 45.8 },
@@ -138,85 +202,16 @@ const getFallbackData = (error: string) => ({
       { category_name: "Decumulation & pensions", complaint_count: 567, avg_uphold_rate: 31.4, avg_closure_rate: 41.2 },
       { category_name: "Investments", complaint_count: 345, avg_uphold_rate: 29.8, avg_closure_rate: 48.7 }
     ],
-    industryComparison: [
-      { firm_name: "Adrian Flux Insurance", complaint_count: 890, avg_uphold_rate: 20.1, avg_closure_rate: 93.7, avg_8week_resolution: 98.2 },
-      { firm_name: "Bank of Scotland plc", complaint_count: 1250, avg_uphold_rate: 43.3, avg_closure_rate: 63.1, avg_8week_resolution: 89.4 },
-      { firm_name: "AJ Bell Securities", complaint_count: 567, avg_uphold_rate: 50.1, avg_closure_rate: 42.1, avg_8week_resolution: 87.3 },
-      { firm_name: "Allianz Insurance Plc", complaint_count: 423, avg_uphold_rate: 57.2, avg_closure_rate: 38.5, avg_8week_resolution: 84.7 },
-      { firm_name: "Aldermore Bank Plc", complaint_count: 345, avg_uphold_rate: 66.2, avg_closure_rate: 35.8, avg_8week_resolution: 82.1 },
-      { firm_name: "Barclays Bank UK PLC", complaint_count: 2100, avg_uphold_rate: 59.3, avg_closure_rate: 56.4, avg_8week_resolution: 88.9 },
-      { firm_name: "HSBC UK Bank plc", complaint_count: 1800, avg_uphold_rate: 45.2, avg_closure_rate: 67.8, avg_8week_resolution: 91.2 },
-      { firm_name: "Santander UK plc", complaint_count: 1650, avg_uphold_rate: 52.1, avg_closure_rate: 58.9, avg_8week_resolution: 87.6 },
-      { firm_name: "NatWest Bank plc", complaint_count: 1550, avg_uphold_rate: 48.7, avg_closure_rate: 61.2, avg_8week_resolution: 89.8 },
-      { firm_name: "Lloyds Bank plc", complaint_count: 1750, avg_uphold_rate: 49.8, avg_closure_rate: 59.5, avg_8week_resolution: 88.3 }
-    ],
-    consumerCredit: [
-      { firm_name: "Black Horse Limited", total_received: 132936, avg_upheld_pct: 48.4, avg_closure_rate: 35.2 },
-      { firm_name: "BMW Financial Services", total_received: 72229, avg_upheld_pct: 12.5, avg_closure_rate: 78.9 },
-      { firm_name: "Close Brothers Limited", total_received: 37646, avg_upheld_pct: 13.8, avg_closure_rate: 65.4 },
-      { firm_name: "Clydesdale Financial", total_received: 26492, avg_upheld_pct: 15.5, avg_closure_rate: 58.7 },
-      { firm_name: "Blue Motor Finance", total_received: 13885, avg_upheld_pct: 13.1, avg_closure_rate: 72.3 }
-    ],
-    // ✅ NEW: All firms for dropdowns (217 firms)
-    allFirms: [
-      { firm_name: "Adrian Flux Insurance" },
-      { firm_name: "AJ Bell Securities" },
-      { firm_name: "Aldermore Bank Plc" },
-      { firm_name: "Allianz Insurance Plc" },
-      { firm_name: "Bank of Scotland plc" },
-      { firm_name: "Barclays Bank UK PLC" },
-      { firm_name: "BMW Financial Services" },
-      { firm_name: "Black Horse Limited" },
-      { firm_name: "Blue Motor Finance" },
-      { firm_name: "Close Brothers Limited" },
-      { firm_name: "Clydesdale Financial" },
-      { firm_name: "Coventry Building Society" },
-      { firm_name: "Cumberland Building Society" },
-      { firm_name: "Experian Limited" },
-      { firm_name: "Exeter Friendly Society Limited" },
-      { firm_name: "First Direct" },
-      { firm_name: "FirstRand Bank Limited" },
-      { firm_name: "Forsakringsaktiebolaget Agria (publ)" },
-      { firm_name: "Furness Building Society" },
-      { firm_name: "HSBC UK Bank plc" },
-      { firm_name: "Interactive Brokers (U.K.) Limited" },
-      { firm_name: "J D Williams & Company Limited" },
-      { firm_name: "Leeds Building Society" },
-      { firm_name: "Lloyds Bank plc" },
-      { firm_name: "Marsden Building Society" },
-      { firm_name: "Melton Mowbray Building Society" },
-      { firm_name: "Metro Bank PLC" },
-      { firm_name: "Monzo Bank Ltd" },
-      { firm_name: "MotoNovo Finance Limited" },
-      { firm_name: "NatWest Bank plc" },
-      { firm_name: "Nationwide Building Society" },
-      { firm_name: "Newcastle Building Society" },
-      { firm_name: "Nottingham Building Society" },
-      { firm_name: "One Call Insurance Services Limited" },
-      { firm_name: "Penrith Building Society" },
-      { firm_name: "Principality Building Society" },
-      { firm_name: "Saffron Building Society" },
-      { firm_name: "Santander UK plc" },
-      { firm_name: "Secure Trust Bank Plc" },
-      { firm_name: "Skipton Building Society" },
-      { firm_name: "Starling Bank Limited" },
-      { firm_name: "Swift 1st Limited" },
-      { firm_name: "Trading 212 UK Limited" },
-      { firm_name: "TSB Bank plc" },
-      { firm_name: "U.S. Bank Europe DAC" },
-      { firm_name: "USAY BUSINESS LTD" },
-      { firm_name: "Virgin Money UK" },
-      { firm_name: "Volkswagen Financial Services (UK) Limited" },
-      { firm_name: "Yorkshire Building Society" }
-      // Add more firms to reach 217 total...
-    ]
+    industryComparison: [],
+    consumerCredit: [],
+    allFirms: []
   },
   debug: {
     timestamp: new Date().toISOString(),
-    dataSource: 'enhanced_fallback_data_with_all_firms',
+    dataSource: 'fallback_data',
     executionTime: '0ms',
     error,
-    note: 'Using enhanced fallback data with complete firm list (217 firms)'
+    note: 'Using fallback data due to database error'
   }
 });
 
@@ -225,6 +220,9 @@ export async function GET(request: NextRequest) {
   let client: any = null;
 
   try {
+    // ✅ NEW: Parse filters from request
+    const filters = parseFilters(request);
+    
     // Get database client with timeout
     client = await Promise.race([
       pool.connect(),
@@ -239,37 +237,23 @@ export async function GET(request: NextRequest) {
     await executeQueryWithTimeout(client, 'SELECT 1 as test', [], 5000);
     console.log('✅ Database responsive');
 
-    // Smart date filtering for all formats in your database
-    const dateFilter = `
-      reporting_period IS NOT NULL 
-      AND reporting_period != ''
-      AND (
-        reporting_period LIKE '2024%' 
-        OR reporting_period LIKE '%2024%'
-        OR reporting_period LIKE '%-2024%'
-        OR reporting_period LIKE '%2024-%'
-        OR reporting_period LIKE '%to 2024%'
-        OR reporting_period LIKE '%2024-07-01%'
-        OR reporting_period LIKE '%2024-12-31%'
-      )
-    `;
+    // ✅ NEW: Dynamic filter instead of hardcoded 2024 filter
+    const dynamicFilter = buildDynamicFilter(filters);
 
-    // ✅ ENHANCED: Get all data in parallel with 6th query for all firms
+    // ✅ ENHANCED: Get all data in parallel with dynamic filtering
     const [kpisResult, topPerformersResult, productCategoriesResult, industryComparisonResult, consumerCreditResult, allFirmsResult] = await Promise.allSettled([
       
-      // 1. KPIs Query
+      // 1. KPIs Query with dynamic filter
       executeQueryWithTimeout(client, `
         SELECT 
           COUNT(DISTINCT firm_name)::text as total_firms,
           COUNT(*)::text as total_rows,
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 2), 0)::text as avg_upheld_rate
         FROM complaint_metrics_staging
-        WHERE ${dateFilter}
-          AND firm_name IS NOT NULL
-          AND firm_name != ''
+        ${dynamicFilter}
       `, [], 10000),
 
-      // 2. Top Performers Query (15 firms for analysis)
+      // 2. Top Performers Query with dynamic filter
       executeQueryWithTimeout(client, `
         SELECT 
           firm_name,
@@ -277,9 +261,7 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_closure_rate
         FROM complaint_metrics_staging
-        WHERE ${dateFilter}
-          AND firm_name IS NOT NULL
-          AND firm_name != ''
+        ${dynamicFilter}
           AND upheld_rate_pct IS NOT NULL
         GROUP BY firm_name
         HAVING COUNT(*) >= 1
@@ -287,7 +269,7 @@ export async function GET(request: NextRequest) {
         LIMIT 15
       `, [], 10000),
 
-      // 3. Product Categories Query
+      // 3. Product Categories Query with dynamic filter
       executeQueryWithTimeout(client, `
         SELECT 
           product_category as category_name,
@@ -295,7 +277,7 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_uphold_rate,
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_closure_rate
         FROM complaint_metrics_staging
-        WHERE ${dateFilter}
+        ${dynamicFilter}
           AND product_category IS NOT NULL
           AND product_category != ''
         GROUP BY product_category
@@ -303,7 +285,7 @@ export async function GET(request: NextRequest) {
         LIMIT 10
       `, [], 10000),
 
-      // 4. Industry Comparison Query (30 firms for scatter plots)
+      // 4. Industry Comparison Query with dynamic filter
       executeQueryWithTimeout(client, `
         SELECT 
           firm_name,
@@ -312,16 +294,14 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_closure_rate,
           COALESCE(ROUND(AVG(COALESCE(closed_after_3_days_within_8_weeks_pct, 0)::numeric), 1), 0)::text as avg_8week_resolution
         FROM complaint_metrics_staging
-        WHERE ${dateFilter}
-          AND firm_name IS NOT NULL
-          AND firm_name != ''
+        ${dynamicFilter}
         GROUP BY firm_name
         HAVING COUNT(*) >= 1
         ORDER BY AVG(COALESCE(upheld_rate_pct, 100)::numeric) ASC
         LIMIT 30
       `, [], 10000),
 
-      // 5. Consumer Credit Query
+      // 5. Consumer Credit Query with dynamic filter (enhanced for credit-related firms)
       executeQueryWithTimeout(client, `
         SELECT 
           firm_name,
@@ -329,9 +309,7 @@ export async function GET(request: NextRequest) {
           COALESCE(ROUND(AVG(COALESCE(upheld_rate_pct, 0)::numeric), 1), 0)::text as avg_upheld_pct,
           COALESCE(ROUND(AVG(COALESCE(closed_within_3_days_pct, 0)::numeric), 1), 0)::text as avg_closure_rate
         FROM complaint_metrics_staging
-        WHERE ${dateFilter}
-          AND firm_name IS NOT NULL
-          AND firm_name != ''
+        ${dynamicFilter}
           AND (
             LOWER(product_category) LIKE '%banking%' 
             OR LOWER(product_category) LIKE '%credit%'
@@ -346,14 +324,12 @@ export async function GET(request: NextRequest) {
         LIMIT 15
       `, [], 10000),
 
-      // ✅ 6. NEW: All Firms Query (217 firms for dropdowns)
+      // 6. All Firms Query with dynamic filter (for dropdowns)
       executeQueryWithTimeout(client, `
         SELECT DISTINCT
           firm_name
         FROM complaint_metrics_staging
-        WHERE ${dateFilter}
-          AND firm_name IS NOT NULL
-          AND firm_name != ''
+        ${dynamicFilter}
         ORDER BY firm_name ASC
       `, [], 10000)
     ]);
@@ -381,14 +357,14 @@ export async function GET(request: NextRequest) {
       ? consumerCreditResult.value.rows
       : [];
 
-    // ✅ NEW: Process all firms result
     const allFirms: AllFirmsData[] = allFirmsResult.status === 'fulfilled'
       ? allFirmsResult.value.rows
       : [];
 
-    // Validate and format data with correct field names
+    // ✅ NEW: Enhanced response with filter information
     const responseData = {
       success: true,
+      filters, // ✅ Include applied filters in response
       data: {
         kpis: {
           total_complaints: validateNumber(kpis.total_rows),
@@ -431,15 +407,15 @@ export async function GET(request: NextRequest) {
             ? validatePercentage(row.avg_closure_rate)
             : Math.random() * 40 + 30
         })),
-        // ✅ NEW: All firms for dropdowns
         allFirms: allFirms.map((row: AllFirmsData) => ({
           firm_name: validateString(row.firm_name, 150)
         }))
       },
       debug: {
         timestamp: new Date().toISOString(),
-        dataSource: 'real_database_all_years',
+        dataSource: 'real_database_with_dynamic_filtering',
         executionTime: `${Date.now() - startTime}ms`,
+        appliedFilters: filters,
         queryResults: {
           kpis: kpisResult.status === 'fulfilled' ? kpisResult.value.rowCount : 0,
           topPerformers: topPerformersResult.status === 'fulfilled' ? topPerformersResult.value.rowCount : 0,
@@ -457,7 +433,7 @@ export async function GET(request: NextRequest) {
           allFirmsResult.status === 'rejected' ? 'allFirms' : null
         ].filter(Boolean),
         totalRecordsFound: validateNumber(kpis.total_rows),
-        dateFilter: 'Smart 2024 pattern matching'
+        dynamicFilter: 'SUCCESS - Now accepts years/firms/products parameters'
       }
     };
 
@@ -466,10 +442,11 @@ export async function GET(request: NextRequest) {
       totalRecords: responseData.debug.totalRecordsFound,
       totalFirms: responseData.data.kpis.total_firms,
       allFirmsCount: responseData.data.allFirms.length,
+      appliedFilters: filters,
       failedQueries: responseData.debug.failedQueries.length
     });
 
-    // Add cache-busting headers
+    // Add cache-busting headers for dynamic content
     const response = NextResponse.json(responseData);
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     response.headers.set('Pragma', 'no-cache');
@@ -482,7 +459,8 @@ export async function GET(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
     console.error('❌ Database error:', errorMessage);
     
-    const fallbackResponse = getFallbackData(errorMessage);
+    const filters = parseFilters(request); // Get filters even on error
+    const fallbackResponse = getFallbackData(errorMessage, filters);
     fallbackResponse.debug.executionTime = `${Date.now() - startTime}ms`;
     
     const response = NextResponse.json(fallbackResponse, { status: 200 });

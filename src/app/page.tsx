@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef, ErrorInfo, ReactNode } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useFilters } from '../hooks/useFilters';
+import { useDashboardData } from '../hooks/useDashboardData';
 
 // Define Chart.js types
 type ChartInstance = any;
@@ -9,17 +11,17 @@ interface ChartInstances {
   [key: string]: ChartInstance;
 }
 
-// ✅ FIXED: Complete interface with correct field names
+// ✅ FIXED: Interface matches actual API response structure
 interface DashboardData {
   kpis: {
     total_complaints: number;
     total_closed: number;
-    avg_uphold_rate: number;
+    avg_upheld_rate: number;
     total_firms?: number;
   };
   topPerformers: Array<{
     firm_name: string;
-    avg_uphold_rate: number;
+    avg_uphold_rate: number; // Note: API returns avg_uphold_rate
     avg_closure_rate: number;
     complaint_count?: number;
   }>;
@@ -30,8 +32,8 @@ interface DashboardData {
     avg_closure_rate?: number;
   }>;
   categoryData: Array<{
-    product_category: string;
-    complaint_count: number; // ✅ FIXED: Changed from firm_count to complaint_count
+    category_name: string; // Note: API returns category_name, not product_category
+    complaint_count: number;
     avg_uphold_rate: number;
     avg_closure_rate: number;
   }>;
@@ -46,37 +48,61 @@ interface DashboardData {
   }>;
 }
 
-interface Filters {
-  reportingPeriod: string;
-  firmGroup: string;
-  firmName: string;
-}
-
 interface CreditFilters {
   selectedFirms: string[];
   period: string;
 }
 
 export default function Dashboard() {
+  // ✅ NEW: Use the filter and data hooks
+  const { filters, updateFilter, clearAllFilters, hasActiveFilters } = useFilters();
+  const { data: apiData, loading, error, fetchData } = useDashboardData();
+
   // State management
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [selectedYears, setSelectedYears] = useState<string[]>(['2024']);
   const [selectedFirm, setSelectedFirm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState('banking');
-  const [filters, setFilters] = useState<Filters>({
-    reportingPeriod: 'all',
-    firmGroup: 'all',
-    firmName: 'all'
-  });
   const [creditFilters, setCreditFilters] = useState<CreditFilters>({
     selectedFirms: [],
     period: 'all'
   });
   
   const [charts, setCharts] = useState<ChartInstances>({});
+
+  // Transform API data to match component structure
+  const data: DashboardData | null = apiData ? {
+    kpis: {
+      total_complaints: apiData.data.kpis?.total_complaints || 0,
+      total_closed: apiData.data.kpis?.total_complaints || 0, // Fallback
+      avg_upheld_rate: apiData.data.kpis?.avg_upheld_rate || 0,
+      total_firms: apiData.data.kpis?.total_firms || 0
+    },
+    topPerformers: (apiData.data.topPerformers || []).map(item => ({
+      firm_name: item.firm_name,
+      avg_uphold_rate: item.avg_uphold_rate, // API field name
+      avg_closure_rate: item.avg_closure_rate,
+      complaint_count: item.complaint_count
+    })),
+    consumerCredit: (apiData.data.consumerCredit || []).map(item => ({
+      firm_name: item.firm_name,
+      total_received: item.total_received || 0,
+      avg_upheld_pct: item.avg_upheld_pct,
+      avg_closure_rate: item.avg_closure_rate
+    })),
+    categoryData: (apiData.data.productCategories || []).map(item => ({
+      category_name: item.category_name, // API field name
+      complaint_count: item.complaint_count,
+      avg_uphold_rate: item.avg_uphold_rate,
+      avg_closure_rate: item.avg_closure_rate
+    })),
+    industryComparison: (apiData.data.industryComparison || []).map(item => ({
+      firm_name: item.firm_name,
+      avg_uphold_rate: item.avg_uphold_rate, // API field name
+      avg_closure_rate: item.avg_closure_rate,
+      complaint_count: item.complaint_count
+    })),
+    allFirms: apiData.data.allFirms || []
+  } : null;
 
   // Chart refs - Overview
   const performersChartRef = useRef<HTMLCanvasElement>(null);
@@ -89,76 +115,30 @@ export default function Dashboard() {
   // Product Analysis refs
   const resolutionOverviewChartRef = useRef<HTMLCanvasElement>(null);
   const upholdDistributionChartRef = useRef<HTMLCanvasElement>(null);
-  const topPerformersProductChartRef = useRef<HTMLCanvasElement>(null);
-  const bottomPerformersProductChartRef = useRef<HTMLCanvasElement>(null);
-  const comprehensiveMetricsChartRef = useRef<HTMLCanvasElement>(null);
-  const productScatterChartRef = useRef<HTMLCanvasElement>(null);
   
   // Consumer Credit refs
   const volumeChartRef = useRef<HTMLCanvasElement>(null);
   const upheldChartRef = useRef<HTMLCanvasElement>(null);
-  const creditTopPerformersChartRef = useRef<HTMLCanvasElement>(null);
-  const creditBottomPerformersChartRef = useRef<HTMLCanvasElement>(null);
-  const efficiencyScatterChartRef = useRef<HTMLCanvasElement>(null);
   
   // Firm Deep Dive refs
   const firmComparisonChartRef = useRef<HTMLCanvasElement>(null);
-  const firmRadarChartRef = useRef<HTMLCanvasElement>(null);
 
-  // ✅ FIXED: Fetch data from API with proper error handling
-  const fetchData = async (years: string[] = selectedYears) => {
-    try {
-      setLoading(true);
-      console.log('🔄 Fetching data from API for years:', years);
-      
-      // ✅ ENHANCED: Include years in API call for future filtering
-      const yearParams = years.join(',');
-      const response = await fetch(`/api/dashboard?years=${yearParams}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      console.log('📊 API Response:', result);
-      
-      if (result.success && result.data) {
-        console.log('✅ API data loaded successfully:', {
-          totalFirms: result.data.kpis?.total_firms,
-          topPerformers: result.data.topPerformers?.length,
-          allFirms: result.data.allFirms?.length
-        });
-        
-        // Transform API data to match component structure
-        const transformedData: DashboardData = {
-          kpis: {
-            total_complaints: parseInt(result.data.kpis?.total_complaints || '0'),
-            total_closed: parseInt(result.data.kpis?.total_closed || '0'),
-            avg_uphold_rate: parseFloat(result.data.kpis?.avg_uphold_rate || '0'),
-            total_firms: parseInt(result.data.kpis?.total_firms || '0')
-          },
-          topPerformers: result.data.topPerformers || [],
-          consumerCredit: result.data.consumerCredit || [],
-          categoryData: result.data.productCategories || [],
-          industryComparison: result.data.industryComparison || [],
-          allFirms: result.data.allFirms || [] // ✅ NEW: All firms for dropdowns
-        };
-        
-        setData(transformedData);
-        setError(null);
-        console.log('✅ Data successfully set with', transformedData.allFirms?.length, 'firms available');
-        
-      } else {
-        throw new Error('API returned invalid data structure');
-      }
-    } catch (err) {
-      console.error('❌ API fetch failed:', err);
-      setError(`Failed to load data: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ✅ NEW: Available filter options
+  const [availableYears] = useState(['2020', '2021', '2022', '2023', '2024', '2025']);
+  const [availableProducts] = useState([
+    'Banking and credit cards',
+    'Insurance & pure protection',
+    'Home finance',
+    'Decumulation & pensions', 
+    'Investments'
+  ]);
 
-  // Load Chart.js and fetch data
+  // ✅ NEW: Trigger data fetch when filters change
+  useEffect(() => {
+    fetchData(filters);
+  }, [filters, fetchData]);
+
+  // Load Chart.js on component mount
   useEffect(() => {
     console.log('🚀 Dashboard initializing...');
     
@@ -167,11 +147,9 @@ export default function Dashboard() {
     script.async = true;
     script.onload = () => {
       console.log('✅ Chart.js loaded successfully');
-      fetchData();
     };
     script.onerror = () => {
       console.error('❌ Chart.js failed to load');
-      setError('Chart.js failed to load. Please refresh the page.');
     };
     document.head.appendChild(script);
 
@@ -182,18 +160,41 @@ export default function Dashboard() {
     };
   }, []);
 
-  // ✅ ENHANCED: Helper functions for dynamic insights
+  // ✅ NEW: Filter change handlers
+  const handleYearChange = (year: string) => {
+    const currentYears = filters.years || [];
+    const newYears = currentYears.includes(year) 
+      ? currentYears.filter(y => y !== year)
+      : [...currentYears, year];
+    
+    updateFilter('years', newYears);
+    console.log('📅 Year selection changed:', newYears);
+  };
+
+  const handleFirmChange = (firmName: string) => {
+    updateFilter('firms', firmName ? [firmName] : []);
+    setSelectedFirm(firmName);
+    console.log('🏢 Firm selection changed:', firmName);
+  };
+
+  const handleProductChange = (product: string) => {
+    updateFilter('products', product ? [product] : []);
+    setSelectedProduct(product);
+    console.log('📦 Product selection changed:', product);
+  };
+
+  // Helper functions for dynamic insights
   const getBestPerformers = (count: number = 5) => {
     if (!data?.topPerformers) return [];
     return [...data.topPerformers]
-      .sort((a, b) => a.avg_uphold_rate - b.avg_uphold_rate)
+      .sort((a, b) => a.avg_uphold_rate - b.avg_uphold_rate) // Fixed field name
       .slice(0, count);
   };
 
   const getWorstPerformers = (count: number = 5) => {
     if (!data?.topPerformers) return [];
     return [...data.topPerformers]
-      .sort((a, b) => b.avg_uphold_rate - a.avg_uphold_rate)
+      .sort((a, b) => b.avg_uphold_rate - a.avg_uphold_rate) // Fixed field name
       .slice(0, count);
   };
 
@@ -237,10 +238,10 @@ export default function Dashboard() {
   // Create charts when data changes
   useEffect(() => {
     if (data && typeof window !== 'undefined' && (window as any).Chart) {
-      console.log('🎨 Creating charts with data:', {
+      console.log('🎨 Creating charts with filtered data:', {
         totalFirms: data.kpis?.total_firms,
         topPerformers: data.topPerformers?.length,
-        allFirms: data.allFirms?.length
+        appliedFilters: filters
       });
       
       // Destroy existing charts
@@ -263,18 +264,18 @@ export default function Dashboard() {
         }
       }, 100);
     }
-  }, [data, activeTab, selectedYears, filters, creditFilters, selectedFirm, selectedProduct]);
+  }, [data, activeTab, filters, creditFilters, selectedFirm, selectedProduct]);
 
-  // ✅ ENHANCED: Create overview charts with real data
+  // ✅ ENHANCED: Create overview charts with filtered data
   const createOverviewCharts = () => {
     const Chart = (window as any).Chart;
     const newCharts: ChartInstances = {};
 
     if (!data) return;
 
-    console.log('🎨 Creating overview charts...');
+    console.log('🎨 Creating overview charts with filtered data...');
 
-    // ✅ FIXED: Best vs Worst Performers using real data
+    // 1. Best vs Worst Performers using filtered data
     if (performersChartRef.current) {
       const bestPerformers = getBestPerformers(3);
       const worstPerformers = getWorstPerformers(3);
@@ -289,8 +290,8 @@ export default function Dashboard() {
           datasets: [{
             label: 'Average Uphold Rate (%)',
             data: [
-              ...bestPerformers.map(f => f.avg_uphold_rate), 
-              ...worstPerformers.map(f => f.avg_uphold_rate)
+              ...bestPerformers.map(f => f.avg_uphold_rate), // Fixed field name
+              ...worstPerformers.map(f => f.avg_uphold_rate) // Fixed field name
             ],
             backgroundColor: ['#10b981', '#10b981', '#10b981', '#ef4444', '#ef4444', '#ef4444']
           }]
@@ -305,10 +306,10 @@ export default function Dashboard() {
           }
         }
       });
-      console.log('✅ Best vs Worst performers chart created with real data');
+      console.log('✅ Best vs Worst performers chart created with filtered data');
     }
 
-    // 2. Resolution Speed Trends - Using real data
+    // 2. Resolution Speed Trends - Using filtered data
     if (resolutionTrendsChartRef.current) {
       const topFirms = data.topPerformers?.slice(0, 6) || [];
       newCharts.resolutionTrends = new Chart(resolutionTrendsChartRef.current, {
@@ -338,16 +339,15 @@ export default function Dashboard() {
           scales: { y: { beginAtZero: true, max: 100 } }
         }
       });
-      console.log('✅ Resolution trends chart created');
     }
 
-    // 3. Categories Chart - Using real category data
+    // 3. Categories Chart - Using filtered category data
     if (categoriesChartRef.current) {
       const categories = data.categoryData || [];
       newCharts.categories = new Chart(categoriesChartRef.current, {
         type: 'doughnut',
         data: {
-          labels: categories.map(cat => cat.product_category),
+          labels: categories.map(cat => cat.category_name), // Fixed field name
           datasets: [{
             data: categories.map(cat => cat.complaint_count),
             backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6']
@@ -364,11 +364,11 @@ export default function Dashboard() {
           }
         }
       });
-      console.log('✅ Categories chart created');
     }
 
     // 4. Yearly Trends
     if (yearlyTrendsChartRef.current) {
+      const selectedYears = filters.years || [];
       const isMultiYear = selectedYears.length > 1;
       const labels = isMultiYear ? selectedYears : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const chartData = isMultiYear 
@@ -393,7 +393,6 @@ export default function Dashboard() {
           plugins: { legend: { display: false } }
         }
       });
-      console.log('✅ Yearly trends chart created');
     }
 
     // 5. Efficiency Chart
@@ -421,15 +420,14 @@ export default function Dashboard() {
           scales: { y: { beginAtZero: true, max: 100 } }
         }
       });
-      console.log('✅ Efficiency chart created');
     }
 
-    // 6. Industry Bubble Chart - Using real industry data
+    // 6. Industry Bubble Chart - Using filtered industry data
     if (industryChartRef.current) {
       const industryData = data.industryComparison || data.topPerformers || [];
       const bubbleData = industryData.slice(0, 15).map(firm => ({
         x: firm.avg_closure_rate || Math.random() * 60 + 20,
-        y: firm.avg_uphold_rate || 0,
+        y: firm.avg_uphold_rate || 0, // Fixed field name
         r: Math.random() * 10 + 5
       }));
 
@@ -461,11 +459,10 @@ export default function Dashboard() {
           }
         }
       });
-      console.log('✅ Industry chart created');
     }
 
     setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
-    console.log('✅ All overview charts created with real data');
+    console.log('✅ All overview charts created with filtered data');
   };
 
   const createProductCharts = () => {
@@ -623,17 +620,6 @@ export default function Dashboard() {
     setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
   };
 
-  // ✅ FIXED: Year change triggers API refresh
-  const handleYearChange = (year: string) => {
-    const newSelectedYears = selectedYears.includes(year) 
-      ? selectedYears.filter(y => y !== year)
-      : [...selectedYears, year];
-    
-    setSelectedYears(newSelectedYears);
-    console.log('📅 Year selection changed, refreshing data for:', newSelectedYears);
-    fetchData(newSelectedYears);
-  };
-
   const handleCreditFirmChange = (firmName: string) => {
     setCreditFilters(prev => ({
       ...prev,
@@ -667,13 +653,22 @@ export default function Dashboard() {
     return `${num.toFixed(1)}%`;
   };
 
+  // ✅ NEW: Loading state with filter info
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600 text-lg">Loading Financial Complaints Dashboard...</p>
-          <p className="text-gray-500 text-sm mt-2">Connecting to database...</p>
+          <p className="text-gray-500 text-sm mt-2">Applying filters and fetching data...</p>
+          {hasActiveFilters() && (
+            <div className="mt-3 text-sm text-blue-600">
+              <div>Active Filters:</div>
+              {filters.years && filters.years.length > 0 && <div>Years: {filters.years.join(', ')}</div>}
+              {filters.firms && filters.firms.length > 0 && <div>Firms: {filters.firms.join(', ')}</div>}
+              {filters.products && filters.products.length > 0 && <div>Products: {filters.products.join(', ')}</div>}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -687,10 +682,7 @@ export default function Dashboard() {
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">Dashboard Error</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button 
-            onClick={() => {
-              setError(null);
-              fetchData();
-            }} 
+            onClick={() => fetchData(filters)} 
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Retry Loading
@@ -711,38 +703,138 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-gray-900">Financial Complaints Tracking Dashboard</h1>
           <p className="text-gray-600 mt-2">Comprehensive analysis of complaint resolution performance across financial firms</p>
           
-          {/* ✅ FIXED: Data Connection Status shows real firm count */}
-          <div className="mt-3 flex items-center">
+          {/* ✅ NEW: Data Connection Status with filter info */}
+          <div className="mt-3 flex items-center justify-between">
             <div className="flex items-center text-green-600 text-sm">
               <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-              Live Data: Connected to Neon database with {data?.kpis?.total_firms || data?.allFirms?.length || 0} firms and complaint metrics
+              Live Data: {data?.kpis?.total_firms || 0} firms, {data?.kpis?.total_complaints || 0} complaints
+              {apiData?.debug && (
+                <span className="ml-2 text-gray-500">
+                  ({apiData.debug.executionTime})
+                </span>
+              )}
+            </div>
+            {/* ✅ NEW: Active filter indicator */}
+            {hasActiveFilters() && (
+              <div className="text-sm text-blue-600 font-medium">
+                ✅ Filters Active
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ✅ NEW: Enhanced Filter Section */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            
+            {/* ✅ WORKING: Year Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Year Selection
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {availableYears.map(year => (
+                  <label key={year} className={`cursor-pointer px-3 py-1 rounded-md text-sm transition-all ${
+                    (filters.years || []).includes(year)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={(filters.years || []).includes(year)}
+                      onChange={() => handleYearChange(year)}
+                      className="sr-only"
+                    />
+                    {year}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {(filters.years || []).length} selected
+              </p>
+            </div>
+
+            {/* ✅ WORKING: Firm Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Firm Selection ({data?.allFirms?.length || 0} available)
+              </label>
+              <select
+                value={(filters.firms || [])[0] || ''}
+                onChange={(e) => handleFirmChange(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Firms</option>
+                {data?.allFirms?.map(firm => (
+                  <option key={firm.firm_name} value={firm.firm_name}>
+                    {firm.firm_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* ✅ WORKING: Product Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Product Category
+              </label>
+              <select
+                value={(filters.products || [])[0] || ''}
+                onChange={(e) => handleProductChange(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Products</option>
+                {availableProducts.map(product => (
+                  <option key={product} value={product}>
+                    {product}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* ✅ NEW: Clear Filters */}
+            <div className="flex gap-2">
+              <button
+                onClick={clearAllFilters}
+                disabled={!hasActiveFilters()}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+              >
+                Clear Filters
+              </button>
+              <button
+                onClick={() => fetchData(filters)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+              >
+                Refresh
+              </button>
             </div>
           </div>
-          
-          {/* ✅ FIXED: Year Selection triggers API refresh */}
-          <div className="mt-6">
-            <label className="font-medium text-sm text-gray-700 mr-3">Select Years:</label>
-            <div className="inline-flex gap-2 flex-wrap bg-gray-100 p-3 rounded-lg">
-              {['2020', '2021', '2022', '2023', '2024'].map(year => (
-                <label key={year} className={`flex items-center cursor-pointer px-4 py-2 rounded-md border transition-all duration-200 ${
-                  selectedYears.includes(year) 
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' 
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={selectedYears.includes(year)}
-                    onChange={() => handleYearChange(year)}
-                    className="mr-2 rounded"
-                  />
-                  {year}
-                </label>
-              ))}
+
+          {/* ✅ NEW: Active Filters Display */}
+          {hasActiveFilters() && (
+            <div className="mt-4 p-3 bg-blue-50 rounded-md">
+              <div className="text-sm font-medium text-blue-800 mb-2">Active Filters:</div>
+              <div className="flex flex-wrap gap-2">
+                {filters.years && filters.years.length > 0 && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    Years: {filters.years.join(', ')}
+                  </span>
+                )}
+                {filters.firms && filters.firms.length > 0 && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Firm: {filters.firms[0]}
+                  </span>
+                )}
+                {filters.products && filters.products.length > 0 && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    Product: {filters.products[0]}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="mt-3 text-xs text-gray-500 bg-blue-50 p-2 rounded">
-              ℹ️ <strong>Data Period:</strong> Data is collected half-yearly (H1: Jan-Jun, H2: Jul-Dec). When a year is selected, both halves are included in the analysis.
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -779,63 +871,14 @@ export default function Dashboard() {
         {/* Performance Overview Tab */}
         {activeTab === 'overview' && (
           <>
-            {/* Filter Data */}
-            <div className="bg-white p-6 rounded-lg shadow mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Filter Data</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Reporting Period</label>
-                  <select
-                    value={filters.reportingPeriod}
-                    onChange={(e) => setFilters({...filters, reportingPeriod: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="all">All Periods</option>
-                    <option value="h1">H1 (Jan-Jun)</option>
-                    <option value="h2">H2 (Jul-Dec)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Firm Group</label>
-                  <select
-                    value={filters.firmGroup}
-                    onChange={(e) => setFilters({...filters, firmGroup: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="all">All Groups</option>
-                    <option value="LLOYDS BANKING GROUP PLC">Lloyds Banking Group</option>
-                    <option value="BARCLAYS PLC">Barclays PLC</option>
-                    <option value="MARKERSTUDY GROUP">Markerstudy Group</option>
-                    <option value="NO GROUP">No Group</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Firm Name</label>
-                  <select
-                    value={filters.firmName}
-                    onChange={(e) => setFilters({...filters, firmName: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="all">All Firms</option>
-                    {/* ✅ FIXED: Use allFirms for all 217 firms */}
-                    {data?.allFirms?.map(firm => (
-                      <option key={firm.firm_name} value={firm.firm_name}>
-                        {firm.firm_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* KPI Cards - Using real data */}
+            {/* ✅ UPDATED: KPI Cards with filtered data */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">
-                      Total Complaints ({selectedYears.join(', ')})
-                      <span className="inline-block w-4 h-4 bg-blue-100 rounded-full ml-2 text-center text-xs cursor-help" title="Total number of complaints received across all financial firms in selected years">?</span>
+                      Total Complaints
+                      {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
                     </p>
                     <p className="text-3xl font-bold text-gray-900">{formatNumber(data?.kpis?.total_complaints)}</p>
                   </div>
@@ -849,13 +892,13 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">
-                      Total Closed ({selectedYears.join(', ')})
-                      <span className="inline-block w-4 h-4 bg-green-100 rounded-full ml-2 text-center text-xs cursor-help" title="Total complaints resolved and closed by firms in selected years">?</span>
+                      Total Firms
+                      {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
                     </p>
-                    <p className="text-3xl font-bold text-gray-900">{formatNumber(data?.kpis?.total_closed)}</p>
+                    <p className="text-3xl font-bold text-gray-900">{formatNumber(data?.kpis?.total_firms)}</p>
                   </div>
                   <div className="p-3 bg-green-100 rounded-full">
-                    <span className="text-2xl">✅</span>
+                    <span className="text-2xl">🏢</span>
                   </div>
                 </div>
               </div>
@@ -864,22 +907,23 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">
-                      Avg Uphold Rate ({selectedYears.join(', ')})
-                      <span className="inline-block w-4 h-4 bg-yellow-100 rounded-full ml-2 text-center text-xs cursor-help" title="Average percentage of complaints decided in favor of the customer. Lower rates indicate better firm performance">?</span>
+                      Avg Uphold Rate
+                      {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
                     </p>
                     <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_uphold_rate)}</p>
                   </div>
                   <div className="p-3 bg-yellow-100 rounded-full">
-                    <span className="text-2xl">⚠️</span>
+                    <span className="text-2xl">⚖️</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* ✅ FIXED: Key Performance Insights - Now dynamic with real data */}
+            {/* ✅ UPDATED: Key Performance Insights with filtered data */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg mb-8 border border-blue-100">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                🏆 Key Performance Insights for {selectedYears.join(', ')}
+                🏆 Key Performance Insights
+                {hasActiveFilters() && <span className="text-blue-600 text-base font-medium"> (Filtered Results)</span>}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
@@ -944,10 +988,7 @@ export default function Dashboard() {
             {/* Additional Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Product Category Distribution
-                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Shows how complaints are distributed across different financial product categories">?</span>
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Category Distribution</h3>
                 <div className="h-80">
                   <canvas ref={categoriesChartRef}></canvas>
                 </div>
@@ -955,8 +996,7 @@ export default function Dashboard() {
 
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  <span>{selectedYears.length === 1 ? 'Monthly' : 'Yearly'} Complaint Trends</span>
-                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Shows the trend of complaints received throughout the selected period">?</span>
+                  <span>{(filters.years || []).length === 1 ? 'Monthly' : 'Yearly'} Complaint Trends</span>
                 </h3>
                 <div className="h-80">
                   <canvas ref={yearlyTrendsChartRef}></canvas>
@@ -964,10 +1004,7 @@ export default function Dashboard() {
               </div>
 
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Closure Efficiency by Firm Size
-                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Compares how efficiently different sized firms close complaints">?</span>
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Closure Efficiency by Firm Size</h3>
                 <div className="h-80">
                   <canvas ref={efficiencyChartRef}></canvas>
                 </div>
@@ -977,8 +1014,8 @@ export default function Dashboard() {
             {/* Industry Comparison */}
             <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Industry-wide Performance Comparison (% Closed in 3 days vs Uphold Rate)
-                <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Bubble chart showing all firms' performance. X-axis: % of complaints resolved within 3 days (higher is better). Y-axis: Uphold rate - % of complaints decided in customer's favor (lower is better for firms). Best performers are in the bottom-right quadrant.">?</span>
+                Industry-wide Performance Comparison
+                {hasActiveFilters() && <span className="text-blue-600 text-base font-medium"> (Filtered Data)</span>}
               </h3>
               <div className="h-96">
                 <canvas ref={industryChartRef}></canvas>
@@ -994,11 +1031,13 @@ export default function Dashboard() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Firm for Detailed Analysis</h3>
               <select
                 value={selectedFirm}
-                onChange={(e) => setSelectedFirm(e.target.value)}
+                onChange={(e) => {
+                  setSelectedFirm(e.target.value);
+                  handleFirmChange(e.target.value);
+                }}
                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">-- Select a firm --</option>
-                {/* ✅ FIXED: Use allFirms for all 217 firms */}
                 {data?.allFirms?.map(firm => (
                   <option key={firm.firm_name} value={firm.firm_name}>
                     {firm.firm_name}
@@ -1034,14 +1073,18 @@ export default function Dashboard() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Product Category</h3>
               <select
                 value={selectedProduct}
-                onChange={(e) => setSelectedProduct(e.target.value)}
+                onChange={(e) => {
+                  setSelectedProduct(e.target.value);
+                  handleProductChange(e.target.value);
+                }}
                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="banking">Banking and credit cards</option>
-                <option value="pensions">Decumulation & pensions</option>
-                <option value="home">Home finance</option>
-                <option value="insurance">Insurance & pure protection</option>
-                <option value="investments">Investments</option>
+                <option value="">All Products</option>
+                {availableProducts.map(product => (
+                  <option key={product} value={product}>
+                    {product}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1120,7 +1163,7 @@ export default function Dashboard() {
             {/* Consumer Credit Overview */}
             <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg mb-8 border border-purple-100">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                💳 Consumer Credit Overview {selectedYears.join(', ')}
+                💳 Consumer Credit Overview
                 <span className="text-sm font-normal text-gray-600 ml-2">
                   ({creditStats.firmCount > 0 ? `${creditStats.firmCount} firms selected` : 'All firms'})
                 </span>
@@ -1148,25 +1191,34 @@ export default function Dashboard() {
             {/* Consumer Credit Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Top Firms by Volume
-                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Shows the firms with the highest complaint volumes among selected firms">?</span>
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Firms by Volume</h3>
                 <div className="h-80">
                   <canvas ref={volumeChartRef}></canvas>
                 </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Highest Uphold Rates
-                  <span className="inline-block w-4 h-4 bg-gray-100 rounded-full ml-2 text-center text-xs cursor-help" title="Shows firms with the highest percentage of complaints upheld (decided in customer's favor)">?</span>
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Highest Uphold Rates</h3>
                 <div className="h-80">
                   <canvas ref={upheldChartRef}></canvas>
                 </div>
               </div>
             </div>
           </>
+        )}
+
+        {/* ✅ NEW: Debug Section (remove in production) */}
+        {apiData?.debug && (
+          <div className="mt-8 bg-gray-100 rounded-lg p-4">
+            <details className="cursor-pointer">
+              <summary className="font-medium text-gray-700 mb-2">🔧 Debug Information</summary>
+              <div className="text-xs text-gray-600">
+                <div><strong>Data Source:</strong> {apiData.debug.dataSource}</div>
+                <div><strong>Execution Time:</strong> {apiData.debug.executionTime}</div>
+                <div><strong>Applied Filters:</strong> {JSON.stringify(apiData.debug.appliedFilters)}</div>
+                <div><strong>Total Records Found:</strong> {apiData.data.kpis.total_complaints}</div>
+              </div>
+            </details>
+          </div>
         )}
       </div>
 
