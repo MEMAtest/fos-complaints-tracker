@@ -111,31 +111,31 @@ export default function Dashboard() {
   // ✅ UPDATED: Transform API data with new field mapping
   const data: DashboardData | null = apiData ? {
     kpis: {
-      total_complaints: apiData.data.kpis?.total_complaints || 0,
-      total_closed: apiData.data.kpis?.total_complaints || 0,
-      avg_uphold_rate: apiData.data.kpis?.avg_upheld_rate || 0,
-      total_firms: apiData.data.kpis?.total_firms || 0,
+      total_complaints: apiData.data?.kpis?.total_complaints || 0,
+      total_closed: apiData.data?.kpis?.total_complaints || 0,
+      avg_uphold_rate: apiData.data?.kpis?.avg_upheld_rate || 0,
+      total_firms: apiData.data?.kpis?.total_firms || 0,
       
       // ✅ NEW: Use new average percentage upheld field (with type assertion as fallback)
-      avg_percentage_upheld: (apiData.data.kpis as any)?.avg_percentage_upheld || 0,
+      avg_percentage_upheld: (apiData.data?.kpis as any)?.avg_percentage_upheld || 0,
       
       // ✅ NEW: 8-weeks KPI (with type assertion as fallback)
-      avg_closed_within_8_weeks: (apiData.data.kpis as any)?.avg_closed_within_8_weeks || 0,
+      avg_closed_within_8_weeks: (apiData.data?.kpis as any)?.avg_closed_within_8_weeks || 0,
       
-      sector_uphold_averages: apiData.data.kpis?.sector_uphold_averages || {},
-      sector_closure_averages: apiData.data.kpis?.sector_closure_averages || {},
+      sector_uphold_averages: apiData.data?.kpis?.sector_uphold_averages || {},
+      sector_closure_averages: apiData.data?.kpis?.sector_closure_averages || {},
       
       // ✅ NEW: All sector averages for Product Analysis (with type assertion as fallback)
-      all_sector_averages: (apiData.data.kpis as any)?.all_sector_averages || {}
+      all_sector_averages: (apiData.data?.kpis as any)?.all_sector_averages || {}
     },
-    topPerformers: (apiData.data.topPerformers || []).map((item: any) => ({
+    topPerformers: (apiData.data?.topPerformers || []).map((item: any) => ({
       firm_name: item.firm_name,
       avg_uphold_rate: item.avg_uphold_rate || item.avg_upheld_rate || 0,
       avg_closure_rate: Math.min(item.avg_closure_rate || 0, 95), // ✅ Cap at 95% to prevent chart overflow
       complaint_count: item.complaint_count || 0
     })),
     // ✅ FIXED: Consumer Credit data mapping - now uses actual volumes from correct table
-    consumerCredit: (apiData.data.consumerCredit || []).map((item: any) => ({
+    consumerCredit: (apiData.data?.consumerCredit || []).map((item: any) => ({
       firm_name: item.firm_name,
       total_received: item.total_received || 0, // ✅ Now contains actual complaint volumes!
       avg_upheld_pct: item.avg_upheld_pct || item.avg_uphold_rate || 0,
@@ -153,7 +153,7 @@ export default function Dashboard() {
       avg_closure_rate: Math.min(item.avg_closure_rate || 0, 95),
       complaint_count: item.complaint_count || 0
     })),
-    allFirms: (apiData.data.allFirms || []).sort((a: any, b: any) => 
+    allFirms: (apiData.data?.allFirms || []).sort((a: any, b: any) => 
       a.firm_name.localeCompare(b.firm_name) // ✅ A-Z sorting
     ),
     
@@ -164,7 +164,7 @@ export default function Dashboard() {
 
   // ✅ NEW: Process trend data when API data changes
   useEffect(() => {
-    if (data && data.historicalTrends && data.industryTrends) {
+    if (data && data?.historicalTrends && data?.industryTrends) {
       const firmTrends = processFirmTrends(data.historicalTrends);
       const industryTrends = calculateIndustryTrends(data.industryTrends);
       
@@ -216,26 +216,45 @@ export default function Dashboard() {
   }, [filters, fetchData]);
 
   // Load Chart.js on component mount
-  useEffect(() => {
-    console.log('🚀 Dashboard initializing...');
-    
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
-    script.async = true;
-    script.onload = () => {
-      console.log('✅ Chart.js loaded successfully');
-    };
-    script.onerror = () => {
-      console.error('❌ Chart.js failed to load');
-    };
-    document.head.appendChild(script);
-
-    return () => {
-      if (document.head.contains(script)) {
-        document.head.removeChild(script);
+useEffect(() => {
+  console.log('🚀 Dashboard initializing...');
+  
+  // Check if Chart.js is already loaded
+  if ((window as any).Chart) {
+    console.log('✅ Chart.js already loaded');
+    (window as any).chartJSReady = true;
+    return;
+  }
+  
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+  script.async = true;
+  
+  script.onload = () => {
+    console.log('✅ Chart.js loaded successfully');
+    (window as any).chartJSReady = true;
+    // Force a small delay then trigger chart creation if data is available
+    setTimeout(() => {
+      if (data) {
+        console.log('📊 Chart.js ready, triggering chart creation...');
+        setCharts({}); // This will trigger the chart creation useEffect
       }
-    };
-  }, []);
+    }, 150);
+  };
+  
+  script.onerror = () => {
+    console.error('❌ Chart.js failed to load');
+    (window as any).chartJSReady = false;
+  };
+  
+  document.head.appendChild(script);
+
+  return () => {
+    if (document.head.contains(script)) {
+      document.head.removeChild(script);
+    }
+  };
+}, []);
 
   // ✅ ENHANCED: Filter change handlers with multi-select support
   const handleYearChange = (year: string) => {
@@ -399,70 +418,108 @@ export default function Dashboard() {
   };
 
   // ✅ FIXED: Chart creation with optimized dependencies to prevent constant refresh
-  useEffect(() => {
-    if (data && typeof window !== 'undefined' && (window as any).Chart) {
-      console.log('🎨 Creating charts with filtered data:', {
-        totalFirms: data.kpis?.total_firms,
-        topPerformers: data.topPerformers?.length,
-        consumerCredit: data.consumerCredit?.length,
-        activeTab,
-        appliedFilters: filters
-      });
-      
-      // ✅ PERFORMANCE: Only destroy and recreate charts when necessary
-      const shouldRecreateCharts = 
-        !charts[activeTab] || 
-        Object.keys(charts).length === 0 ||
-        hasActiveFilters(); // Only recreate if filters changed
-
-      if (shouldRecreateCharts) {
-        // Destroy existing charts for current tab only
-        Object.entries(charts).forEach(([key, chart]) => {
-          if (chart && typeof chart.destroy === 'function') {
-            chart.destroy();
-          }
-        });
-        
-        // Clear charts state
-        setCharts({});
-
-        // ✅ FIXED: Debounced chart creation to prevent rapid recreation
-        const timeoutId = setTimeout(() => {
-          if (activeTab === 'overview') {
-            createOverviewCharts();
-          } else if (activeTab === 'product') {
-            createProductCharts();
-          } else if (activeTab === 'credit') {
-            createConsumerCreditCharts();
-          } else if (activeTab === 'firm' && selectedFirms.length > 0) {
-            createFirmCharts();
-          }
-        }, 150); // Slightly longer debounce to prevent rapid fire
-
-        return () => clearTimeout(timeoutId);
+useEffect(() => {
+  // Only proceed if we have data, Chart.js is loaded, and window is available
+  if (data && typeof window !== 'undefined' && (window as any).Chart && (window as any).chartJSReady) {
+    console.log('🎨 Creating charts with filtered data:', {
+      totalFirms: data?.kpis?.total_firms,
+      topPerformers: data?.topPerformers?.length,
+      consumerCredit: data?.consumerCredit?.length,
+      activeTab,
+      appliedFilters: filters
+    });
+    
+    // Destroy existing charts with comprehensive error handling
+    Object.entries(charts).forEach(([key, chart]) => {
+      if (chart && typeof chart.destroy === 'function') {
+        try {
+          chart.destroy();
+        } catch (error) {
+          console.warn(`Warning: Could not destroy chart ${key}:`, error);
+        }
       }
+    });
+    
+    // Clear charts state
+    setCharts({});
+
+    // Add delay and create charts based on active tab
+    const timeoutId = setTimeout(() => {
+      try {
+        if (activeTab === 'overview') {
+          createOverviewChartsWithValidation();
+        } else if (activeTab === 'product') {
+          createProductChartsWithValidation();
+        } else if (activeTab === 'credit') {
+          createConsumerCreditChartsWithValidation();
+        } else if (activeTab === 'firm' && selectedFirms.length > 0) {
+          createFirmChartsWithValidation();
+        }
+      } catch (error) {
+        console.error('❌ Error creating charts:', error);
+      }
+    }, 200); // Longer delay for stability
+
+    return () => clearTimeout(timeoutId);
+  } else {
+    console.log('⏳ Waiting for Chart.js and data...', {
+      hasData: !!data,
+      hasWindow: typeof window !== 'undefined',
+      hasChart: !!(window as any).Chart,
+      chartReady: !!(window as any).chartJSReady,
+      activeTab
+    });
+  }
+}, [
+  data, 
+  activeTab, 
+  JSON.stringify(filters), // Stringify to prevent object reference issues
+  selectedFirms.length, // Only track length, not full array
+  selectedProduct,
+  creditFilters.selectedFirms.length // Only track length
+]);
+// ✅ ADD: Chart ref validation helper
+const ensureChartRef = (ref: React.RefObject<HTMLCanvasElement>, chartName: string): boolean => {
+  if (!ref.current) {
+    console.warn(`⚠️ Chart ref not ready for ${chartName}`);
+    return false;
+  }
+  return true;
+};
+
+// ✅ ADD: Chart creation wrapper with validation
+const createChartsWithValidation = (chartCreationFn: () => void, chartSetName: string) => {
+  try {
+    const Chart = (window as any).Chart;
+    if (!Chart) {
+      console.warn('⚠️ Chart.js not available for', chartSetName);
+      return;
     }
-  }, [
-    data, 
-    activeTab, 
-    // ✅ FIXED: More specific dependencies to prevent unnecessary recreations
-    JSON.stringify(filters), // Stringify to prevent object reference changes
-    selectedFirms.length, // Only track length, not full array
-    selectedProduct,
-    creditFilters.selectedFirms.length // Only track length
-  ]);
+    
+    if (!data) {
+      console.warn('⚠️ No data available for', chartSetName);
+      return;
+    }
+    
+    console.log(`🎨 Creating ${chartSetName} charts...`);
+    chartCreationFn();
+    console.log(`✅ ${chartSetName} charts created successfully`);
+  } catch (error) {
+    console.error(`❌ Error creating ${chartSetName} charts:`, error);
+  }
+};
+
 
   // ✅ ENHANCED: Create overview charts with fixed data handling
-  const createOverviewCharts = () => {
+  const createOverviewChartsWithValidation = () => {
+    createChartsWithValidation(() => {
     const Chart = (window as any).Chart;
     const newCharts: ChartInstances = {};
 
-    if (!data) return;
-
     console.log('🎨 Creating overview charts with data:', {
-      topPerformers: data.topPerformers?.length,
-      categoryData: data.categoryData?.length
-    });
+  topPerformers: data?.topPerformers?.length,
+  categoryData: data?.categoryData?.length
+});
 
     // ✅ FIXED: Split into separate Best and Worst Performers charts
     const bestPerformers = getBestPerformers(5);
@@ -546,8 +603,8 @@ export default function Dashboard() {
     }
 
     // 3. ✅ FIXED: Resolution Speed Trends with realistic data
-    if (resolutionTrendsChartRef.current && data.topPerformers?.length > 0) {
-      const topFirms = data.topPerformers.slice(0, 6);
+    if (resolutionTrendsChartRef.current && data?.topPerformers && data?.topPerformers.length > 0) {
+  const topFirms = data.topPerformers.slice(0, 6);
       newCharts.resolutionTrends = new Chart(resolutionTrendsChartRef.current, {
         type: 'line',
         data: {
@@ -588,14 +645,14 @@ export default function Dashboard() {
     }
 
     // 4. ✅ FIXED: Categories Chart with current product selection
-    if (categoriesChartRef.current && data.categoryData?.length > 0) {
+    if (categoriesChartRef.current && data?.categoryData && data?.categoryData.length > 0) {
       // ✅ FIXED: Use current selected product, not stale state
       const currentSelectedProduct = selectedProduct;
-      let categories = data.categoryData;
+      let categories = data?.categoryData;
       
       // ✅ Filter by current product selection if applicable
       if (currentSelectedProduct && currentSelectedProduct !== '') {
-        categories = data.categoryData.filter(cat => cat.category_name === currentSelectedProduct);
+        categories = data?.categoryData.filter(cat => cat.category_name === currentSelectedProduct);
         console.log('🎯 Filtering categories chart for product:', currentSelectedProduct, 'Result:', categories);
       }
       
@@ -635,9 +692,9 @@ export default function Dashboard() {
     }
 
     // 5. ✅ Sector Uphold Averages Chart - WITH DYNAMIC SCALING
-    if (sectorUpholdChartRef.current && data.kpis?.sector_uphold_averages) {
-      const sectors = Object.keys(data.kpis.sector_uphold_averages);
-      const values = Object.values(data.kpis.sector_uphold_averages);
+    if (sectorUpholdChartRef.current && data?.kpis?.sector_uphold_averages) {
+      const sectors = Object.keys(data?.kpis.sector_uphold_averages);
+      const values = Object.values(data?.kpis.sector_uphold_averages);
       
       let chartOptions = {
         responsive: true,
@@ -674,9 +731,9 @@ export default function Dashboard() {
     }
 
     // 6. ✅ Sector Closure Averages Chart - WITH DYNAMIC SCALING
-    if (sectorClosureChartRef.current && data.kpis?.sector_closure_averages) {
-      const sectors = Object.keys(data.kpis.sector_closure_averages);
-      const values = Object.values(data.kpis.sector_closure_averages);
+    if (sectorClosureChartRef.current && data?.kpis?.sector_closure_averages) {
+      const sectors = Object.keys(data?.kpis.sector_closure_averages);
+      const values = Object.values(data?.kpis.sector_closure_averages);
       
       let chartOptions = {
         responsive: true,
@@ -713,7 +770,7 @@ export default function Dashboard() {
     }
 
     // 7. Industry Bubble Chart
-    if (industryChartRef.current && data.industryComparison && data.industryComparison.length > 0) {
+    if (industryChartRef.current && data?.industryComparison && data?.industryComparison.length > 0) {
       const industryData = data.industryComparison.slice(0, 15);
       const bubbleData = industryData.map(firm => ({
         x: Math.min(firm.avg_closure_rate || 0, 95),
@@ -751,12 +808,12 @@ export default function Dashboard() {
       });
     }
 
-    setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
-    console.log('✅ Overview charts created');
-  };
+setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
+  }, 'overview');
+};
 
   // ✅ FIXED: Implement Product Analysis Charts (was empty)
-  const createProductCharts = () => {
+  const createProductChartsWithValidation = () => {
     const Chart = (window as any).Chart;
     const newCharts: ChartInstances = {};
 
@@ -766,8 +823,8 @@ export default function Dashboard() {
 
     // Filter data by selected product if applicable
     const productData = selectedProduct && selectedProduct !== '' 
-      ? data.categoryData.filter(cat => cat.category_name === selectedProduct)
-      : data.categoryData;
+      ? data?.categoryData.filter(cat => cat.category_name === selectedProduct)
+      : data?.categoryData;
 
     // 1. Resolution Speed Overview
     if (resolutionOverviewChartRef.current) {
@@ -849,14 +906,14 @@ export default function Dashboard() {
   };
 
   // ✅ ENHANCED: Create firm-specific charts with actual data
-  const createFirmCharts = () => {
+  const createFirmChartsWithValidation = () => {
     const Chart = (window as any).Chart;
     const newCharts: ChartInstances = {};
 
     if (!selectedFirms.length || !data) return;
 
-    const selectedFirmData = data.topPerformers?.filter(f => selectedFirms.includes(f.firm_name)) ||
-                            (data.industryComparison && data.industryComparison.filter(f => selectedFirms.includes(f.firm_name))) || [];
+    const selectedFirmData = data?.topPerformers?.filter(f => selectedFirms.includes(f.firm_name)) ||
+                            (data.industryComparison && data?.industryComparison.filter(f => selectedFirms.includes(f.firm_name))) || [];
 
     if (selectedFirmData.length === 0) {
       console.warn(`No data found for selected firms:`, selectedFirms);
@@ -866,8 +923,8 @@ export default function Dashboard() {
     // 1. Firm Comparison Chart
     if (firmComparisonChartRef.current) {
       const industryAvg = {
-        uphold: data.kpis?.avg_uphold_rate || 0,
-        closure: data.topPerformers?.reduce((sum, f) => sum + (f.avg_closure_rate || 0), 0) / (data.topPerformers?.length || 1)
+        uphold: data?.kpis?.avg_uphold_rate || 0,
+        closure: data?.topPerformers?.reduce((sum, f) => sum + (f.avg_closure_rate || 0), 0) / (data?.topPerformers?.length || 1)
       };
 
       newCharts.firmComparison = new Chart(firmComparisonChartRef.current, {
@@ -968,18 +1025,18 @@ export default function Dashboard() {
   };
 
   // ✅ ENHANCED: Consumer Credit charts with new "Lowest Uphold Rates" section
-  const createConsumerCreditCharts = () => {
+   const createConsumerCreditChartsWithValidation = () => {
     const Chart = (window as any).Chart;
     const newCharts: ChartInstances = {};
 
-    if (!data?.consumerCredit || data.consumerCredit.length === 0) {
+    if (!data?.consumerCredit || data?.consumerCredit.length === 0) {
       console.warn('No consumer credit data available for charts');
       return;
     }
 
     const creditData = creditFilters.selectedFirms.length > 0 
-      ? data.consumerCredit.filter(f => creditFilters.selectedFirms.includes(f.firm_name))
-      : data.consumerCredit;
+      ? data?.consumerCredit.filter(f => creditFilters.selectedFirms.includes(f.firm_name))
+      : data?.consumerCredit;
 
     console.log('Creating credit charts with data:', creditData);
 
@@ -1757,7 +1814,7 @@ export default function Dashboard() {
                     </h3>
                     {(() => {
                       const firmData = data?.topPerformers?.filter(f => selectedFirms.includes(f.firm_name)) ||
-                                     (data?.industryComparison && data.industryComparison.filter(f => selectedFirms.includes(f.firm_name))) || [];
+                                     (data?.industryComparison && data?.industryComparison.filter(f => selectedFirms.includes(f.firm_name))) || [];
                       return firmData.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                           <div>
@@ -1837,7 +1894,7 @@ export default function Dashboard() {
             <div className="bg-white p-6 rounded-lg shadow mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Category Performance Overview</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                {data?.kpis?.all_sector_averages && Object.entries(data.kpis.all_sector_averages).map(([category, stats]) => (
+                {data?.kpis?.all_sector_averages && Object.entries(data?.kpis.all_sector_averages).map(([category, stats]) => (
                   <div key={category} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
                     <h4 className="text-sm font-medium text-gray-700 mb-2">{category}</h4>
                     <div className="space-y-1">
@@ -1909,8 +1966,8 @@ export default function Dashboard() {
                   <span className="text-xs text-gray-500 font-normal ml-1">(Click to select multiple)</span>
                 </label>
                 <div className="border border-gray-300 rounded-md p-2 max-h-32 overflow-y-auto">
-                  {data?.consumerCredit && data.consumerCredit.length > 0 ? (
-                    data.consumerCredit.map(firm => (
+                  {data?.consumerCredit && data?.consumerCredit.length > 0 ? (
+                    data?.consumerCredit.map(firm => (
                       <label key={firm.firm_name} className="flex items-center py-1 px-2 hover:bg-gray-50 rounded cursor-pointer">
                         <input
                           type="checkbox"
@@ -1977,7 +2034,7 @@ export default function Dashboard() {
             </div>
 
             {/* ✅ ENHANCED: Consumer Credit Charts with Lowest Uphold Rates */}
-            {data?.consumerCredit && data.consumerCredit.length > 0 ? (
+            {data?.consumerCredit && data?.consumerCredit.length > 0 ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Firms by Volume</h3>
