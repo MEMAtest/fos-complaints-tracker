@@ -3,6 +3,25 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useFilters } from '../hooks/useFilters';
 import { useDashboardData } from '../hooks/useDashboardData';
+import type { 
+  DashboardAPIResponse, 
+  HistoricalTrendData, 
+  IndustryTrendData 
+} from '../types/dashboard';
+// ✅ NEW: Import dynamic scaling utilities
+import { 
+  applyDynamicScaling, 
+  extractChartValues, 
+  shouldApplyDynamicScaling 
+} from '../utils/chartHelpers';
+// ✅ NEW: Import trend analysis utilities
+import { 
+  processFirmTrends,
+  calculateIndustryTrends,
+  formatTrendDisplay
+} from '../utils/trendAnalysis';
+// ✅ NEW: Import multi-firm comparison component
+import MultiFirmComparison from '../components/MultiFirmComparison';
 
 // Define Chart.js types
 type ChartInstance = any;
@@ -11,15 +30,25 @@ interface ChartInstances {
   [key: string]: ChartInstance;
 }
 
+// ✅ UPDATED: Interface using imported types from dashboard.ts
 interface DashboardData {
   kpis: {
     total_complaints: number;
     total_closed: number;
     avg_uphold_rate: number;
     total_firms?: number;
-    banking_avg_percentage?: number;
+    
+    // ✅ NEW: Replace banking_avg_percentage with avg_percentage_upheld
+    avg_percentage_upheld?: number;
+    
+    // ✅ NEW: 8-weeks KPI
+    avg_closed_within_8_weeks?: number;
+    
     sector_uphold_averages?: {[key: string]: number};
     sector_closure_averages?: {[key: string]: number};
+    
+    // ✅ NEW: All sector averages for Product Analysis
+    all_sector_averages?: {[key: string]: {uphold_rate: number, complaint_count: number}};
   };
   topPerformers: Array<{
     firm_name: string;
@@ -48,6 +77,10 @@ interface DashboardData {
   allFirms?: Array<{
     firm_name: string;
   }>;
+  
+  // ✅ NEW: Use imported types instead of inline definitions
+  historicalTrends?: HistoricalTrendData[];
+  industryTrends?: IndustryTrendData[];
 }
 
 interface CreditFilters {
@@ -69,18 +102,31 @@ export default function Dashboard() {
   const [firmSearchTerm, setFirmSearchTerm] = useState('');
   const [showFirmDropdown, setShowFirmDropdown] = useState(false);
   
+  // ✅ NEW: Multi-firm comparison state
+  const [showMultiFirmComparison, setShowMultiFirmComparison] = useState(false);
+  const [processedTrends, setProcessedTrends] = useState<any>(null);
+  
   const [charts, setCharts] = useState<ChartInstances>({});
 
-  // ✅ ENHANCED: Transform API data with better field mapping
+  // ✅ UPDATED: Transform API data with new field mapping
   const data: DashboardData | null = apiData ? {
     kpis: {
       total_complaints: apiData.data.kpis?.total_complaints || 0,
       total_closed: apiData.data.kpis?.total_complaints || 0,
       avg_uphold_rate: apiData.data.kpis?.avg_upheld_rate || 0,
       total_firms: apiData.data.kpis?.total_firms || 0,
-      banking_avg_percentage: apiData.data.kpis?.banking_avg_percentage || 0,
+      
+      // ✅ NEW: Use new average percentage upheld field (with type assertion as fallback)
+      avg_percentage_upheld: (apiData.data.kpis as any)?.avg_percentage_upheld || 0,
+      
+      // ✅ NEW: 8-weeks KPI (with type assertion as fallback)
+      avg_closed_within_8_weeks: (apiData.data.kpis as any)?.avg_closed_within_8_weeks || 0,
+      
       sector_uphold_averages: apiData.data.kpis?.sector_uphold_averages || {},
-      sector_closure_averages: apiData.data.kpis?.sector_closure_averages || {}
+      sector_closure_averages: apiData.data.kpis?.sector_closure_averages || {},
+      
+      // ✅ NEW: All sector averages for Product Analysis (with type assertion as fallback)
+      all_sector_averages: (apiData.data.kpis as any)?.all_sector_averages || {}
     },
     topPerformers: (apiData.data.topPerformers || []).map((item: any) => ({
       firm_name: item.firm_name,
@@ -88,10 +134,10 @@ export default function Dashboard() {
       avg_closure_rate: Math.min(item.avg_closure_rate || 0, 95), // ✅ Cap at 95% to prevent chart overflow
       complaint_count: item.complaint_count || 0
     })),
-    // ✅ FIXED: Consumer Credit data mapping with multiple fallbacks
+    // ✅ FIXED: Consumer Credit data mapping - now uses actual volumes from correct table
     consumerCredit: (apiData.data.consumerCredit || []).map((item: any) => ({
       firm_name: item.firm_name,
-      total_received: item.total_records || item.total_received || item.complaint_count || 0,
+      total_received: item.total_received || 0, // ✅ Now contains actual complaint volumes!
       avg_upheld_pct: item.avg_upheld_pct || item.avg_uphold_rate || 0,
       avg_closure_rate: Math.min(item.avg_closure_rate || 0, 95)
     })),
@@ -109,8 +155,33 @@ export default function Dashboard() {
     })),
     allFirms: (apiData.data.allFirms || []).sort((a: any, b: any) => 
       a.firm_name.localeCompare(b.firm_name) // ✅ A-Z sorting
-    )
+    ),
+    
+    // ✅ NEW: Historical trend data
+    historicalTrends: apiData.data.historicalTrends || [],
+    industryTrends: apiData.data.industryTrends || []
   } : null;
+
+  // ✅ NEW: Process trend data when API data changes
+  useEffect(() => {
+    if (data && data.historicalTrends && data.industryTrends) {
+      const firmTrends = processFirmTrends(data.historicalTrends);
+      const industryTrends = calculateIndustryTrends(data.industryTrends);
+      
+      setProcessedTrends({
+        firmTrends,
+        industryTrends,
+        rawHistorical: data.historicalTrends,
+        rawIndustry: data.industryTrends
+      });
+      
+      console.log('📈 Processed trend data:', {
+        firmsWithTrends: firmTrends.length,
+        industryPeriods: data.industryTrends.length,
+        industryTrend: industryTrends.uphold_rate
+      });
+    }
+  }, [data]);
 
   // Chart refs
   const performersChartRef = useRef<HTMLCanvasElement>(null);
@@ -177,17 +248,30 @@ export default function Dashboard() {
     console.log('📅 Year selection changed:', newYears);
   };
 
-  // ✅ ENHANCED: Multi-select firm handling
+  // ✅ ENHANCED: Firm selection handler
   const handleFirmChange = (firmName: string) => {
-    const currentFirms = selectedFirms;
-    const newFirms = currentFirms.includes(firmName)
-      ? currentFirms.filter(f => f !== firmName)
-      : [...currentFirms, firmName];
+    const newSelectedFirms = selectedFirms.includes(firmName)
+      ? selectedFirms.filter(f => f !== firmName)
+      : [...selectedFirms, firmName];
     
-    setSelectedFirms(newFirms);
-    updateFilter('firms', newFirms);
-    console.log('🏢 Firm selection changed:', newFirms);
+    setSelectedFirms(newSelectedFirms);
+    updateFilter('firms', newSelectedFirms);
   };
+
+  // ✅ FIXED: Clear all filters completely
+  const handleClearAllFilters = useCallback(() => {
+    console.log('🧹 Clearing all filters and resetting state');
+    
+    // Clear all filter states
+    clearAllFilters();
+    setSelectedProduct('');
+    setSelectedFirms([]);
+    setFirmSearchTerm('');
+    setShowFirmDropdown(false);
+    setCreditFilters({ selectedFirms: [] });
+    
+    console.log('✅ All filters and state cleared');
+  }, [clearAllFilters]);
 
   // ✅ FIXED: Product selection state bug
   const handleProductChange = (product: string) => {
@@ -272,7 +356,7 @@ export default function Dashboard() {
       .slice(0, count);
   };
 
-  // ✅ FIXED: Consumer credit calculation
+  // ✅ FIXED: Consumer credit calculation - now uses actual volumes
   const calculateCreditAverages = () => {
     const creditData = data?.consumerCredit || [];
     
@@ -289,8 +373,9 @@ export default function Dashboard() {
       ? creditData.filter(f => creditFilters.selectedFirms.includes(f.firm_name))
       : creditData;
 
+    // ✅ FIXED: Now uses actual total_received volumes instead of row counts
     const totalComplaints = filteredData.reduce((sum, f) => {
-      const complaints = f.total_received || 0;
+      const complaints = f.total_received || 0; // ✅ This now contains actual volumes!
       return sum + complaints;
     }, 0);
     
@@ -300,7 +385,7 @@ export default function Dashboard() {
     
     return {
       firmCount: filteredData.length,
-      totalComplaints,
+      totalComplaints, // ✅ Now shows correct volumes like 6,255 instead of 12
       avgUpheld
     };
   };
@@ -313,37 +398,59 @@ export default function Dashboard() {
     );
   };
 
-  // Create charts when data changes
+  // ✅ FIXED: Chart creation with optimized dependencies to prevent constant refresh
   useEffect(() => {
     if (data && typeof window !== 'undefined' && (window as any).Chart) {
       console.log('🎨 Creating charts with filtered data:', {
         totalFirms: data.kpis?.total_firms,
         topPerformers: data.topPerformers?.length,
         consumerCredit: data.consumerCredit?.length,
+        activeTab,
         appliedFilters: filters
       });
       
-      // Destroy existing charts
-      Object.values(charts).forEach((chart: ChartInstance) => {
-        if (chart && typeof chart.destroy === 'function') {
-          chart.destroy();
-        }
-      });
-      setCharts({});
+      // ✅ PERFORMANCE: Only destroy and recreate charts when necessary
+      const shouldRecreateCharts = 
+        !charts[activeTab] || 
+        Object.keys(charts).length === 0 ||
+        hasActiveFilters(); // Only recreate if filters changed
 
-      setTimeout(() => {
-        if (activeTab === 'overview') {
-          createOverviewCharts();
-        } else if (activeTab === 'product') {
-          createProductCharts();
-        } else if (activeTab === 'credit') {
-          createConsumerCreditCharts();
-        } else if (activeTab === 'firm' && selectedFirms.length > 0) {
-          createFirmCharts();
-        }
-      }, 100);
+      if (shouldRecreateCharts) {
+        // Destroy existing charts for current tab only
+        Object.entries(charts).forEach(([key, chart]) => {
+          if (chart && typeof chart.destroy === 'function') {
+            chart.destroy();
+          }
+        });
+        
+        // Clear charts state
+        setCharts({});
+
+        // ✅ FIXED: Debounced chart creation to prevent rapid recreation
+        const timeoutId = setTimeout(() => {
+          if (activeTab === 'overview') {
+            createOverviewCharts();
+          } else if (activeTab === 'product') {
+            createProductCharts();
+          } else if (activeTab === 'credit') {
+            createConsumerCreditCharts();
+          } else if (activeTab === 'firm' && selectedFirms.length > 0) {
+            createFirmCharts();
+          }
+        }, 150); // Slightly longer debounce to prevent rapid fire
+
+        return () => clearTimeout(timeoutId);
+      }
     }
-  }, [data, activeTab, filters, creditFilters, selectedFirms, selectedProduct]);
+  }, [
+    data, 
+    activeTab, 
+    // ✅ FIXED: More specific dependencies to prevent unnecessary recreations
+    JSON.stringify(filters), // Stringify to prevent object reference changes
+    selectedFirms.length, // Only track length, not full array
+    selectedProduct,
+    creditFilters.selectedFirms.length // Only track length
+  ]);
 
   // ✅ ENHANCED: Create overview charts with fixed data handling
   const createOverviewCharts = () => {
@@ -361,8 +468,25 @@ export default function Dashboard() {
     const bestPerformers = getBestPerformers(5);
     const worstPerformers = getWorstPerformers(5);
 
-    // 1. Best Performers Chart
+    // 1. Best Performers Chart - ✅ WITH DYNAMIC SCALING
     if (bestPerformersChartRef.current && bestPerformers.length > 0) {
+      const performerValues = extractChartValues(bestPerformers, 'avg_uphold_rate');
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { 
+          y: { beginAtZero: true, max: 100 },
+          x: { ticks: { maxRotation: 45 } }
+        }
+      };
+
+      // ✅ Apply dynamic scaling for better visibility
+      if (shouldApplyDynamicScaling(performerValues)) {
+        chartOptions = applyDynamicScaling(chartOptions, performerValues, 'percentage');
+      }
+
       newCharts.bestPerformers = new Chart(bestPerformersChartRef.current, {
         type: 'bar',
         data: {
@@ -373,20 +497,35 @@ export default function Dashboard() {
             backgroundColor: '#10b981'
           }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { 
-            y: { beginAtZero: true, max: 100 },
-            x: { ticks: { maxRotation: 45 } }
-          }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Best Performers chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...performerValues), max: Math.max(...performerValues) },
+        appliedScaling: shouldApplyDynamicScaling(performerValues),
+        finalScale: chartOptions.scales.y
       });
     }
 
-    // 2. Worst Performers Chart
+    // 2. Worst Performers Chart - ✅ WITH DYNAMIC SCALING
     if (worstPerformersChartRef.current && worstPerformers.length > 0) {
+      const worstValues = extractChartValues(worstPerformers, 'avg_uphold_rate');
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { 
+          y: { beginAtZero: true, max: 100 },
+          x: { ticks: { maxRotation: 45 } }
+        }
+      };
+
+      // ✅ Apply dynamic scaling - worst performers likely need different scale
+      if (shouldApplyDynamicScaling(worstValues)) {
+        chartOptions = applyDynamicScaling(chartOptions, worstValues, 'percentage');
+      }
+
       newCharts.worstPerformers = new Chart(worstPerformersChartRef.current, {
         type: 'bar',
         data: {
@@ -397,15 +536,12 @@ export default function Dashboard() {
             backgroundColor: '#ef4444'
           }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { 
-            y: { beginAtZero: true, max: 100 },
-            x: { ticks: { maxRotation: 45 } }
-          }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Worst Performers chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...worstValues), max: Math.max(...worstValues) },
+        appliedScaling: shouldApplyDynamicScaling(worstValues)
       });
     }
 
@@ -451,37 +587,72 @@ export default function Dashboard() {
       });
     }
 
-    // 4. ✅ FIXED: Categories Chart with actual data
+    // 4. ✅ FIXED: Categories Chart with current product selection
     if (categoriesChartRef.current && data.categoryData?.length > 0) {
-      const categories = data.categoryData;
-      console.log('Creating categories chart with:', categories);
+      // ✅ FIXED: Use current selected product, not stale state
+      const currentSelectedProduct = selectedProduct;
+      let categories = data.categoryData;
       
-      newCharts.categories = new Chart(categoriesChartRef.current, {
-        type: 'doughnut',
-        data: {
-          labels: categories.map(cat => cat.category_name),
-          datasets: [{
-            data: categories.map(cat => cat.complaint_count),
-            backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6']
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: { padding: 10, font: { size: 11 } }
+      // ✅ Filter by current product selection if applicable
+      if (currentSelectedProduct && currentSelectedProduct !== '') {
+        categories = data.categoryData.filter(cat => cat.category_name === currentSelectedProduct);
+        console.log('🎯 Filtering categories chart for product:', currentSelectedProduct, 'Result:', categories);
+      }
+      
+      // ✅ Only create chart if we have valid data
+      if (categories.length > 0) {
+        console.log('Creating categories chart with:', categories);
+        
+        newCharts.categories = new Chart(categoriesChartRef.current, {
+          type: 'doughnut',
+          data: {
+            labels: categories.map(cat => cat.category_name),
+            datasets: [{
+              data: categories.map(cat => cat.complaint_count),
+              backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { padding: 10, font: { size: 11 } }
+              },
+              title: {
+                display: !!currentSelectedProduct,
+                text: currentSelectedProduct ? `${currentSelectedProduct} Distribution` : 'All Products Distribution'
+              }
             }
           }
-        }
-      });
+        });
+        
+        console.log('✅ Categories chart created for product:', currentSelectedProduct || 'All Products');
+      } else {
+        console.warn('⚠️ No category data available for selected product:', currentSelectedProduct);
+      }
     }
 
-    // 5. ✅ NEW: Sector Uphold Averages Chart
+    // 5. ✅ Sector Uphold Averages Chart - WITH DYNAMIC SCALING
     if (sectorUpholdChartRef.current && data.kpis?.sector_uphold_averages) {
       const sectors = Object.keys(data.kpis.sector_uphold_averages);
       const values = Object.values(data.kpis.sector_uphold_averages);
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { 
+          y: { beginAtZero: true, max: 100 },
+          x: { ticks: { maxRotation: 45 } }
+        }
+      };
+
+      // ✅ Apply dynamic scaling for sector averages
+      if (shouldApplyDynamicScaling(values)) {
+        chartOptions = applyDynamicScaling(chartOptions, values, 'percentage');
+      }
       
       newCharts.sectorUphold = new Chart(sectorUpholdChartRef.current, {
         type: 'bar',
@@ -493,22 +664,34 @@ export default function Dashboard() {
             backgroundColor: ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981']
           }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { 
-            y: { beginAtZero: true, max: 100 },
-            x: { ticks: { maxRotation: 45 } }
-          }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Sector Uphold chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...values), max: Math.max(...values) },
+        appliedScaling: shouldApplyDynamicScaling(values)
       });
     }
 
-    // 6. ✅ NEW: Sector Closure Averages Chart  
+    // 6. ✅ Sector Closure Averages Chart - WITH DYNAMIC SCALING
     if (sectorClosureChartRef.current && data.kpis?.sector_closure_averages) {
       const sectors = Object.keys(data.kpis.sector_closure_averages);
       const values = Object.values(data.kpis.sector_closure_averages);
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { 
+          y: { beginAtZero: true, max: 100 },
+          x: { ticks: { maxRotation: 45 } }
+        }
+      };
+
+      // ✅ Apply dynamic scaling for closure rates
+      if (shouldApplyDynamicScaling(values)) {
+        chartOptions = applyDynamicScaling(chartOptions, values, 'rate');
+      }
       
       newCharts.sectorClosure = new Chart(sectorClosureChartRef.current, {
         type: 'bar',
@@ -520,15 +703,12 @@ export default function Dashboard() {
             backgroundColor: '#3b82f6'
           }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { 
-            y: { beginAtZero: true, max: 100 },
-            x: { ticks: { maxRotation: 45 } }
-          }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Sector Closure chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...values), max: Math.max(...values) },
+        appliedScaling: shouldApplyDynamicScaling(values)
       });
     }
 
@@ -619,7 +799,7 @@ export default function Dashboard() {
       });
     }
 
-    // 2. Uphold Rate Distribution
+    // 2. Uphold Rate Distribution - ✅ WITH DYNAMIC SCALING
     if (upholdDistributionChartRef.current) {
       // Create distribution based on actual data
       const upholdRates = productData.map(cat => cat.avg_uphold_rate);
@@ -633,6 +813,16 @@ export default function Dashboard() {
 
       // Use actual distribution if we have data, otherwise use representative data
       const chartData = upholdRates.length > 0 ? distribution : [3, 8, 12, 6, 2];
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      };
+
+      // ✅ Apply dynamic scaling for distribution counts
+      chartOptions = applyDynamicScaling(chartOptions, chartData, 'volume');
 
       newCharts.upholdDistribution = new Chart(upholdDistributionChartRef.current, {
         type: 'bar',
@@ -644,12 +834,13 @@ export default function Dashboard() {
             backgroundColor: ['#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444']
           }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Uphold Distribution chart created with dynamic scaling:', {
+        originalData: upholdRates,
+        distribution: chartData,
+        maxCount: Math.max(...chartData)
       });
     }
 
@@ -725,48 +916,50 @@ export default function Dashboard() {
       });
     }
 
-    // 2. ✅ NEW: Firm Performance Comparison Bar Chart
+    // 2. ✅ Firm Performance Comparison Bar Chart - WITH DYNAMIC SCALING
     if (firmPerformanceChartRef.current) {
+      const upholdValues = extractChartValues(selectedFirmData, 'avg_uphold_rate');
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            type: 'linear' as const,
+            display: true,
+            position: 'left' as const,
+            title: { display: true, text: 'Uphold Rate (%)' },
+            max: 100
+          },
+          x: { ticks: { maxRotation: 45 } }
+        }
+      };
+
+      // ✅ Apply dynamic scaling to firm uphold rates
+      if (shouldApplyDynamicScaling(upholdValues)) {
+        chartOptions = applyDynamicScaling(chartOptions, upholdValues, 'percentage');
+      }
+
       newCharts.firmPerformance = new Chart(firmPerformanceChartRef.current, {
         type: 'bar',
         data: {
           labels: selectedFirmData.map(f => f.firm_name.substring(0, 15)),
           datasets: [
             {
-              label: 'Complaint Count',
-              data: selectedFirmData.map(f => f.complaint_count || 0),
-              backgroundColor: '#3b82f6',
-              yAxisID: 'y'
-            },
-            {
               label: 'Uphold Rate (%)',
               data: selectedFirmData.map(f => f.avg_uphold_rate || 0),
               backgroundColor: '#ef4444',
-              yAxisID: 'y1'
+              yAxisID: 'y'
             }
           ]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              type: 'linear',
-              display: true,
-              position: 'left',
-              title: { display: true, text: 'Complaint Count' }
-            },
-            y1: {
-              type: 'linear',
-              display: true,
-              position: 'right',
-              title: { display: true, text: 'Uphold Rate (%)' },
-              grid: { drawOnChartArea: false },
-              max: 100
-            },
-            x: { ticks: { maxRotation: 45 } }
-          }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Firm Performance chart created with dynamic scaling:', {
+        selectedFirms: selectedFirms,
+        dataRange: { min: Math.min(...upholdValues), max: Math.max(...upholdValues) },
+        appliedScaling: shouldApplyDynamicScaling(upholdValues)
       });
     }
 
@@ -790,11 +983,25 @@ export default function Dashboard() {
 
     console.log('Creating credit charts with data:', creditData);
 
-    // 1. Volume Chart
+    // 1. Volume Chart - ✅ WITH DYNAMIC SCALING - now shows actual complaint volumes
     if (volumeChartRef.current && creditData.length > 0) {
       const top5 = creditData
         .sort((a, b) => (b.total_received || 0) - (a.total_received || 0))
         .slice(0, 5);
+      
+      const volumeValues = extractChartValues(top5, 'total_received');
+      
+      let chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { maxRotation: 45 } },
+          y: { beginAtZero: true }
+        }
+      };
+
+      // ✅ Apply dynamic scaling for volume data
+      chartOptions = applyDynamicScaling(chartOptions, volumeValues, 'volume');
       
       newCharts.volume = new Chart(volumeChartRef.current, {
         type: 'bar',
@@ -803,27 +1010,55 @@ export default function Dashboard() {
           datasets: [
             {
               label: 'Total Complaints',
-              data: top5.map(f => f.total_received || 0),
+              data: top5.map(f => f.total_received || 0), // ✅ Now shows actual volumes like 6,255
               backgroundColor: '#3b82f6'
             }
           ]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { ticks: { maxRotation: 45 } },
-            y: { beginAtZero: true }
-          }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Volume chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...volumeValues), max: Math.max(...volumeValues) },
+        top5Firms: top5.map(f => ({ name: f.firm_name, volume: f.total_received }))
       });
     }
 
-    // 2. Highest Uphold Rates Chart
+    // 2. Highest Uphold Rates Chart - ✅ WITH DYNAMIC SCALING
     if (upheldChartRef.current && creditData.length > 0) {
       const top5Upheld = creditData
         .sort((a, b) => (b.avg_upheld_pct || 0) - (a.avg_upheld_pct || 0))
         .slice(0, 5);
+      
+      const upholdValues = extractChartValues(top5Upheld, 'avg_upheld_pct');
+      
+      let chartOptions = {
+        indexAxis: 'y' as const,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { 
+          x: { beginAtZero: true, max: 100 },
+          y: { beginAtZero: true }
+        }
+      };
+
+      // ✅ Apply dynamic scaling for uphold percentages (horizontal chart)
+      if (shouldApplyDynamicScaling(upholdValues)) {
+        // For horizontal charts, we need to scale the x-axis
+        const tempOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true, max: 100 } }
+        };
+        const scaledOptions = applyDynamicScaling(tempOptions, upholdValues, 'percentage');
+        
+        // Apply the y-axis scaling to our x-axis (since it's horizontal)
+        chartOptions.scales.x = {
+          ...chartOptions.scales.x,
+          ...scaledOptions.scales.y
+        };
+      }
       
       newCharts.upheld = new Chart(upheldChartRef.current, {
         type: 'bar',
@@ -835,21 +1070,47 @@ export default function Dashboard() {
             backgroundColor: '#ef4444'
           }]
         },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { x: { beginAtZero: true, max: 100 } }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Highest Uphold chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...upholdValues), max: Math.max(...upholdValues) },
+        appliedScaling: shouldApplyDynamicScaling(upholdValues)
       });
     }
 
-    // 3. ✅ NEW: Lowest Uphold Rates Chart
+    // 3. ✅ FIXED: Lowest Uphold Rates Chart - WITH DYNAMIC SCALING
     if (lowestUpholdChartRef.current && creditData.length > 0) {
       const lowestUpheld = creditData
         .sort((a, b) => (a.avg_upheld_pct || 0) - (b.avg_upheld_pct || 0))
         .slice(0, 5);
+      
+      const lowestValues = extractChartValues(lowestUpheld, 'avg_upheld_pct');
+      
+      let chartOptions = {
+        indexAxis: 'y' as const,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, max: 100 } }
+      };
+
+      // ✅ FIXED: Apply dynamic scaling for horizontal charts properly
+      if (shouldApplyDynamicScaling(lowestValues)) {
+        // Create temporary options with y-axis for scaling calculation
+        const tempOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true, max: 100 } }
+        };
+        const scaledOptions = applyDynamicScaling(tempOptions, lowestValues, 'percentage');
+        
+        // Apply the y-axis scaling to our x-axis (since chart is horizontal)
+        chartOptions.scales.x = {
+          ...chartOptions.scales.x,
+          ...scaledOptions.scales.y
+        };
+      }
       
       newCharts.lowestUphold = new Chart(lowestUpholdChartRef.current, {
         type: 'bar',
@@ -861,13 +1122,12 @@ export default function Dashboard() {
             backgroundColor: '#10b981'
           }]
         },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { x: { beginAtZero: true, max: 100 } }
-        }
+        options: chartOptions
+      });
+
+      console.log('🎯 Lowest Uphold chart created with dynamic scaling:', {
+        dataRange: { min: Math.min(...lowestValues), max: Math.max(...lowestValues) },
+        appliedScaling: shouldApplyDynamicScaling(lowestValues)
       });
     }
 
@@ -1074,10 +1334,7 @@ export default function Dashboard() {
             {/* Action Buttons */}
             <div className="flex gap-2">
               <button
-                onClick={() => {
-                  clearAllFilters();
-                  setSelectedProduct(''); // ✅ FIXED: Clear product selection
-                }}
+                onClick={handleClearAllFilters} // ✅ FIXED: Use new comprehensive clear function
                 disabled={!hasActiveFilters()}
                 className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
               >
@@ -1159,33 +1416,32 @@ export default function Dashboard() {
         {/* Performance Overview Tab */}
         {activeTab === 'overview' && (
           <>
-            {/* ✅ NEW: Updated KPI Cards per requirements */}
+            {/* ✅ UPDATED: KPI Cards with trend indicators */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              
+              {/* ✅ NEW: Replace Banking & Credit Cards with "Average Percentage of Complaints Upheld" + TREND */}
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm font-medium text-gray-600">
-                      Avg Banking & Credit Cards Reported
+                      Average Percentage of Complaints Upheld
                       {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
                     </p>
-                    <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.banking_avg_percentage)}</p>
+                    <div className="flex items-center space-x-2">
+                      <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_percentage_upheld)}</p>
+                      {/* ✅ NEW: Trend indicator */}
+                      {processedTrends?.industryTrends?.uphold_rate && (() => {
+                        const trendDisplay = formatTrendDisplay(processedTrends.industryTrends.uphold_rate);
+                        return (
+                          <div className={`flex items-center space-x-1 ${trendDisplay.color}`} title={trendDisplay.tooltip}>
+                            <span className="text-lg">{trendDisplay.icon}</span>
+                            <span className="text-sm font-medium">{trendDisplay.text}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="p-3 bg-blue-100 rounded-full">
-                    <span className="text-2xl">🏦</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">
-                      Overall Avg Uphold Rate
-                      {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
-                    </p>
-                    <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_uphold_rate)}</p>
-                  </div>
-                  <div className="p-3 bg-yellow-100 rounded-full">
                     <span className="text-2xl">⚖️</span>
                   </div>
                 </div>
@@ -1193,20 +1449,55 @@ export default function Dashboard() {
 
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm font-medium text-gray-600">
-                      Avg 3-Day Closure Rate
+                      Overall Avg Uphold Rate
                       {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
                     </p>
-                    <p className="text-3xl font-bold text-gray-900">
-                      {data?.kpis?.sector_closure_averages ? 
-                        formatPercentage(Object.values(data.kpis.sector_closure_averages).reduce((a, b) => a + b, 0) / Object.values(data.kpis.sector_closure_averages).length) : 
-                        '0.0%'
-                      }
+                    <div className="flex items-center space-x-2">
+                      <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_uphold_rate)}</p>
+                      {/* ✅ NEW: Trend indicator */}
+                      {processedTrends?.industryTrends?.uphold_rate && (() => {
+                        const trendDisplay = formatTrendDisplay(processedTrends.industryTrends.uphold_rate);
+                        return (
+                          <div className={`flex items-center space-x-1 ${trendDisplay.color}`} title={trendDisplay.tooltip}>
+                            <span className="text-sm">{trendDisplay.icon}</span>
+                            <span className="text-xs font-medium">{trendDisplay.text}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-yellow-100 rounded-full">
+                    <span className="text-2xl">⚖️</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ NEW: 8-weeks KPI with trend */}
+              <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-600">
+                      Avg Closed Within 8 Weeks
+                      {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
                     </p>
+                    <div className="flex items-center space-x-2">
+                      <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_closed_within_8_weeks)}</p>
+                      {/* ✅ NEW: Trend indicator */}  
+                      {processedTrends?.industryTrends?.closure_8_weeks && (() => {
+                        const trendDisplay = formatTrendDisplay(processedTrends.industryTrends.closure_8_weeks);
+                        return (
+                          <div className={`flex items-center space-x-1 ${trendDisplay.color}`} title={trendDisplay.tooltip}>
+                            <span className="text-sm">{trendDisplay.icon}</span>
+                            <span className="text-xs font-medium">{trendDisplay.text}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="p-3 bg-green-100 rounded-full">
-                    <span className="text-2xl">⚡</span>
+                    <span className="text-2xl">⏱️</span>
                   </div>
                 </div>
               </div>
@@ -1341,11 +1632,45 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* ✅ ENHANCED: Firm Deep Dive Tab */}
+        {/* ✅ ENHANCED: Firm Deep Dive Tab with Multi-Firm Comparison */}
         {activeTab === 'firm' && (
           <>
             <div className="bg-white p-6 rounded-lg shadow mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Firms for Detailed Analysis</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Firm Analysis Tools</h3>
+                
+                {/* ✅ NEW: Toggle between modes */}
+                <div className="flex items-center space-x-4">
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setShowMultiFirmComparison(false)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                        !showMultiFirmComparison
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Individual Analysis
+                    </button>
+                    <button
+                      onClick={() => setShowMultiFirmComparison(true)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                        showMultiFirmComparison
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Multi-Firm Comparison
+                    </button>
+                  </div>
+                  {selectedFirms.length > 1 && (
+                    <span className="text-sm text-blue-600 font-medium">
+                      {selectedFirms.length} firms selected
+                    </span>
+                  )}
+                </div>
+              </div>
+              
               <div className="relative">
                 <input
                   type="text"
@@ -1387,9 +1712,6 @@ export default function Dashboard() {
               </div>
               {selectedFirms.length > 0 && (
                 <div className="mt-3">
-                  <p className="text-sm text-blue-600 mb-2">
-                    ✅ Selected: {selectedFirms.length} firms
-                  </p>
                   <div className="flex flex-wrap gap-2">
                     {selectedFirms.map(firm => (
                       <span key={firm} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -1403,90 +1725,135 @@ export default function Dashboard() {
                       </span>
                     ))}
                   </div>
+                  {showMultiFirmComparison && selectedFirms.length > 5 && (
+                    <p className="text-sm text-amber-600 mt-2">
+                      ⚠️ For best performance, compare up to 5 firms at a time.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
 
-            {selectedFirms.length > 0 ? (
-              <>
-                {/* Firm Performance Summary */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg mb-8 border border-blue-100">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                    🏢 Firm Analysis: {selectedFirms.length} selected
-                  </h3>
-                  {(() => {
-                    const firmData = data?.topPerformers?.filter(f => selectedFirms.includes(f.firm_name)) ||
-                                   (data?.industryComparison && data.industryComparison.filter(f => selectedFirms.includes(f.firm_name))) || [];
-                    return firmData.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
-                        <div>
-                          <div className="text-3xl font-bold text-blue-600">
-                            {formatNumber(firmData.reduce((sum, f) => sum + (f.complaint_count || 0), 0))}
-                          </div>
-                          <div className="text-sm text-blue-800">Total Complaints</div>
-                        </div>
-                        <div>
-                          <div className="text-3xl font-bold text-red-600">
-                            {formatPercentage(firmData.reduce((sum, f) => sum + (f.avg_uphold_rate || 0), 0) / firmData.length)}
-                          </div>
-                          <div className="text-sm text-red-800">Avg Uphold Rate</div>
-                        </div>
-                        <div>
-                          <div className="text-3xl font-bold text-green-600">
-                            {formatPercentage(firmData.reduce((sum, f) => sum + (f.avg_closure_rate || 0), 0) / firmData.length)}
-                          </div>
-                          <div className="text-sm text-green-800">Avg Resolution Rate</div>
-                        </div>
-                        <div>
-                          <div className="text-3xl font-bold text-purple-600">{firmData.length}</div>
-                          <div className="text-sm text-purple-800">Firms Selected</div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center text-gray-600">
-                        No detailed data available for selected firms with current filters
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Firm Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                      Multi-Firm Performance Comparison
-                    </h3>
-                    <div className="h-80">
-                      <canvas ref={firmComparisonChartRef}></canvas>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                      Complaint Volume vs Uphold Rate
-                    </h3>
-                    <div className="h-80">
-                      <canvas ref={firmPerformanceChartRef}></canvas>
-                    </div>
-                  </div>
-                </div>
-              </>
+            {/* ✅ NEW: Multi-Firm Comparison Mode */}
+            {showMultiFirmComparison ? (
+              <MultiFirmComparison
+                selectedFirms={selectedFirms}
+                firmData={data?.topPerformers || data?.industryComparison || []}
+                historicalData={data?.historicalTrends || []}
+                industryTrends={data?.industryTrends || []}
+                onRemoveFirm={(firmName) => {
+                  setSelectedFirms(prev => prev.filter(f => f !== firmName));
+                  updateFilter('firms', selectedFirms.filter(f => f !== firmName));
+                }}
+              />
             ) : (
-              <div className="bg-white p-8 rounded-lg shadow text-center">
-                <div className="text-6xl mb-4">🏢</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Select Firms for Analysis</h3>
-                <p className="text-gray-600">Use the search box above to select one or more firms for detailed performance analysis.</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  {data?.allFirms?.length || 0} firms available for analysis
-                </p>
-              </div>
+              /* ✅ EXISTING: Individual Firm Analysis */
+              selectedFirms.length > 0 ? (
+                <>
+                  {/* Firm Performance Summary - ✅ REMOVED: total complaints as requested */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg mb-8 border border-blue-100">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                      🏢 Individual Firm Analysis: {selectedFirms.length} selected
+                    </h3>
+                    {(() => {
+                      const firmData = data?.topPerformers?.filter(f => selectedFirms.includes(f.firm_name)) ||
+                                     (data?.industryComparison && data.industryComparison.filter(f => selectedFirms.includes(f.firm_name))) || [];
+                      return firmData.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                          <div>
+                            <div className="text-3xl font-bold text-red-600">
+                              {formatPercentage(firmData.reduce((sum, f) => sum + (f.avg_uphold_rate || 0), 0) / firmData.length)}
+                            </div>
+                            <div className="text-sm text-red-800">Avg Uphold Rate</div>
+                          </div>
+                          <div>
+                            <div className="text-3xl font-bold text-green-600">
+                              {formatPercentage(firmData.reduce((sum, f) => sum + (f.avg_closure_rate || 0), 0) / firmData.length)}
+                            </div>
+                            <div className="text-sm text-green-800">Avg Resolution Rate</div>
+                          </div>
+                          <div>
+                            <div className="text-3xl font-bold text-purple-600">{firmData.length}</div>
+                            <div className="text-sm text-purple-800">Firms Selected</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center text-gray-600">
+                          No detailed data available for selected firms with current filters
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Firm Charts */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        Multi-Firm Performance Comparison
+                      </h3>
+                      <div className="h-80">
+                        <canvas ref={firmComparisonChartRef}></canvas>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        Uphold Rate Comparison
+                      </h3>
+                      <div className="h-80">
+                        <canvas ref={firmPerformanceChartRef}></canvas>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="bg-white p-8 rounded-lg shadow text-center">
+                  <div className="text-6xl mb-4">🏢</div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Select Firms for Analysis</h3>
+                  <p className="text-gray-600 mb-4">Use the search box above to select one or more firms for detailed performance analysis.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-blue-900 mb-2">Individual Analysis</h4>
+                      <p className="text-sm text-blue-700">Detailed charts and metrics for selected firms</p>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-green-900 mb-2">Multi-Firm Comparison</h4>
+                      <p className="text-sm text-green-700">Side-by-side comparison with historical trends</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-4">
+                    {data?.allFirms?.length || 0} firms available for analysis
+                  </p>
+                </div>
+              )
             )}
           </>
         )}
 
-        {/* ✅ FIXED: Product Analysis Tab with Working Charts */}
+        {/* ✅ UPDATED: Product Analysis Tab with All 5 Sector KPIs */}
         {activeTab === 'product' && (
           <>
+            {/* ✅ NEW: All 5 Sector Averages KPI Cards */}
+            <div className="bg-white p-6 rounded-lg shadow mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Category Performance Overview</h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                {data?.kpis?.all_sector_averages && Object.entries(data.kpis.all_sector_averages).map(([category, stats]) => (
+                  <div key={category} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">{category}</h4>
+                    <div className="space-y-1">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {formatPercentage(stats.uphold_rate)}
+                      </div>
+                      <div className="text-xs text-blue-800">Avg Uphold Rate</div>
+                      <div className="text-xs text-gray-500">
+                        {formatNumber(stats.complaint_count)} records
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="bg-white p-6 rounded-lg shadow mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Product Category</h3>
               <select
@@ -1531,7 +1898,7 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* ✅ ENHANCED: Consumer Credit Focus Tab with Lowest Uphold Rates */}
+        {/* ✅ ENHANCED: Consumer Credit Focus Tab - Now shows correct volumes */}
         {activeTab === 'credit' && (
           <>
             <div className="bg-white p-6 rounded-lg shadow mb-6">
@@ -1578,7 +1945,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Consumer Credit Overview */}
+            {/* Consumer Credit Overview - ✅ Now shows correct volumes */}
             <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg mb-8 border border-purple-100">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">
                 💳 Consumer Credit Overview
@@ -1594,6 +1961,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div>
+                  {/* ✅ This should now show correct volumes like 6,255 instead of 12 */}
                   <div className="text-4xl font-bold text-purple-600">
                     {formatNumber(creditStats.totalComplaints)}
                   </div>

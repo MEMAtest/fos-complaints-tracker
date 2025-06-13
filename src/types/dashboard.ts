@@ -1,4 +1,5 @@
-// ✅ UPDATED: Complete type definitions for dashboard
+// src/types/dashboard.ts
+// ✅ COMPLETE Dashboard Types with all new KPI fields
 
 export interface FilterParams {
   years?: string[];
@@ -6,148 +7,104 @@ export interface FilterParams {
   products?: string[];
 }
 
-// ✅ ENHANCED: KPIs interface with new metrics
 export interface KPIData {
   total_complaints: number;
   total_closed: number;
-  total_firms: number;
   avg_upheld_rate: number;
-  avg_uphold_rate: number; // Alternative field name
-  total_rows: number;
-  // ✅ NEW: Additional KPI metrics as requested
+  total_firms?: number;
+  total_rows?: number;
+  
+  // ✅ KEEP: banking_avg_percentage for backward compatibility
   banking_avg_percentage?: number;
+  
+  // ✅ NEW: Required fields for Priority #1
+  avg_percentage_upheld?: number;
+  avg_closed_within_8_weeks?: number;
+  
   sector_uphold_averages?: {[key: string]: number};
   sector_closure_averages?: {[key: string]: number};
+  
+  // ✅ NEW: All sector averages for Product Analysis
+  all_sector_averages?: {[key: string]: {uphold_rate: number, complaint_count: number}};
+}
+
+export interface TopPerformerData {
+  firm_name: string;
+  complaint_count: number;
+  avg_uphold_rate: number;
+  avg_closure_rate: number;
+}
+
+export interface ConsumerCreditData {
+  firm_name: string;
+  total_received: number;
+  total_closed?: number;
+  avg_upheld_pct: number;
+  avg_closure_rate?: number;
+  period_count?: number;
+}
+
+export interface ProductCategoryData {
+  category_name: string;
+  complaint_count: number;
+  avg_uphold_rate: number;
+  avg_closure_rate: number;
+}
+
+export interface IndustryComparisonData {
+  firm_name: string;
+  complaint_count: number;
+  avg_uphold_rate: number;
+  avg_closure_rate: number;
 }
 
 export interface FirmData {
   firm_name: string;
-  avg_uphold_rate: number;
-  avg_upheld_rate?: number; // Alternative field name for API compatibility
-  avg_closure_rate: number;
-  complaint_count: number;
 }
 
-// ✅ ENHANCED: Consumer Credit with multiple field mappings
-export interface ConsumerCreditData {
+export interface HistoricalTrendData {
   firm_name: string;
-  total_received: number;
-  total_records?: number; // API might return this field name
-  complaint_count?: number; // Alternative field name
-  avg_upheld_pct: number;
-  avg_uphold_rate?: number; // Alternative field name
-  avg_closure_rate?: number;
+  reporting_period: string;
+  product_category: string;
+  upheld_rate: number;
+  closure_rate_3_days: number;
+  closure_rate_8_weeks: number;
+  trend_year: string;
 }
 
-export interface ProductData {
-  category_name: string;
-  product_category?: string; // Alternative field name from API
-  complaint_count: number;
+export interface IndustryTrendData {
+  year: string;
   avg_uphold_rate: number;
-  avg_closure_rate: number;
+  avg_closure_3_days: number;
+  avg_closure_8_weeks: number;
+  firm_count: number;
+  record_count: number;
 }
 
-export interface FirmListItem {
-  firm_name: string;
-}
-
-// ✅ ENHANCED: Complete API response structure
 export interface DashboardAPIResponse {
   success: boolean;
   filters: FilterParams;
   data: {
     kpis: KPIData;
-    topPerformers: FirmData[];
+    topPerformers: TopPerformerData[];
     consumerCredit: ConsumerCreditData[];
-    productCategories: ProductData[];
-    industryComparison: FirmData[];
-    allFirms: FirmListItem[];
+    productCategories: ProductCategoryData[];
+    industryComparison: IndustryComparisonData[];
+    allFirms: FirmData[];
+    
+    // ✅ NEW: Historical trend data
+    historicalTrends: HistoricalTrendData[];
+    industryTrends: IndustryTrendData[];
   };
   debug?: {
     appliedFilters: FilterParams;
     executionTime: string;
     dataSource: string;
-    queryCounts?: {
-      kpis: number;
-      topPerformers: number;
-      consumerCredit: number;
-      productCategories: number;
-      industryComparison: number;
-      allFirms: number;
-      sectorUphold?: number;
-      sectorClosure?: number;
-    };
-    sampleData?: {
-      consumerCredit: ConsumerCreditData[];
-      topPerformers: FirmData[];
-    };
+    queryCounts: {[key: string]: number};
+    sampleData?: {[key: string]: any};
   };
 }
 
-// ✅ ENHANCED: Dashboard data interface for component
-export interface DashboardData {
-  kpis: KPIData;
-  topPerformers: FirmData[];
-  consumerCredit: ConsumerCreditData[];
-  categoryData: ProductData[];
-  industryComparison: FirmData[];
-  allFirms: FirmListItem[];
-}
-
-// ✅ NEW: Credit filters interface (simplified - removed period)
-export interface CreditFilters {
-  selectedFirms: string[];
-}
-
-// ✅ Chart.js types for better type safety
-export type ChartType = 'bar' | 'line' | 'pie' | 'doughnut' | 'radar' | 'bubble';
-
-export interface ChartDataset {
-  label?: string;
-  data: number[];
-  backgroundColor?: string | string[];
-  borderColor?: string | string[];
-  borderWidth?: number;
-  tension?: number;
-  type?: ChartType;
-  yAxisID?: string;
-}
-
-export interface ChartData {
-  labels: string[];
-  datasets: ChartDataset[];
-}
-
-export interface ChartOptions {
-  responsive: boolean;
-  maintainAspectRatio: boolean;
-  plugins?: any;
-  scales?: any;
-  indexAxis?: 'x' | 'y';
-}
-
-// ✅ NEW: Utility types for better development experience
-export type SortDirection = 'asc' | 'desc';
-export type TabId = 'overview' | 'firm' | 'product' | 'credit';
-
-export interface TabConfig {
-  id: TabId;
-  label: string;
-  icon: string;
-}
-
-// ✅ NEW: Form and UI state types
-export interface UIState {
-  activeTab: TabId;
-  selectedFirms: string[];
-  selectedProduct: string;
-  firmSearchTerm: string;
-  showFirmDropdown: boolean;
-  loading: boolean;
-  error: string | null;
-}
-
-// ✅ API Error response type
 export interface APIErrorResponse {
   success: false;
   error: string;
@@ -158,5 +115,38 @@ export interface APIErrorResponse {
   };
 }
 
-// ✅ Complete API response union type
-export type APIResponse = DashboardAPIResponse | APIErrorResponse;
+// ✅ Keep both for compatibility
+export interface DashboardResponse extends DashboardAPIResponse {}
+
+// ✅ Additional interfaces for future features
+export interface MultiFirmComparisonData {
+  firms: {
+    firm_name: string;
+    avg_uphold_rate: number;
+    avg_closure_rate: number;
+    complaint_count: number;
+  }[];
+  industry_average: {
+    avg_uphold_rate: number;
+    avg_closure_rate: number;
+  };
+}
+
+// ✅ NEW: Trend analysis interface (different from raw historical data)
+export interface TrendAnalysisData {
+  period: string;
+  firm_name?: string;
+  avg_uphold_rate: number;
+  avg_closure_rate: number;
+  complaint_count: number;
+  trend_direction: 'up' | 'down' | 'stable';
+  change_percentage: number;
+}
+
+export interface ChartConfiguration {
+  type: 'bar' | 'line' | 'pie' | 'doughnut' | 'radar' | 'bubble';
+  responsive: boolean;
+  maintainAspectRatio: boolean;
+  dynamicScaling?: boolean;
+  maxValue?: number;
+}
