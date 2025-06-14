@@ -83,11 +83,6 @@ export async function GET(request: NextRequest) {
 
     const whereClause = whereConditions.join(' AND ');
     console.log('📝 SQL WHERE clause:', whereClause);
-    
-    // Validate WHERE clause isn't empty or dangerous
-    if (!whereClause || whereClause.length < 10) {
-      throw new Error('Invalid WHERE clause generated');
-    }
 
     // 3) Execute all queries using STAGING tables
     let results: any = {};
