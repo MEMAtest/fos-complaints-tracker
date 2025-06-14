@@ -153,9 +153,11 @@ export default function Dashboard() {
       avg_closure_rate: Math.min(item.avg_closure_rate || 0, 95),
       complaint_count: item.complaint_count || 0
     })),
-    allFirms: (apiData.data?.allFirms || []).sort((a: any, b: any) => 
-      a.firm_name.localeCompare(b.firm_name) // ✅ A-Z sorting
-    ),
+    allFirms: (apiData.data?.allFirms || [])
+  .filter(firm => firm?.firm_name && typeof firm.firm_name === 'string' && firm.firm_name.trim().length > 0)
+  .sort((a: any, b: any) => 
+    (a.firm_name || '').localeCompare(b.firm_name || '')
+  ),
     
     // ✅ NEW: Historical trend data
     historicalTrends: apiData.data.historicalTrends || [],
@@ -316,10 +318,11 @@ useEffect(() => {
     }
     
     const validPerformers = performers.filter(p => 
-      p.avg_uphold_rate !== undefined && 
-      p.avg_uphold_rate !== null && 
-      p.avg_uphold_rate > 0
-    );
+  p?.firm_name &&
+  p.avg_uphold_rate !== undefined && 
+  p.avg_uphold_rate !== null && 
+  p.avg_uphold_rate > 0
+);
     
     return validPerformers
       .sort((a, b) => a.avg_uphold_rate - b.avg_uphold_rate)
@@ -334,10 +337,11 @@ useEffect(() => {
     }
     
     const validPerformers = performers.filter(p => 
-      p.avg_uphold_rate !== undefined && 
-      p.avg_uphold_rate !== null && 
-      p.avg_uphold_rate > 0
-    );
+  p?.firm_name &&
+  p.avg_uphold_rate !== undefined && 
+  p.avg_uphold_rate !== null && 
+  p.avg_uphold_rate > 0
+);
     
     return validPerformers
       .sort((a, b) => b.avg_uphold_rate - a.avg_uphold_rate)
@@ -352,10 +356,11 @@ useEffect(() => {
     }
     
     const validPerformers = performers.filter(p => 
-      p.avg_closure_rate !== undefined && 
-      p.avg_closure_rate !== null && 
-      p.avg_closure_rate > 0
-    );
+  p?.firm_name &&
+  p.avg_closure_rate !== undefined && 
+  p.avg_closure_rate !== null && 
+  p.avg_closure_rate > 0
+);
     
     return validPerformers
       .sort((a, b) => (b.avg_closure_rate || 0) - (a.avg_closure_rate || 0))
@@ -547,7 +552,7 @@ const createChartsWithValidation = (chartCreationFn: () => void, chartSetName: s
       newCharts.bestPerformers = new Chart(bestPerformersChartRef.current, {
         type: 'bar',
         data: {
-          labels: bestPerformers.map(f => f.firm_name.substring(0, 15)),
+          labels: bestPerformers.map(f => (f.firm_name || 'Unknown').substring(0, 15)),
           datasets: [{
             label: 'Uphold Rate (%)',
             data: bestPerformers.map(f => f.avg_uphold_rate),
@@ -586,7 +591,7 @@ const createChartsWithValidation = (chartCreationFn: () => void, chartSetName: s
       newCharts.worstPerformers = new Chart(worstPerformersChartRef.current, {
         type: 'bar',
         data: {
-          labels: worstPerformers.map(f => f.firm_name.substring(0, 15)),
+          labels: worstPerformers.map(f => (f.firm_name || "Unknown").substring(0, 15)),
           datasets: [{
             label: 'Uphold Rate (%)',
             data: worstPerformers.map(f => f.avg_uphold_rate),
@@ -608,7 +613,7 @@ const createChartsWithValidation = (chartCreationFn: () => void, chartSetName: s
       newCharts.resolutionTrends = new Chart(resolutionTrendsChartRef.current, {
         type: 'line',
         data: {
-          labels: topFirms.map(f => f.firm_name.substring(0, 12)),
+          labels: topFirms.map(f => (f.firm_name || "Unknown").substring(0, 12)),
           datasets: [
             {
               label: 'Within 3 Days (%)',
@@ -1000,7 +1005,7 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
       newCharts.firmPerformance = new Chart(firmPerformanceChartRef.current, {
         type: 'bar',
         data: {
-          labels: selectedFirmData.map(f => f.firm_name.substring(0, 15)),
+          labels: selectedFirmData.map(f => (f.firm_name || "Unknown").substring(0, 15)),
           datasets: [
             {
               label: 'Uphold Rate (%)',
@@ -1063,7 +1068,7 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
       newCharts.volume = new Chart(volumeChartRef.current, {
         type: 'bar',
         data: {
-          labels: top5.map(f => f.firm_name.substring(0, 15)),
+          labels: top5.map(f => (f.firm_name || "Unknown").substring(0, 15)),
           datasets: [
             {
               label: 'Total Complaints',
@@ -1120,7 +1125,7 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
       newCharts.upheld = new Chart(upheldChartRef.current, {
         type: 'bar',
         data: {
-          labels: top5Upheld.map(f => f.firm_name.substring(0, 15)),
+          labels: top5Upheld.map(f => (f.firm_name || "Unknown").substring(0, 15)),
           datasets: [{
             label: 'Uphold Rate (%)',
             data: top5Upheld.map(f => f.avg_upheld_pct || 0),
@@ -1172,7 +1177,7 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
       newCharts.lowestUphold = new Chart(lowestUpholdChartRef.current, {
         type: 'bar',
         data: {
-          labels: lowestUpheld.map(f => f.firm_name.substring(0, 15)),
+          labels: lowestUpheld.map(f => (f.firm_name || "Unknown").substring(0, 15)),
           datasets: [{
             label: 'Uphold Rate (%)',
             data: lowestUpheld.map(f => f.avg_upheld_pct || 0),

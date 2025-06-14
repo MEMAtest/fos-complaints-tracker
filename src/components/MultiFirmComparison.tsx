@@ -101,7 +101,7 @@ export default function MultiFirmComparison({
   const getFirmHistoricalData = (firmName: string) => {
     return historicalData
       .filter(item => getFirmName(item) === firmName)
-      .sort((a, b) => getReportingPeriod(a).localeCompare(getReportingPeriod(b)))
+      .sort((a, b) => (getReportingPeriod(a) || '').localeCompare(getReportingPeriod(b) || ''))
       .map(item => ({
         x: getReportingPeriod(item),
         y: getUpheldRate(item)
@@ -111,7 +111,7 @@ export default function MultiFirmComparison({
   // Helper function to get industry average data
   const getIndustryAverageData = () => {
     return industryTrends
-      .sort((a, b) => getReportingPeriod(a).localeCompare(getReportingPeriod(b)))
+      .sort((a, b) => (getReportingPeriod(a) || '').localeCompare(getReportingPeriod(b) || ''))
       .map(item => ({
         x: getReportingPeriod(item),
         y: getUpheldRate(item)
