@@ -165,3 +165,4 @@ export default function Dashboard() {
   } : null;
 
   // ✅ NEW: Process trend data when API data changes
+}
