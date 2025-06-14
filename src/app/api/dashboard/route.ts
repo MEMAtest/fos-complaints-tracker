@@ -5,80 +5,14 @@ import { neon } from '@neondatabase/serverless';
 
 const sql = neon(process.env.DATABASE_URL!);
 
+// Always-defined filter params
 interface FilterParams {
   years: string[];
   firms: string[];
   products: string[];
 }
 
-interface KpisResult {
-  total_complaints: number;
-  total_firms: number;
-  avg_upheld_rate: number | null;
-  total_rows: number;
-}
-
-interface UpheldResult {
-  avg_percentage_upheld: number | null;
-}
-
-interface EightWeeksResult {
-  avg_closed_within_8_weeks: number | null;
-}
-
-interface SectorResult {
-  product_category: string;
-  avg_uphold_rate: number | null;
-  avg_closure_rate?: number | null;
-  complaint_count?: number;
-}
-
-interface PerformerResult {
-  firm_name: string;
-  complaint_count: number;
-  avg_uphold_rate: number | null;
-  avg_closure_rate: number | null;
-}
-
-interface ConsumerCreditResult {
-  firm_name: string;
-  total_received: number;
-  total_closed: number;
-  avg_upheld_pct: number | null;
-  avg_closure_rate: number | null;
-  period_count: number;
-}
-
-interface FirmResult {
-  firm_name: string;
-}
-
-interface CategoryResult {
-  product_category: string;
-  complaint_count: number;
-  avg_uphold_rate: number | null;
-  avg_closure_rate: number | null;
-}
-
-interface HistoricalTrendResult {
-  firm_name: string;
-  reporting_period: string;
-  product_category: string;
-  upheld_rate: number | null;
-  closure_rate_3_days: number | null;
-  closure_rate_8_weeks: number | null;
-  trend_year: string;
-}
-
-interface IndustryTrendResult {
-  period: string;
-  avg_upheld_rate: number | null;
-  avg_closure_rate: number | null;
-  firm_count: number;
-  record_count: number;
-}
-
-// Safe conversion helpers
+// Helpers to coerce Postgres numerics (strings) into JS numbers
 function safeNumber(value: any, fallback = 0): number {
   if (value == null || value === '') return fallback;
   const n = typeof value === 'string' ? parseFloat(value) : Number(value);
@@ -94,369 +28,395 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
   try {
+    // 1) Parse filters
     const { searchParams } = new URL(request.url);
     const filters: FilterParams = {
-      years: searchParams.get('years')?.split(',').filter(Boolean) || [],
-      firms: searchParams.get('firms')?.split(',').filter(Boolean) || [],
+      years:    searchParams.get('years')?.split(',').filter(Boolean) || [],
+      firms:    searchParams.get('firms')?.split(',').filter(Boolean) || [],
       products: searchParams.get('products')?.split(',').filter(Boolean) || []
     };
 
-    // Build WHERE clause for staging table
-    const mainWhere = (() => {
-      const parts: string[] = ['1=1'];
-      if (filters.years.length) {
-        parts.push(`(${filters.years.map(y =>
-          `cms.reporting_period LIKE '%${y.replace(/'/g,"''")}%'`
-        ).join(' OR ')})`);
-      }
-      if (filters.firms.length) {
-        parts.push(`(${filters.firms.map(f =>
-          `cms.firm_name = '${f.replace(/'/g,"''")}'`
-        ).join(' OR ')})`);
-      }
-      if (filters.products.length) {
-        parts.push(`(${filters.products.map(p =>
-          `cms.product_category = '${p.replace(/'/g,"''")}'`
-        ).join(' OR ')})`);
-      }
-      return parts.join(' AND ');
-    })();
+    // 2) Build WHERE clause
+    const parts: string[] = ['1=1'];
+    if (filters.years.length) {
+      const yrs = filters.years
+        .map(y => `(rp.period_start LIKE '%${y.replace(/'/g,"''")}%' OR rp.period_end LIKE '%${y.replace(/'/g,"''")}%')`)
+        .join(' OR ');
+      parts.push(`(${yrs})`);
+    }
+    if (filters.firms.length) {
+      const fms = filters.firms
+        .map(f => `f.name = '${f.replace(/'/g,"''")}'`)
+        .join(' OR ');
+      parts.push(`(${fms})`);
+    }
+    if (filters.products.length) {
+      const pcs = filters.products
+        .map(p => `pc.name = '${p.replace(/'/g,"''")}'`)
+        .join(' OR ');
+      parts.push(`(${pcs})`);
+    }
+    const whereClause = parts.join(' AND ');
 
-    // Prepare containers
-    let kpis: KpisResult[] = [];
-    let upheld: UpheldResult[] = [];
-    let eightWeeks: EightWeeksResult[] = [];
-    let sectorUphold: SectorResult[] = [];
-    let sectorClosure: SectorResult[] = [];
-    let allSector: SectorResult[] = [];
-    let topPerformers: PerformerResult[] = [];
-    let productCategories: CategoryResult[] = [];
-    let industryComparison: PerformerResult[] = [];
-    let allFirms: FirmResult[] = [];
-    let consumerCredit: ConsumerCreditResult[] = [];
-    let historicalTrends: HistoricalTrendResult[] = [];
-    let industryTrends: IndustryTrendResult[] = [];
+    // 3) Prepare result buckets
+    let kpisResult: any[]           = [];
+    let overviewResult: any[]       = [];
+    let eightWeeksResult: any[]     = [];
+    let sectorUpholdResult: any[]   = [];
+    let sectorClosureResult: any[]  = [];
+    let allSectorResult: any[]      = [];
+    let topPerformersResult: any[]  = [];
+    let productCatResult: any[]     = [];
+    let industryCompResult: any[]   = [];
+    let allFirmsResult: any[]       = [];
+    let creditResult: any[]         = [];
+    let histTrendResult: any[]      = [];
+    let indTrendResult: any[]       = [];
 
-    // 1. KPIs
+    // 4.1 KPIs
     try {
       const q = `
         SELECT
-          COUNT(*)                        AS total_complaints,
-          COUNT(DISTINCT cms.firm_name)   AS total_firms,
-          AVG(cms.upheld_rate_pct)        AS avg_upheld_rate,
-          COUNT(*)                        AS total_rows
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
+          COUNT(*)                             AS total_complaints,
+          COUNT(DISTINCT f.name)              AS total_firms,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL)) AS avg_upheld_rate,
+          COUNT(*)                             AS total_rows
+        FROM complaint_metrics cm
+        JOIN firms f               ON cm.firm_id             = f.id
+        JOIN reporting_periods rp  ON cm.reporting_period_id = rp.id
+        JOIN product_categories pc ON cm.product_category_id  = pc.id
+        WHERE ${whereClause}
       `;
-      kpis = (await sql(q)) as KpisResult[];
+      kpisResult = await sql(q);
     } catch {
-      kpis = [{ total_complaints:0, total_firms:0, avg_upheld_rate:0, total_rows:0 }];
+      kpisResult = [{ total_complaints:0, total_firms:0, avg_upheld_rate:0, total_rows:0 }];
     }
 
-    // 2. Average upheld
-    try {
-      const q = `
-        SELECT AVG(cms.upheld_rate_pct) AS avg_percentage_upheld
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-      `;
-      upheld = (await sql(q)) as UpheldResult[];
-    } catch {
-      upheld = [{ avg_percentage_upheld: 0 }];
-    }
-
-    // 3. 8-weeks KPI
-    try {
-      const q = `
-        SELECT AVG(cms.closed_after_3_days_within_8_weeks_pct)
-               AS avg_closed_within_8_weeks
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-      `;
-      eightWeeks = (await sql(q)) as EightWeeksResult[];
-    } catch {
-      eightWeeks = [{ avg_closed_within_8_weeks: 0 }];
-    }
-
-    // 4. Sector uphold
+    // 4.2 Overview uphold %
     try {
       const q = `
         SELECT
-          cms.product_category     AS product_category,
-          AVG(cms.upheld_rate_pct) AS avg_uphold_rate
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-          AND cms.product_category IS NOT NULL
-        GROUP BY cms.product_category
-        ORDER BY cms.product_category
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL)) AS avg_percentage_upheld
+        FROM complaint_metrics cm
+        JOIN reporting_periods rp ON cm.reporting_period_id = rp.id
+        WHERE ${whereClause}
       `;
-      sectorUphold = (await sql(q)) as SectorResult[];
+      overviewResult = await sql(q);
     } catch {
-      sectorUphold = [];
+      overviewResult = [{ avg_percentage_upheld: 0 }];
     }
 
-    // 5. Sector closure
+    // 4.3 8-weeks KPI
     try {
       const q = `
         SELECT
-          cms.product_category           AS product_category,
-          AVG(cms.closed_within_3_days_pct) AS avg_closure_rate
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-          AND cms.product_category IS NOT NULL
-        GROUP BY cms.product_category
-        ORDER BY cms.product_category
+          AVG(CAST(cm.closed_after_3_days_within_8_weeks_pct AS DECIMAL)) AS avg_closed_within_8_weeks
+        FROM complaint_metrics cm
+        JOIN reporting_periods rp ON cm.reporting_period_id = rp.id
+        WHERE ${whereClause}
       `;
-      sectorClosure = (await sql(q)) as SectorResult[];
+      eightWeeksResult = await sql(q);
     } catch {
-      sectorClosure = [];
+      eightWeeksResult = [{ avg_closed_within_8_weeks: 0 }];
     }
 
-    // 6. All-sector averages
+    // 4.4 Sector uphold
     try {
       const q = `
         SELECT
-          cms.product_category     AS product_category,
-          AVG(cms.upheld_rate_pct) AS avg_uphold_rate,
-          COUNT(*)                 AS complaint_count
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-          AND cms.product_category IS NOT NULL
-        GROUP BY cms.product_category
-        ORDER BY cms.product_category
+          pc.name                                   AS product_category,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL))  AS avg_uphold_rate
+        FROM complaint_metrics cm
+        JOIN product_categories pc ON cm.product_category_id = pc.id
+        WHERE ${whereClause}
+        GROUP BY pc.name
+        ORDER BY pc.name
       `;
-      allSector = (await sql(q)) as SectorResult[];
+      sectorUpholdResult = await sql(q);
     } catch {
-      allSector = [];
+      sectorUpholdResult = [];
     }
 
-    // 7. Top performers
+    // 4.5 Sector closure
     try {
       const q = `
         SELECT
-          cms.firm_name                    AS firm_name,
-          COUNT(*)                         AS complaint_count,
-          AVG(cms.upheld_rate_pct)         AS avg_uphold_rate,
-          AVG(cms.closed_within_3_days_pct) AS avg_closure_rate
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-        GROUP BY cms.firm_name
-        HAVING COUNT(*) > 0
+          pc.name                                          AS product_category,
+          AVG(CAST(cm.closed_within_3_days_pct AS DECIMAL)) AS avg_closure_rate
+        FROM complaint_metrics cm
+        JOIN product_categories pc ON cm.product_category_id = pc.id
+        WHERE ${whereClause}
+        GROUP BY pc.name
+        ORDER BY pc.name
+      `;
+      sectorClosureResult = await sql(q);
+    } catch {
+      sectorClosureResult = [];
+    }
+
+    // 4.6 All-sector averages
+    try {
+      const q = `
+        SELECT
+          pc.name                                   AS product_category,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL))  AS avg_upheld_rate,
+          COUNT(*)                                  AS complaint_count
+        FROM complaint_metrics cm
+        JOIN product_categories pc ON cm.product_category_id = pc.id
+        WHERE ${whereClause}
+        GROUP BY pc.name
+        ORDER BY pc.name
+      `;
+      allSectorResult = await sql(q);
+    } catch {
+      allSectorResult = [];
+    }
+
+    // 4.7 Top performers
+    try {
+      const q = `
+        SELECT
+          f.name                                    AS firm_name,
+          COUNT(*)                                  AS complaint_count,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL))     AS avg_uphold_rate,
+          AVG(CAST(cm.closed_within_3_days_pct AS DECIMAL)) AS avg_closure_rate
+        FROM complaint_metrics cm
+        JOIN firms f ON cm.firm_id = f.id
+        WHERE ${whereClause}
+        GROUP BY f.name
         ORDER BY avg_upheld_rate ASC
         LIMIT 50
       `;
-      topPerformers = (await sql(q)) as PerformerResult[];
+      topPerformersResult = await sql(q);
     } catch {
-      topPerformers = [];
+      topPerformersResult = [];
     }
 
-    // 8. Product categories distribution
+    // 4.8 Product categories
     try {
       const q = `
         SELECT
-          cms.product_category           AS product_category,
-          COUNT(*)                       AS complaint_count,
-          AVG(cms.upheld_rate_pct)       AS avg_uphold_rate,
-          AVG(cms.closed_within_3_days_pct) AS avg_closure_rate
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-          AND cms.product_category IS NOT NULL
-        GROUP BY cms.product_category
+          pc.name                                          AS category_name,
+          COUNT(*)                                         AS complaint_count,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL))         AS avg_uphold_rate,
+          AVG(CAST(cm.closed_within_3_days_pct AS DECIMAL)) AS avg_closure_rate
+        FROM complaint_metrics cm
+        JOIN product_categories pc ON cm.product_category_id = pc.id
+        WHERE ${whereClause}
+        GROUP BY pc.name
         ORDER BY complaint_count DESC
       `;
-      productCategories = (await sql(q)) as CategoryResult[];
+      productCatResult = await sql(q);
     } catch {
-      productCategories = [];
+      productCatResult = [];
     }
 
-    // 9. Industry comparison
+    // 4.9 Industry comparison
     try {
       const q = `
         SELECT
-          cms.firm_name                    AS firm_name,
-          COUNT(*)                         AS complaint_count,
-          AVG(cms.upheld_rate_pct)         AS avg_uphold_rate,
-          AVG(cms.closed_within_3_days_pct) AS avg_closure_rate
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-        GROUP BY cms.firm_name
-        ORDER BY cms.firm_name ASC
-      `;
-      industryComparison = (await sql(q)) as PerformerResult[];
-    } catch {
-      industryComparison = [];
-    }
-
-    // 10. All firms
-    try {
-      const q = `
-        SELECT DISTINCT cms.firm_name AS firm_name
-        FROM complaint_metrics_staging cms
-        WHERE cms.firm_name IS NOT NULL
-          AND cms.firm_name != ''
-        ORDER BY cms.firm_name ASC
-      `;
-      allFirms = (await sql(q)) as FirmResult[];
-    } catch {
-      allFirms = [];
-    }
-
-    // 11. Consumer credit (unchanged)
-    try {
-      const q = `
-        SELECT 
-          f.name AS firm_name,
-          SUM(cc.complaints_received) AS total_received,
-          SUM(cc.complaints_closed)   AS total_closed,
-          ROUND(AVG(cc.complaints_upheld_pct), 2)   AS avg_upheld_pct,
-          ROUND(
-            (SUM(cc.complaints_closed)::decimal / 
-             NULLIF(SUM(cc.complaints_received), 0)) * 100, 
-          2) AS avg_closure_rate,
-          COUNT(*) AS period_count
-        FROM consumer_credit_metrics cc
-        JOIN firms f ON cc.firm_id = f.id
-        JOIN reporting_periods rp ON cc.reporting_period_id = rp.id
-        WHERE 1=1
+          f.name                                    AS firm_name,
+          COUNT(*)                                  AS complaint_count,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL))     AS avg_uphold_rate,
+          AVG(CAST(cm.closed_within_3_days_pct AS DECIMAL)) AS avg_closure_rate
+        FROM complaint_metrics cm
+        JOIN firms f ON cm.firm_id = f.id
+        WHERE ${whereClause}
         GROUP BY f.name
-        HAVING SUM(cc.complaints_received) > 0
+        ORDER BY f.name ASC
+      `;
+      industryCompResult = await sql(q);
+    } catch {
+      industryCompResult = [];
+    }
+
+    // 4.10 All firms
+    try {
+      const q = `
+        SELECT DISTINCT f.name AS firm_name
+        FROM complaint_metrics cm
+        JOIN firms f ON cm.firm_id = f.id
+        WHERE ${whereClause}
+        ORDER BY f.name ASC
+      `;
+      allFirmsResult = await sql(q);
+    } catch {
+      allFirmsResult = [];
+    }
+
+    // 4.11 Consumer credit
+    try {
+      const ccParts: string[] = ['1=1'];
+      if (filters.years.length) {
+        const yrs = filters.years
+          .map(y => `(rp.period_start LIKE '%${y.replace(/'/g,"''")}%' OR rp.period_end LIKE '%${y.replace(/'/g,"''")}%')`)
+          .join(' OR ');
+        ccParts.push(`(${yrs})`);
+      }
+      if (filters.firms.length) {
+        const fms = filters.firms
+          .map(f => `f.name = '${f.replace(/'/g,"''")}'`)
+          .join(' OR ');
+        ccParts.push(`(${fms})`);
+      }
+      const ccWhere = ccParts.join(' AND ');
+
+      const q = `
+        SELECT
+          f.name                                         AS firm_name,
+          SUM(cc.complaints_received)                    AS total_received,
+          SUM(cc.complaints_closed)                      AS total_closed,
+          ROUND(AVG(cc.complaints_upheld_pct),2)         AS avg_upheld_pct,
+          ROUND(
+            (SUM(cc.complaints_closed)::decimal
+             / NULLIF(SUM(cc.complaints_received),0))
+            *100,2
+          )                                              AS avg_closure_rate,
+          COUNT(*)                                       AS period_count
+        FROM consumer_credit_metrics cc
+        JOIN firms f               ON cc.firm_id             = f.id
+        JOIN reporting_periods rp  ON cc.reporting_period_id = rp.id
+        WHERE ${ccWhere}
+        GROUP BY f.name
+        HAVING SUM(cc.complaints_received)>0
         ORDER BY total_received DESC
       `;
-      consumerCredit = (await sql(q)) as ConsumerCreditResult[];
+      creditResult = await sql(q);
     } catch {
-      consumerCredit = [];
+      creditResult = [];
     }
 
-    // 12. Historical trends
+    // 4.12 Historical trends
     try {
       const q = `
         SELECT
-          cms.firm_name                               AS firm_name,
-          cms.reporting_period                        AS reporting_period,
-          cms.product_category                        AS product_category,
-          cms.upheld_rate_pct                         AS upheld_rate,
-          cms.closed_within_3_days_pct                AS closure_rate_3_days,
-          cms.closed_after_3_days_within_8_weeks_pct  AS closure_rate_8_weeks,
+          cm.firm_name,
+          cm.reporting_period,
+          cm.product_category,
+          CAST(cm.upheld_rate_pct           AS DECIMAL) AS upheld_rate,
+          CAST(cm.closed_within_3_days_pct  AS DECIMAL) AS closure_rate_3_days,
+          CAST(cm.closed_after_3_days_within_8_weeks_pct AS DECIMAL) AS closure_rate_8_weeks,
           CASE
-            WHEN cms.reporting_period LIKE '%2020%' THEN '2020'
-            WHEN cms.reporting_period LIKE '%2021%' THEN '2021'
-            WHEN cms.reporting_period LIKE '%2022%' THEN '2022'
-            WHEN cms.reporting_period LIKE '%2023%' THEN '2023'
-            WHEN cms.reporting_period LIKE '%2024%' THEN '2024'
-            WHEN cms.reporting_period LIKE '%2025%' THEN '2025'
+            WHEN cm.reporting_period LIKE '%2020%' THEN '2020'
+            WHEN cm.reporting_period LIKE '%2021%' THEN '2021'
+            WHEN cm.reporting_period LIKE '%2022%' THEN '2022'
+            WHEN cm.reporting_period LIKE '%2023%' THEN '2023'
+            WHEN cm.reporting_period LIKE '%2024%' THEN '2024'
             ELSE 'Unknown'
           END AS trend_year
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-          AND cms.reporting_period IS NOT NULL
-        ORDER BY cms.firm_name, cms.reporting_period
+        FROM complaint_metrics cm
+        WHERE ${whereClause}
+          AND cm.upheld_rate_pct IS NOT NULL
+        ORDER BY cm.firm_name, cm.reporting_period
         LIMIT 1000
       `;
-      historicalTrends = (await sql(q)) as HistoricalTrendResult[];
+      histTrendResult = await sql(q);
     } catch {
-      historicalTrends = [];
+      histTrendResult = [];
     }
 
-    // 13. Industry trends
+    // 4.13 Industry trends
     try {
       const q = `
         SELECT
           CASE
-            WHEN cms.reporting_period LIKE '%2020%' THEN '2020'
-            WHEN cms.reporting_period LIKE '%2021%' THEN '2021'
-            WHEN cms.reporting_period LIKE '%2022%' THEN '2022'
-            WHEN cms.reporting_period LIKE '%2023%' THEN '2023'
-            WHEN cms.reporting_period LIKE '%2024%' THEN '2024'
-            WHEN cms.reporting_period LIKE '%2025%' THEN '2025'
+            WHEN cm.reporting_period LIKE '%2020%' THEN '2020'
+            WHEN cm.reporting_period LIKE '%2021%' THEN '2021'
+            WHEN cm.reporting_period LIKE '%2022%' THEN '2022'
+            WHEN cm.reporting_period LIKE '%2023%' THEN '2023'
+            WHEN cm.reporting_period LIKE '%2024%' THEN '2024'
             ELSE 'Unknown'
-          END AS period,
-          AVG(cms.upheld_rate_pct)              AS avg_upheld_rate,
-          AVG(cms.closed_within_3_days_pct)     AS avg_closure_rate,
-          COUNT(DISTINCT cms.firm_name)         AS firm_count,
-          COUNT(*)                              AS record_count
-        FROM complaint_metrics_staging cms
-        WHERE ${mainWhere}
-          AND cms.reporting_period IS NOT NULL
+          END                                         AS period,
+          AVG(CAST(cm.upheld_rate_pct AS DECIMAL))     AS avg_upheld_rate,
+          AVG(CAST(cm.closed_within_3_days_pct AS DECIMAL)) AS avg_closure_rate,
+          COUNT(DISTINCT cm.firm_name)                 AS firm_count,
+          COUNT(*)                                     AS record_count
+        FROM complaint_metrics cm
+        WHERE ${whereClause}
+          AND cm.upheld_rate_pct IS NOT NULL
         GROUP BY period
         HAVING period != 'Unknown'
         ORDER BY period DESC
       `;
-      industryTrends = (await sql(q)) as IndustryTrendResult[];
+      indTrendResult = await sql(q);
     } catch {
-      industryTrends = [];
+      indTrendResult = [];
     }
 
-    // Build response
-    const base = kpis[0] || { total_complaints:0, total_firms:0, avg_upheld_rate:0, total_rows:0 };
-    const response = {
-      success: true,
+    // 5) Build final JSON response
+    const base = kpisResult[0] || { total_complaints:0, total_firms:0, avg_upheld_rate:0, total_rows:0 };
+    const json = {
+      success: true as const,
       filters,
       data: {
         kpis: {
-          total_complaints: base.total_complaints,
-          total_closed:     base.total_complaints,
-          total_firms:      base.total_firms,
-          avg_upheld_rate:  base.avg_upheld_rate ?? 0,
-          total_rows:       base.total_rows,
-          avg_percentage_upheld: upheld[0]?.avg_percentage_upheld ?? 0,
-          avg_closed_within_8_weeks: eightWeeks[0]?.avg_closed_within_8_weeks ?? 0,
-          sector_uphold_averages: sectorUphold.reduce((a,r)=>{a[r.product_category]=r.avg_uphold_rate??0;return a;},{ } as Record<string,number>),
-          sector_closure_averages: sectorClosure.reduce((a,r)=>{a[r.product_category]=r.avg_closure_rate??0;return a;},{ } as Record<string,number>),
-          all_sector_averages: allSector.reduce((a,r)=>{a[r.product_category]={uphold_rate:r.avg_uphold_rate??0,complaint_count:r.complaint_count??0};return a;},{ } as Record<string,{uphold_rate:number,complaint_count:number}>),
+          total_complaints:         safeInt(base.total_complaints),
+          total_closed:             safeInt(base.total_complaints),
+          total_firms:              safeInt(base.total_firms),
+          avg_upheld_rate:          safeNumber(base.avg_upheld_rate),
+          total_rows:               safeInt(base.total_rows),
+          avg_percentage_upheld:    safeNumber(overviewResult[0]?.avg_percentage_upheld),
+          avg_closed_within_8_weeks:safeNumber(eightWeeksResult[0]?.avg_closed_within_8_weeks),
         },
-        topPerformers: topPerformers.map(r=>({
-          firm_name:r.firm_name, complaint_count:r.complaint_count,
-          avg_uphold_rate:r.avg_uphold_rate??0, avg_closure_rate:r.avg_closure_rate??0
-        })),
-        consumerCredit: consumerCredit.map(r=>({
-          firm_name:r.firm_name, total_received:r.total_received, total_closed:r.total_closed,
-          avg_upheld_pct:r.avg_upheld_pct??0, avg_closure_rate:r.avg_closure_rate??0,
-          period_count:r.period_count
-        })),
-        productCategories: productCategories.map(r=>({
-          category_name:r.product_category, complaint_count:r.complaint_count,
-          avg_uphold_rate:r.avg_uphold_rate??0, avg_closure_rate:r.avg_closure_rate??0
-        })),
-        industryComparison: industryComparison.map(r=>({
-          firm_name:r.firm_name, complaint_count:r.complaint_count,
-          avg_uphold_rate:r.avg_uphold_rate??0, avg_closure_rate:r.avg_closure_rate??0
-        })),
-        allFirms: allFirms.map(r=>({firm_name:r.firm_name})),
-        historicalTrends: historicalTrends.map(r=>({
-          firm_name:r.firm_name, reporting_period:r.reporting_period,
-          product_category:r.product_category, upheld_rate:r.upheld_rate??0,
-          closure_rate_3_days:r.closure_rate_3_days??0,
-          closure_rate_8_weeks:r.closure_rate_8_weeks??0,
-          trend_year:r.trend_year
-        })),
-        industryTrends: industryTrends.map(r=>({
-          period:r.period, avg_upheld_rate:r.avg_upheld_rate??0,
-          avg_closure_rate:r.avg_closure_rate??0, firm_count:r.firm_count,
-          record_count:r.record_count
-        }))
+        sector_uphold_averages: sectorUpholdResult .reduce((o,r)=>(o[r.product_category]=safeNumber(r.avg_uphold_rate),o),{} as Record<string,number>),
+        sector_closure_averages: sectorClosureResult.reduce((o,r)=>(o[r.product_category]=safeNumber(r.avg_closure_rate),o),{} as Record<string,number>),
+        all_sector_averages:     allSectorResult   .reduce((o,r)=>(o[r.product_category]={uphold_rate:safeNumber(r.avg_upheld_rate),complaint_count:safeInt(r.complaint_count)},o),{} as Record<string,{uphold_rate:number,complaint_count:number}>),
+        topPerformers:           topPerformersResult.map(r=>({
+                                   firm_name:       r.firm_name,
+                                   complaint_count: safeInt(r.complaint_count),
+                                   avg_uphold_rate: safeNumber(r.avg_uphold_rate),
+                                   avg_closure_rate:safeNumber(r.avg_closure_rate)
+                                 })),
+        productCategories:       productCatResult .map(r=>({
+                                   category_name:   r.category_name,
+                                   complaint_count: safeInt(r.complaint_count),
+                                   avg_uphold_rate: safeNumber(r.avg_uphold_rate),
+                                   avg_closure_rate:safeNumber(r.avg_closure_rate)
+                                 })),
+        industryComparison:      industryCompResult.map(r=>({
+                                   firm_name:       r.firm_name,
+                                   complaint_count: safeInt(r.complaint_count),
+                                   avg_upheld_rate: safeNumber(r.avg_upheld_rate),
+                                   avg_closure_rate:safeNumber(r.avg_closure_rate)
+                                 })),
+        allFirms:                allFirmsResult   .map(r=>({ firm_name:r.firm_name })),
+        consumerCredit:          creditResult     .map(r=>({
+                                   firm_name:        r.firm_name,
+                                   total_received:   safeInt(r.total_received),
+                                   total_closed:     safeInt(r.total_closed),
+                                   avg_upheld_pct:   safeNumber(r.avg_upheld_pct),
+                                   avg_closure_rate: safeNumber(r.avg_closure_rate),
+                                   period_count:     safeInt(r.period_count)
+                                 })),
+        historicalTrends:        histTrendResult  .map(r=>({
+                                   firm_name:           r.firm_name,
+                                   reporting_period:    r.reporting_period,
+                                   product_category:    r.product_category,
+                                   upheld_rate:         safeNumber(r.upheld_rate),
+                                   closure_rate_3_days: safeNumber(r.closure_rate_3_days),
+                                   closure_rate_8_weeks:safeNumber(r.closure_rate_8_weeks),
+                                   trend_year:          r.trend_year
+                                 })),
+        industryTrends:          indTrendResult   .map(r=>({
+                                   period:            r.period,
+                                   avg_upheld_rate:   safeNumber(r.avg_upheld_rate),
+                                   avg_closure_rate:  safeNumber(r.avg_closure_rate),
+                                   firm_count:        safeInt(r.firm_count),
+                                   record_count:      safeInt(r.record_count)
+                                 }))
       },
       debug: {
         appliedFilters: filters,
-        executionTime: `${Date.now()-startTime}ms`,
-        dataSource: 'Neon PostgreSQL – staging',
-        queryCounts: {
-          kpis:kpis.length, topPerformers:topPerformers.length,
-          consumerCredit:consumerCredit.length,
-          productCategories:productCategories.length,
-          industryComparison:industryComparison.length,
-          allFirms:allFirms.length, sectorUphold:sectorUphold.length,
-          sectorClosure:sectorClosure.length,
-          allSectorAverages:allSector.length,
-          historicalTrends:historicalTrends.length,
-          industryTrends:industryTrends.length
-        }
+        executionTime:   `${Date.now() - startTime}ms`,
+        dataSource:      'Neon PostgreSQL – production'
       }
     };
 
-    return NextResponse.json(response);
-  } catch (err) {
+    return NextResponse.json(json);
+  } catch (error) {
+    console.error('❌ Dashboard API Error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch data', details: err instanceof Error ? err.message : String(err) },
+      { success: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -466,7 +426,7 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin':  '*',
       'Access-Control-Allow-Methods': 'GET,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type'
     }
