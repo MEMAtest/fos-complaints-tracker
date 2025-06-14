@@ -52,7 +52,7 @@ export function calculateTrend(
   }
 
   // Sort by year to ensure chronological order
-  const sortedPoints = [...dataPoints].sort((a, b) => a.year.localeCompare(b.year));
+  const sortedPoints = [...dataPoints].sort((a, b) => (a.year || "").localeCompare(b.year || ""));
   
   const firstValue = sortedPoints[0].value;
   const lastValue = sortedPoints[sortedPoints.length - 1].value;
