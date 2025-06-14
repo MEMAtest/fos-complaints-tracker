@@ -2104,3 +2104,103 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
     </div>
   );
 }
+// ✅ NUCLEAR CHART SOLUTION - Auto-add canvas IDs and create charts
+useEffect(() => {
+  // Add IDs to canvas elements
+  const canvases = document.querySelectorAll('canvas');
+  if (canvases.length >= 2) {
+    canvases[0].id = 'bestPerformersChart';
+    canvases[1].id = 'worstPerformersChart';
+    console.log('✅ Canvas IDs added');
+  }
+}, []);
+
+useEffect(() => {
+  if (!data || activeTab !== 'overview') return;
+
+  console.log('🚨 NUCLEAR CHART CREATION');
+  
+  const createChartsForce = () => {
+    const Chart = (window as any).Chart;
+    if (!Chart) {
+      console.error('Chart.js not loaded');
+      return;
+    }
+
+    const performers = data?.topPerformers || [];
+    const validPerformers = performers.filter(p => 
+      p?.firm_name && typeof p.firm_name === 'string' && typeof p.avg_uphold_rate === 'number'
+    );
+
+    if (validPerformers.length === 0) {
+      console.error('No valid performers');
+      return;
+    }
+
+    const bestPerformers = validPerformers
+      .sort((a, b) => a.avg_uphold_rate - b.avg_uphold_rate)
+      .slice(0, 5);
+
+    // Create best performers chart
+    const canvas1 = document.getElementById('bestPerformersChart');
+    if (canvas1) {
+      const ctx = canvas1.getContext('2d');
+      ctx.clearRect(0, 0, canvas1.width, canvas1.height);
+      
+      new Chart(canvas1, {
+        type: 'bar',
+        data: {
+          labels: bestPerformers.map(f => f.firm_name.substring(0, 15)),
+          datasets: [{
+            label: 'Uphold Rate (%)',
+            data: bestPerformers.map(f => f.avg_uphold_rate),
+            backgroundColor: '#10b981'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: { display: true, text: 'Best Performers (Lowest Uphold Rates)' }
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+      console.log('✅ Best performers chart created');
+    }
+
+    // Create worst performers chart
+    const worstPerformers = validPerformers
+      .sort((a, b) => b.avg_uphold_rate - a.avg_uphold_rate)
+      .slice(0, 5);
+
+    const canvas2 = document.getElementById('worstPerformersChart');
+    if (canvas2) {
+      const ctx = canvas2.getContext('2d');
+      ctx.clearRect(0, 0, canvas2.width, canvas2.height);
+      
+      new Chart(canvas2, {
+        type: 'bar',
+        data: {
+          labels: worstPerformers.map(f => f.firm_name.substring(0, 15)),
+          datasets: [{
+            label: 'Uphold Rate (%)',
+            data: worstPerformers.map(f => f.avg_uphold_rate),
+            backgroundColor: '#ef4444'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: { display: true, text: 'Worst Performers (Highest Uphold Rates)' }
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+      console.log('✅ Worst performers chart created');
+    }
+  };
+
+  setTimeout(createChartsForce, 3000);
+}, [data, activeTab]);
