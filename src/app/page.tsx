@@ -239,7 +239,7 @@ useEffect(() => {
     setTimeout(() => {
       if (data) {
         console.log('📊 Chart.js ready, triggering chart creation...');
-        setCharts({}); // This will trigger the chart creation useEffect
+        setCharts({}); console.log("Charts cleared"); // This will trigger the chart creation useEffect
       }
     }, 150);
   };
@@ -438,7 +438,7 @@ useEffect(() => {
     Object.entries(charts).forEach(([key, chart]) => {
       if (chart && typeof chart.destroy === 'function') {
         try {
-          chart.destroy();
+          try { chart.destroy(); console.log("Chart destroyed"); } catch(e) { console.warn("Chart destroy failed:", e); }
         } catch (error) {
           console.warn(`Warning: Could not destroy chart ${key}:`, error);
         }
@@ -446,7 +446,7 @@ useEffect(() => {
     });
     
     // Clear charts state
-    setCharts({});
+    setCharts({}); console.log("Charts cleared");
 
     // Add delay and create charts based on active tab
     const timeoutId = setTimeout(() => {
@@ -463,7 +463,7 @@ useEffect(() => {
       } catch (error) {
         console.error('❌ Error creating charts:', error);
       }
-    }, 200); // Longer delay for stability
+    }, 1000); // Longer delay for stability
 
     return () => clearTimeout(timeoutId);
   } else {
