@@ -321,7 +321,7 @@ useEffect(() => {
   p?.firm_name &&
   p.avg_uphold_rate !== undefined && 
   p.avg_uphold_rate !== null && 
-  p.avg_uphold_rate > 0
+  p.avg_uphold_rate >= 0
 );
     
     return validPerformers
@@ -340,7 +340,7 @@ useEffect(() => {
   p?.firm_name &&
   p.avg_uphold_rate !== undefined && 
   p.avg_uphold_rate !== null && 
-  p.avg_uphold_rate > 0
+  p.avg_uphold_rate >= 0
 );
     
     return validPerformers
