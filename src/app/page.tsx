@@ -2103,4 +2103,4 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
       </div>
     </div>
   );
-}
+}// Build trigger
