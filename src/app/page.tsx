@@ -179,7 +179,7 @@ export default function Dashboard() {
       let categoryData: any[] = [];
       if (Array.isArray(apiData.data.productCategories)) {
         categoryData = apiData.data.productCategories
-          .filter(item => item && typeof item === 'object' && (item.category_name || item.product_category))
+          .filter((item: any) => item && typeof item === 'object' && (item.category_name || item.product_category))
           .map((item: any) => ({
             category_name: String(item.category_name || item.product_category || 'Unknown Category'),
             complaint_count: safeInt(item.complaint_count),
@@ -234,20 +234,15 @@ export default function Dashboard() {
   const volumeChartRef = useRef<HTMLCanvasElement>(null);
   const upheldChartRef = useRef<HTMLCanvasElement>(null);
 
-  // ✅ Get actual product names from API debug data
-  const availableProducts = useMemo(() => {
-    if (apiData?.debug?.actualProductCategories) {
-      return apiData.debug.actualProductCategories.map((item: any) => item.product_category);
-    }
-    // Fallback to default names
-    return [
-      'Banking and credit cards',
-      'Insurance & protection',
-      'Home finance',
-      'Decumulation & pensions', 
-      'Investments'
-    ];
-  }, [apiData?.debug?.actualProductCategories]);
+  
+  // ✅ Available products
+  const availableProducts = [
+    'Banking and credit cards',
+    'Insurance & protection',
+    'Home finance',
+    'Decumulation & pensions', 
+    'Investments'
+  ];;
 
   const [availableYears] = useState(['2020', '2021', '2022', '2023', '2024', '2025']);
 
@@ -1168,20 +1163,6 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-              
-              {/* ✅ DEBUG: Show actual vs expected product categories */}
-              {apiData?.debug?.actualProductCategories && (
-                <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <p className="text-sm font-medium text-yellow-800 mb-2">🔧 Actual Product Categories in Database:</p>
-                  <div className="text-xs text-yellow-700 space-x-2">
-                    {apiData.debug.actualProductCategories.map((cat: any) => (
-                      <span key={cat.product_category} className="inline-block bg-white px-2 py-1 rounded">
-                        "{cat.product_category}" ({cat.count} complaints)
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* KPI Cards - REMOVED Total Complaints */}

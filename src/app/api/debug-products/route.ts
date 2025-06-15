@@ -16,7 +16,7 @@ export async function GET() {
         product_category,
         COUNT(*) as complaint_count,
         COUNT(DISTINCT firm_name) as firm_count,
-        ROUND(AVG(CAST(REPLACE(upheld_rate_pct, '%', '') AS NUMERIC)), 2) as avg_uphold_rate
+        ROUND(AVG(upheld_rate_pct), 2) as avg_uphold_rate
       FROM complaint_metrics_staging 
       WHERE product_category IS NOT NULL 
         AND product_category != ''
@@ -26,8 +26,8 @@ export async function GET() {
     
     const stagingResults = await sql(stagingQuery);
     
-    // Also check if there's a separate product_categories table
-    let separateTableResults = [];
+    // ✅ FIXED: Explicit type annotation
+    let separateTableResults: any[] = [];
     try {
       const separateQuery = `
         SELECT * FROM product_categories 
@@ -43,8 +43,7 @@ export async function GET() {
       SELECT column_name, data_type
       FROM information_schema.columns 
       WHERE table_name = 'complaint_metrics_staging'
-        AND column_name LIKE '%product%'
-        OR column_name LIKE '%category%'
+        AND (column_name LIKE '%product%' OR column_name LIKE '%category%')
       ORDER BY column_name
     `;
     
