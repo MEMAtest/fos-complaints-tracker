@@ -2101,3 +2101,9 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
     </div>
   );
 }
+        </p>
+      </div>
+    </div>
+  </div>
+);
+}
