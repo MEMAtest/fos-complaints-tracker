@@ -2098,9 +2098,6 @@ setCharts((prev: ChartInstances) => ({ ...prev, ...newCharts }));
           </h3>
           <p className="text-sm text-gray-600 leading-relaxed">
             <em>Our complaints dashboard offers a comprehensive view of customer feedback, specifically focusing on complaints reported to the Financial Conduct Authority (FCA). Updated every April and October, it presents both firm-specific data for companies reporting 500 or more complaints biannually (or 1,000+ annually) and aggregate market-level insights. These larger firms are mandated to publish their complaint data, which collectively accounts for approximately 98% of all complaints reported to the FCA. Firms with fewer than 500 complaints provide less detailed information.</em>
-          </p>
-        </div>
-      </div>
     </div>
   );
-}// Build trigger
+}
