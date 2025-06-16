@@ -35,6 +35,7 @@ interface DashboardData {
     total_firms?: number;
     avg_percentage_upheld?: number;
     avg_closed_within_8_weeks?: number;
+    avg_closed_within_3_days?: number; // ✅ NEW: Added 3-day closure rate
     sector_uphold_averages?: {[key: string]: number};
     sector_closure_averages?: {[key: string]: number};
     all_sector_averages?: {[key: string]: {uphold_rate: number, complaint_count: number}};
@@ -74,6 +75,232 @@ interface CreditFilters {
   selectedFirms: string[];
 }
 
+interface PerformanceAlert {
+  firmName: string;
+  metric: 'uphold_rate' | 'closure_rate';
+  change: number;
+  direction: 'up' | 'down';
+  significance: 'high' | 'medium' | 'low';
+  currentValue: number;
+  previousValue: number;
+}
+
+// ✅ InfoTooltip Component
+const InfoTooltip = ({ text }: { text: string }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
+  return (
+    <div className="relative inline-block ml-2">
+      <button
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className="text-gray-400 hover:text-gray-600 transition-colors"
+      >
+        ℹ️
+      </button>
+      {showTooltip && (
+        <div className="absolute z-10 w-64 p-2 bg-gray-800 text-white text-sm rounded-lg shadow-lg -top-2 left-6">
+          {text}
+          <div className="absolute top-2 -left-1 w-2 h-2 bg-gray-800 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅ Two-Firm Comparison Component
+const TwoFirmComparison = ({ 
+  firmA, 
+  firmB, 
+  onClose,
+  firmAData,
+  firmBData,
+  formatPercentage,
+  formatNumber
+}: { 
+  firmA: string; 
+  firmB: string; 
+  onClose: () => void;
+  firmAData: any;
+  firmBData: any;
+  formatPercentage: (num: number | undefined | null) => string;
+  formatNumber: (num: number | undefined | null) => string;
+}) => {
+  const comparisonChartRef = useRef<HTMLCanvasElement>(null);
+  
+  // Create comparison chart
+  useEffect(() => {
+    if (!comparisonChartRef.current || !firmAData || !firmBData || !(window as any).Chart) return;
+    
+    const Chart = (window as any).Chart;
+    
+    const chart = new Chart(comparisonChartRef.current, {
+      type: 'radar',
+      data: {
+        labels: ['Performance Score', 'Resolution Rate', 'Complaint Volume (Scaled)'],
+        datasets: [{
+          label: firmA.substring(0, 20),
+          data: [
+            100 - (firmAData.avg_uphold_rate || 0), // Invert for radar (higher=better)
+            firmAData.avg_closure_rate || 0,
+            Math.min((firmAData.complaint_count || 0) / 10, 100) // Scale for visualization
+          ],
+          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+          borderColor: 'rgb(59, 130, 246)',
+          borderWidth: 2
+        }, {
+          label: firmB.substring(0, 20),
+          data: [
+            100 - (firmBData.avg_uphold_rate || 0),
+            firmBData.avg_closure_rate || 0,
+            Math.min((firmBData.complaint_count || 0) / 10, 100)
+          ],
+          backgroundColor: 'rgba(239, 68, 68, 0.2)',
+          borderColor: 'rgb(239, 68, 68)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          r: {
+            beginAtZero: true,
+            max: 100
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'bottom'
+          }
+        }
+      }
+    });
+    
+    return () => chart.destroy();
+  }, [firmA, firmB, firmAData, firmBData]);
+  
+  // Generate executive summary
+  const generateExecutiveSummary = () => {
+    if (!firmAData || !firmBData) return [];
+    
+    const summary = [];
+    const upholdDiff = (firmAData.avg_uphold_rate || 0) - (firmBData.avg_uphold_rate || 0);
+    const closureDiff = (firmAData.avg_closure_rate || 0) - (firmBData.avg_closure_rate || 0);
+    
+    if (Math.abs(upholdDiff) > 5) {
+      const betterFirm = upholdDiff < 0 ? firmA : firmB;
+      const worseFirm = upholdDiff < 0 ? firmB : firmA;
+      summary.push(`${betterFirm} has significantly lower complaint uphold rates than ${worseFirm} (${Math.abs(upholdDiff).toFixed(1)}% difference).`);
+    }
+    
+    if (Math.abs(closureDiff) > 10) {
+      const fasterFirm = closureDiff > 0 ? firmA : firmB;
+      const slowerFirm = closureDiff > 0 ? firmB : firmA;
+      summary.push(`${fasterFirm} resolves complaints ${Math.abs(closureDiff).toFixed(1)}% faster than ${slowerFirm}.`);
+    }
+    
+    if (summary.length === 0) {
+      summary.push('Both firms show similar performance patterns across key metrics.');
+    }
+    
+    return summary;
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-screen overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">
+              ⚖️ Firm Comparison: {firmA.substring(0, 20)} vs {firmB.substring(0, 20)}
+            </h2>
+            <button 
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+            >
+              ×
+            </button>
+          </div>
+          
+          {/* Key Metrics Comparison Table */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 Key Metrics Comparison</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full border border-gray-200 rounded-lg">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Metric</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-blue-600">{firmA.substring(0, 25)}</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-red-600">{firmB.substring(0, 25)}</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-900">Difference</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  <tr>
+                    <td className="px-4 py-3 text-sm text-gray-900">Uphold Rate</td>
+                    <td className="px-4 py-3 text-center text-sm font-medium text-blue-600">
+                      {formatPercentage(firmAData?.avg_uphold_rate)}
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm font-medium text-red-600">
+                      {formatPercentage(firmBData?.avg_uphold_rate)}
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm">
+                      {firmAData && firmBData ? 
+                        `${((firmAData.avg_uphold_rate || 0) - (firmBData.avg_uphold_rate || 0)) > 0 ? '+' : ''}${((firmAData.avg_uphold_rate || 0) - (firmBData.avg_uphold_rate || 0)).toFixed(1)}%` 
+                        : 'N/A'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm text-gray-900">Resolution Rate</td>
+                    <td className="px-4 py-3 text-center text-sm font-medium text-blue-600">
+                      {formatPercentage(firmAData?.avg_closure_rate)}
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm font-medium text-red-600">
+                      {formatPercentage(firmBData?.avg_closure_rate)}
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm">
+                      {firmAData && firmBData ? 
+                        `${((firmAData.avg_closure_rate || 0) - (firmBData.avg_closure_rate || 0)) > 0 ? '+' : ''}${((firmAData.avg_closure_rate || 0) - (firmBData.avg_closure_rate || 0)).toFixed(1)}%` 
+                        : 'N/A'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          {/* Radar Chart Comparison */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">🎯 Performance Radar</h3>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="h-80">
+                <canvas ref={comparisonChartRef}></canvas>
+              </div>
+            </div>
+          </div>
+          
+          {/* Executive Summary */}
+          <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              📋 Executive Summary
+              <InfoTooltip text="Key insights and recommendations based on the performance comparison between the selected firms." />
+            </h3>
+            <ul className="space-y-2">
+              {generateExecutiveSummary().map((point, index) => (
+                <li key={index} className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  <span className="text-sm text-gray-700">{point}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const { filters, updateFilter, clearAllFilters, hasActiveFilters } = useFilters();
   const { data: apiData, loading, error, fetchData } = useDashboardData();
@@ -97,7 +324,11 @@ export default function Dashboard() {
   const [showMultiFirmComparison, setShowMultiFirmComparison] = useState(false);
   const [processedTrends, setProcessedTrends] = useState<any>(null);
   
-  // ✅ FIXED: Chart state with proper initialization
+  // ✅ Two-firm comparison state
+  const [showTwoFirmComparison, setShowTwoFirmComparison] = useState(false);
+  const [comparisonFirms, setComparisonFirms] = useState<{firmA: string, firmB: string}>({firmA: '', firmB: ''});
+  
+  // ✅ Chart state with proper initialization
   const [charts, setCharts] = useState<ChartInstances>({});
   const [chartsLoaded, setChartsLoaded] = useState(false);
 
@@ -113,7 +344,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ FIXED: Robust data transformation
+  // ✅ UPDATED: Transform API data with zero-filtering
   const data: DashboardData | null = useMemo(() => {
     if (!apiData || !apiData.success || !apiData.data) {
       return null;
@@ -146,16 +377,18 @@ export default function Dashboard() {
         avg_uphold_rate: safeNumber(apiData.data.kpis?.avg_upheld_rate),
         total_firms: safeInt(apiData.data.kpis?.total_firms),
         avg_percentage_upheld: safeNumber(apiData.data.kpis?.avg_upheld_rate),
-        avg_closed_within_8_weeks: 75.0,
+        avg_closed_within_8_weeks: safeNumber(apiData.data.kpis?.avg_closed_within_8_weeks), // ✅ FIXED: Now dynamic
+        avg_closed_within_3_days: safeNumber(apiData.data.kpis?.avg_closed_within_3_days), // ✅ NEW: Added 3-day closure rate
         sector_uphold_averages: apiData.data.kpis?.sector_uphold_averages || {},
         sector_closure_averages: apiData.data.kpis?.sector_closure_averages || {},
         all_sector_averages: {}
       };
 
+      // ✅ Filter out zero uphold rates
       let topPerformers: any[] = [];
       if (Array.isArray(apiData.data.topPerformers)) {
         topPerformers = apiData.data.topPerformers
-          .filter(item => item && typeof item === 'object' && item.firm_name)
+          .filter(item => item && typeof item === 'object' && item.firm_name && item.avg_uphold_rate > 0)
           .map((item: any) => ({
             firm_name: String(item.firm_name || 'Unknown Firm'),
             avg_uphold_rate: safeNumber(item.avg_uphold_rate || item.avg_upheld_rate),
@@ -164,10 +397,11 @@ export default function Dashboard() {
           }));
       }
 
+      // ✅ Filter out zero uphold rates for consumer credit
       let consumerCredit: any[] = [];
       if (Array.isArray(apiData.data.consumerCredit)) {
         consumerCredit = apiData.data.consumerCredit
-          .filter(item => item && typeof item === 'object' && item.firm_name)
+          .filter(item => item && typeof item === 'object' && item.firm_name && item.avg_upheld_pct > 0)
           .map((item: any) => ({
             firm_name: String(item.firm_name || 'Unknown Firm'),
             total_received: safeInt(item.total_received),
@@ -176,10 +410,11 @@ export default function Dashboard() {
           }));
       }
 
+      // ✅ Filter out zero uphold rates for categories
       let categoryData: any[] = [];
       if (Array.isArray(apiData.data.productCategories)) {
         categoryData = apiData.data.productCategories
-          .filter((item: any) => item && typeof item === 'object' && (item.category_name || item.product_category))
+          .filter((item: any) => item && typeof item === 'object' && (item.category_name || item.product_category) && item.avg_uphold_rate > 0)
           .map((item: any) => ({
             category_name: String(item.category_name || item.product_category || 'Unknown Category'),
             complaint_count: safeInt(item.complaint_count),
@@ -234,19 +469,89 @@ export default function Dashboard() {
   const volumeChartRef = useRef<HTMLCanvasElement>(null);
   const upheldChartRef = useRef<HTMLCanvasElement>(null);
 
-  
-  // ✅ Available products
+  // ✅ Updated product categories to match database
   const availableProducts = [
     'Banking and credit cards',
-    'Insurance & protection',
+    'Insurance & pure protection',
     'Home finance',
     'Decumulation & pensions', 
     'Investments'
-  ];;
+  ];
 
   const [availableYears] = useState(['2020', '2021', '2022', '2023', '2024', '2025']);
 
-  // ✅ FIX DUPLICATE API CALLS: Only trigger on filter changes, not on every render
+  // ✅ Performance alerts calculation - MOVED TO FIRM DEEP DIVE ONLY
+  const calculatePerformanceAlerts = useCallback((): PerformanceAlert[] => {
+    // ✅ Only calculate when firms are selected and we're on firm deep dive tab
+    if (!data?.historicalTrends || data.historicalTrends.length === 0 || selectedFirms.length === 0) {
+      return [];
+    }
+
+    const alerts: PerformanceAlert[] = [];
+    const firmData = new Map<string, { current: any, previous: any }>();
+
+    // Only process selected firms
+    data.historicalTrends
+      .filter(record => selectedFirms.includes(record.firm_name))
+      .forEach(record => {
+        const firmName = record.firm_name;
+        const year = record.trend_year;
+        
+        if (!firmData.has(firmName)) {
+          firmData.set(firmName, { current: null, previous: null });
+        }
+        
+        const firm = firmData.get(firmName)!;
+        if (year === '2024') firm.current = record;
+        if (year === '2023') firm.previous = record;
+      });
+
+    // Calculate alerts for each selected firm
+    firmData.forEach((values, firmName) => {
+      if (!values.current || !values.previous) return;
+
+      const currentUphold = values.current.upheld_rate || 0;
+      const previousUphold = values.previous.upheld_rate || 0;
+      const upholdChange = currentUphold - previousUphold;
+
+      const currentClosure = values.current.closure_rate_3_days || 0;
+      const previousClosure = values.previous.closure_rate_3_days || 0;
+      const closureChange = currentClosure - previousClosure;
+
+      // Check for significant uphold rate increases (bad)
+      if (Math.abs(upholdChange) > 2) {
+        alerts.push({
+          firmName,
+          metric: 'uphold_rate',
+          change: upholdChange,
+          direction: upholdChange > 0 ? 'up' : 'down',
+          significance: Math.abs(upholdChange) > 10 ? 'high' : Math.abs(upholdChange) > 5 ? 'medium' : 'low',
+          currentValue: currentUphold,
+          previousValue: previousUphold
+        });
+      }
+
+      // Check for significant closure rate changes
+      if (Math.abs(closureChange) > 5) {
+        alerts.push({
+          firmName,
+          metric: 'closure_rate',
+          change: closureChange,
+          direction: closureChange > 0 ? 'up' : 'down',
+          significance: Math.abs(closureChange) > 20 ? 'high' : Math.abs(closureChange) > 10 ? 'medium' : 'low',
+          currentValue: currentClosure,
+          previousValue: previousClosure
+        });
+      }
+    });
+
+    return alerts.sort((a, b) => {
+      const significanceOrder = { high: 3, medium: 2, low: 1 };
+      return significanceOrder[b.significance] - significanceOrder[a.significance];
+    });
+  }, [data?.historicalTrends, selectedFirms]);
+
+  // ✅ Trigger data fetching on filter changes
   const fetchDataOnce = useCallback(() => {
     fetchData(filters);
   }, [JSON.stringify(filters), fetchData]);
@@ -255,7 +560,7 @@ export default function Dashboard() {
     fetchDataOnce();
   }, [fetchDataOnce]);
 
-  // ✅ FIXED: Chart.js loading with proper state management
+  // ✅ Chart.js loading with proper state management
   useEffect(() => {
     console.log('🚀 Loading Chart.js...');
     
@@ -285,7 +590,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  // ✅ FIXED: Chart creation with proper dependencies and state checks
+  // ✅ Chart creation with proper dependencies and state checks
   useEffect(() => {
     if (!data || !isClient || !chartsLoaded || !(window as any).Chart) {
       console.log('⏳ Waiting for all dependencies:', { 
@@ -367,7 +672,7 @@ export default function Dashboard() {
       .slice(0, count);
   };
 
-  // ✅ FIXED: Chart creation with dynamic scaling for low values
+  // ✅ Chart creation functions (keeping existing logic but ensuring they work)
   const createOverviewCharts = () => {
     try {
       const Chart = (window as any).Chart;
@@ -428,7 +733,7 @@ export default function Dashboard() {
             scales: {
               y: { 
                 beginAtZero: true,
-                max: dynamicMax, // ✅ Use dynamic max instead of fixed 100
+                max: dynamicMax,
                 ticks: {
                   callback: function(value: any) {
                     return value + '%';
@@ -494,7 +799,7 @@ export default function Dashboard() {
         console.log('✅ Worst Performers chart created');
       }
 
-      // ✅ FIXED: Resolution Trends Chart - use proper time series data structure
+      // ✅ Resolution Trends Chart
       if (resolutionTrendsChartRef.current && data?.categoryData && data.categoryData.length > 0) {
         const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
         
@@ -698,7 +1003,7 @@ export default function Dashboard() {
     }
   };
 
-  // ✅ FIXED: Credit chart creation with proper filtering
+  // ✅ Credit chart creation with proper filtering
   const createCreditCharts = () => {
     try {
       const Chart = (window as any).Chart;
@@ -716,7 +1021,7 @@ export default function Dashboard() {
       
       const newCharts: ChartInstances = {};
 
-      // ✅ FIXED: Apply selected firms filter correctly
+      // Apply selected firms filter correctly
       const creditData = creditFilters.selectedFirms.length > 0 
         ? data?.consumerCredit?.filter(f => creditFilters.selectedFirms.includes(f.firm_name))
         : data?.consumerCredit?.slice(0, 10);
@@ -843,7 +1148,7 @@ export default function Dashboard() {
     updateFilter('years', newYears);
   };
 
-  // ✅ FIXED: Firm selection handler with improved dropdown management
+  // ✅ Firm selection handler with improved dropdown management
   const handleFirmChange = (firmName: string) => {
     const newSelectedFirms = selectedFirms.includes(firmName)
       ? selectedFirms.filter(f => f !== firmName)
@@ -993,38 +1298,79 @@ export default function Dashboard() {
   }
 
   const creditStats = calculateCreditAverages();
+  const performanceAlerts = calculatePerformanceAlerts(); // ✅ Now only for selected firms in firm deep dive
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* ✅ UPDATED: Header with ACTUAL MEMA logo */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">Financial Complaints Tracking Dashboard</h1>
-          <p className="text-gray-600 mt-2">Comprehensive analysis of complaint resolution performance across financial firms</p>
-          
-          <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center text-green-600 text-sm">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-              Live Data Connected • Last Updated: {isClient ? currentTime : 'Loading...'}
+          <div className="flex items-center justify-between">
+            {/* ✅ FIXED: MEMA Logo with actual image */}
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-lg overflow-hidden">
+                <img 
+  src="/mema-logo.png"  // ← Change this line
+  alt="MEMA Consultants Logo"
+  className="w-full h-full object-contain"
+  onError={(e) => {
+    // Fallback to text logo if image fails
+    e.currentTarget.style.display = 'none';
+    e.currentTarget.parentElement!.innerHTML = '<div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-lg">M</span></div>';
+  }}
+/>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Financial Complaints Dashboard</h1>
+                  <p className="text-sm text-blue-600 font-medium">Powered by MEMA Consultants</p>
+                </div>
+              </div>
             </div>
             
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => fetchData(filters)}
-                className="flex items-center px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-              >
-                🔄 Refresh Data
-              </button>
-              
-              {hasActiveFilters() && (
-                <button
-                  onClick={handleClearAllFilters}
-                  className="flex items-center px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  🧹 Clear Filters
-                </button>
-              )}
+            <div className="flex items-center text-green-600 text-sm">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+              Live Data • Updated {isClient ? currentTime : 'Loading...'}
             </div>
+          </div>
+          
+          <p className="text-gray-600 mt-3">Comprehensive analysis of complaint resolution performance across financial firms</p>
+          
+          <div className="flex items-center space-x-4 mt-4">
+            <button
+              onClick={() => fetchData(filters)}
+              className="flex items-center px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+            >
+              🔄 Refresh Data
+            </button>
+            
+            {hasActiveFilters() && (
+              <button
+                onClick={handleClearAllFilters}
+                className="flex items-center px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                🧹 Clear Filters
+              </button>
+            )}
+
+            {/* ✅ ENHANCED: Two-firm comparison guidance */}
+            {selectedFirms.length === 1 && (
+              <div className="px-3 py-2 text-sm bg-yellow-100 text-yellow-800 rounded-lg">
+                Select 1 more firm to enable comparison
+              </div>
+            )}
+            
+            {selectedFirms.length === 2 && (
+              <div className="px-3 py-2 text-sm bg-green-100 text-green-800 rounded-lg">
+                ⚖️ Two-firm comparison available!
+              </div>
+            )}
+            
+            {selectedFirms.length > 2 && (
+              <div className="px-3 py-2 text-sm bg-blue-100 text-blue-800 rounded-lg">
+                Multi-firm analysis mode (comparison disabled)
+              </div>
+            )}
           </div>
           
           {hasActiveFilters() && (
@@ -1165,8 +1511,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KPI Cards - REMOVED Total Complaints */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {/* ✅ UPDATED: KPI Cards with 3-day closure rate, dynamic 8-week rate */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                 <div className="flex items-center justify-between">
@@ -1185,6 +1531,25 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* ✅ NEW: Average Closed Within 3 Days KPI */}
+              <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-600">
+                      Average Closed Within 3 Days
+                      {hasActiveFilters() && <span className="text-blue-600 font-medium"> (Filtered)</span>}
+                    </p>
+                    <div className="flex items-center space-x-2">
+                      <p className="text-3xl font-bold text-gray-900">{formatPercentage(data?.kpis?.avg_closed_within_3_days)}</p>
+                    </div>
+                  </div>
+                  <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                    <span className="text-2xl">⚡</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ FIXED: Dynamic 8-week closure rate (no longer hardcoded) */}
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -1203,7 +1568,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Performance Insights */}
+            {/* ✅ REMOVED: Performance Alerts from Performance Overview (moved to Firm Deep Dive) */}
+
+            {/* ✅ UPDATED: Performance Insights (removed total complaints) */}
             <div className="bg-gradient-to-r from-blue-50 to-green-50 p-6 rounded-lg mb-8 border border-blue-100">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">
                 🎯 Performance Insights
@@ -1260,14 +1627,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Charts */}
+            {/* Charts with Info Icons */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  🏆 Top 5 Best Performers
-                  <span className="text-sm font-normal text-gray-500 ml-2">
-                    (Lowest Uphold Rates)
-                  </span>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  🏆 Best Performers (Lowest Uphold Rates)
+                  <InfoTooltip text="Firms with the lowest complaint uphold rates. Lower percentages indicate better customer satisfaction and fewer justified complaints." />
                 </h3>
                 <div className="h-80">
                   <canvas ref={bestPerformersChartRef}></canvas>
@@ -1275,11 +1640,9 @@ export default function Dashboard() {
               </div>
 
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  ⚠️ Top 5 Worst Performers
-                  <span className="text-sm font-normal text-gray-500 ml-2">
-                    (Highest Uphold Rates)
-                  </span>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  ⚠️ Highest Uphold Rates
+                  <InfoTooltip text="Firms with the highest complaint uphold rates. Higher percentages may indicate areas for customer service improvement." />
                 </h3>
                 <div className="h-80">
                   <canvas ref={worstPerformersChartRef}></canvas>
@@ -1290,14 +1653,20 @@ export default function Dashboard() {
             {/* Additional Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Resolution Trends by Product Category</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  📈 Resolution Trends by Product Category
+                  <InfoTooltip text="Shows how quickly different product categories resolve complaints over time. Higher percentages indicate faster resolution rates." />
+                </h3>
                 <div className="h-80">
                   <canvas ref={resolutionTrendsChartRef}></canvas>
                 </div>
               </div>
 
               <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Category Distribution</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  🥧 Product Category Distribution
+                  <InfoTooltip text="Breakdown of complaints by product category. Larger segments represent product areas with higher complaint volumes." />
+                </h3>
                 <div className="h-80">
                   <canvas ref={categoriesChartRef}></canvas>
                 </div>
@@ -1307,13 +1676,13 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* ✅ ENHANCED: Firm Deep Dive Tab with FIXED dropdown */}
+        {/* ✅ ENHANCED: Firm Deep Dive Tab with Performance Alerts */}
         {activeTab === 'firm' && (
           <>
             <div className="bg-white p-6 rounded-lg shadow mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Firms for Deep Dive Analysis</h3>
               
-              {/* ✅ FIXED: Firm Search with working dropdown */}
+              {/* Firm Search with working dropdown */}
               <div className="relative">
                 <input
                   type="text"
@@ -1321,7 +1690,7 @@ export default function Dashboard() {
                   value={firmSearchTerm}
                   onChange={(e) => setFirmSearchTerm(e.target.value)}
                   onFocus={() => setShowFirmDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowFirmDropdown(false), 500)} // ✅ Increased delay
+                  onBlur={() => setTimeout(() => setShowFirmDropdown(false), 500)}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
                 
@@ -1330,7 +1699,7 @@ export default function Dashboard() {
                     {getFilteredFirms().slice(0, 15).map(firm => (
                       <div
                         key={firm.firm_name}
-                        onMouseDown={(e) => { // ✅ FIXED: Use onMouseDown with preventDefault
+                        onMouseDown={(e) => {
                           e.preventDefault();
                           handleFirmChange(firm.firm_name);
                           setFirmSearchTerm('');
@@ -1373,9 +1742,89 @@ export default function Dashboard() {
                   >
                     Clear All
                   </button>
+                  
+                  {/* Two-Firm Comparison Button */}
+                  {selectedFirms.length === 2 && (
+                    <div className="mt-4">
+                      <button
+                        onClick={() => {
+                          const firmAData = data?.topPerformers?.find(f => f.firm_name === selectedFirms[0]);
+                          const firmBData = data?.topPerformers?.find(f => f.firm_name === selectedFirms[1]);
+                          if (firmAData && firmBData) {
+                            setComparisonFirms({firmA: selectedFirms[0], firmB: selectedFirms[1]});
+                            setShowTwoFirmComparison(true);
+                          }
+                        }}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
+                      >
+                        <span>⚖️</span>
+                        <span>Compare These Two Firms</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* ✅ MOVED: Performance Alerts Section (only for selected firms) */}
+            {selectedFirms.length > 0 && performanceAlerts.length > 0 && (
+              <div className="bg-white p-6 rounded-lg shadow-lg mb-8 border-l-4 border-orange-500">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                  🚨 Performance Alerts for Selected Firms
+                  <InfoTooltip text="Significant year-over-year changes for your selected firms. Red indicates concerning trends, green shows improvements." />
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {performanceAlerts.slice(0, 6).map((alert, index) => (
+                    <div key={index} className={`p-4 rounded-lg border-l-4 ${
+                      alert.metric === 'uphold_rate' 
+                        ? (alert.direction === 'up' ? 'border-red-500 bg-red-50' : 'border-green-500 bg-green-50')
+                        : (alert.direction === 'up' ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50')
+                    }`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900 text-sm">
+                            {alert.firmName.substring(0, 25)}
+                            {alert.firmName.length > 25 && '...'}
+                          </h4>
+                          <p className="text-xs text-gray-600 mt-1">
+                            {alert.metric === 'uphold_rate' ? 'Uphold Rate' : 'Resolution Speed'} Change
+                          </p>
+                          <div className="flex items-center mt-2 space-x-2">
+                            <span className={`text-lg ${
+                              alert.metric === 'uphold_rate' 
+                                ? (alert.direction === 'up' ? 'text-red-600' : 'text-green-600')
+                                : (alert.direction === 'up' ? 'text-green-600' : 'text-red-600')
+                            }`}>
+                              {alert.direction === 'up' ? '↗️' : '↘️'}
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {alert.change > 0 ? '+' : ''}{alert.change.toFixed(1)}%
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {alert.previousValue.toFixed(1)}% → {alert.currentValue.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className={`px-2 py-1 rounded text-xs font-medium ${
+                          alert.significance === 'high' ? 'bg-red-100 text-red-800' :
+                          alert.significance === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-blue-100 text-blue-800'
+                        }`}>
+                          {alert.significance.toUpperCase()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {performanceAlerts.length > 6 && (
+                  <div className="mt-4 text-center">
+                    <span className="text-blue-600 text-sm font-medium">
+                      Showing 6 of {performanceAlerts.length} alerts
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Multi-firm comparison with improved responsive design */}
             {selectedFirms.length > 0 && data && (
@@ -1392,7 +1841,7 @@ export default function Dashboard() {
               <div className="bg-gray-50 p-8 rounded-lg text-center">
                 <div className="text-4xl mb-4">🏢</div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Select Firms to Begin Analysis</h3>
-                <p className="text-gray-600">Use the search box above to find and select firms for detailed performance comparison.</p>
+                <p className="text-gray-600">Use the search box above to find and select firms for detailed performance comparison and trends.</p>
               </div>
             )}
           </>
@@ -1427,8 +1876,9 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   📊 Resolution Speed Overview
+                  <InfoTooltip text="Average resolution rates by product category. Higher percentages indicate faster complaint resolution." />
                   {selectedProduct && <span className="text-sm text-gray-500 ml-2">({selectedProduct})</span>}
                 </h3>
                 <div className="h-80">
@@ -1436,8 +1886,9 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   📈 Uphold Rate Distribution
+                  <InfoTooltip text="Distribution of firms by uphold rate ranges. Shows how many firms fall into each performance category." />
                   {selectedProduct && <span className="text-sm text-gray-500 ml-2">({selectedProduct})</span>}
                 </h3>
                 <div className="h-80">
@@ -1458,6 +1909,7 @@ export default function Dashboard() {
                   Select Firms to Compare
                   <span className="text-xs text-gray-500 font-normal ml-1">(Click to select multiple)</span>
                 </label>
+                {/* ✅ FIXED: Removed complaint counts from filter list */}
                 <div className="border border-gray-300 rounded-md p-2 max-h-32 overflow-y-auto">
                   {data?.consumerCredit && data?.consumerCredit.length > 0 ? (
                     data?.consumerCredit.map(firm => (
@@ -1469,9 +1921,6 @@ export default function Dashboard() {
                           className="mr-2 rounded"
                         />
                         <span className="text-sm">{firm.firm_name}</span>
-                        <span className="ml-auto text-xs text-gray-500">
-                          ({formatNumber(firm.total_received)} complaints)
-                        </span>
                       </label>
                     ))
                   ) : (
@@ -1524,8 +1973,9 @@ export default function Dashboard() {
             {/* Consumer Credit Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   💳 Complaint Volume by Firm
+                  <InfoTooltip text="Total number of consumer credit complaints received by each firm. Higher volumes may indicate larger customer bases or potential issues." />
                   {creditFilters.selectedFirms.length > 0 && (
                     <span className="text-sm text-gray-500 ml-2">({creditFilters.selectedFirms.length} selected)</span>
                   )}
@@ -1535,8 +1985,9 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   ⚖️ Uphold Rates Comparison
+                  <InfoTooltip text="Percentage of consumer credit complaints that were upheld. Lower rates generally indicate better customer service." />
                   {creditFilters.selectedFirms.length > 0 && (
                     <span className="text-sm text-gray-500 ml-2">({creditFilters.selectedFirms.length} selected)</span>
                   )}
@@ -1549,6 +2000,48 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {/* ✅ UPDATED: Footer with MEMA branding */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <span className="mr-2">ℹ️</span> About This Dashboard
+            </h3>
+            <div className="flex items-center space-x-2 text-blue-600">
+              <span className="text-sm font-medium">Powered by</span>
+              <a 
+                href="https://www.memaconsultants.com" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center space-x-2 hover:text-blue-800 transition-colors"
+              >
+                <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">M</span>
+                </div>
+                <span className="font-bold">MEMA Consultants</span>
+              </a>
+            </div>
+          </div>
+          
+          <p className="text-sm text-gray-600 leading-relaxed">
+            <em>Our complaints dashboard offers a comprehensive view of customer feedback, specifically focusing on complaints reported to the Financial Conduct Authority (FCA). Updated every April and October, it presents both firm-specific data for companies reporting 500 or more complaints biannually (or 1,000+ annually) and aggregate market-level insights. These larger firms are mandated to publish their complaint data, which collectively accounts for approximately 98% of all complaints reported to the FCA.</em>
+          </p>
+        </div>
+      </div>
+
+      {/* Two-Firm Comparison Modal */}
+      {showTwoFirmComparison && comparisonFirms.firmA && comparisonFirms.firmB && (
+        <TwoFirmComparison
+          firmA={comparisonFirms.firmA}
+          firmB={comparisonFirms.firmB}
+          onClose={() => setShowTwoFirmComparison(false)}
+          firmAData={data?.topPerformers?.find(f => f.firm_name === comparisonFirms.firmA)}
+          firmBData={data?.topPerformers?.find(f => f.firm_name === comparisonFirms.firmB)}
+          formatPercentage={formatPercentage}
+          formatNumber={formatNumber}
+        />
+      )}
     </div>
   );
 }

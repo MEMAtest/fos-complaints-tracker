@@ -20,6 +20,7 @@ export interface KPIData {
   // ✅ NEW: Required fields for Priority #1
   avg_percentage_upheld?: number;
   avg_closed_within_8_weeks?: number;
+avg_closed_within_3_days?: number; // ✅ ADD THIS LINE  
   
   sector_uphold_averages?: {[key: string]: number};
   sector_closure_averages?: {[key: string]: number};

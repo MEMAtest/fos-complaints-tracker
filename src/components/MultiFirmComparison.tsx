@@ -37,7 +37,7 @@ interface MultiFirmComparisonProps {
   onRemoveFirm: (firmName: string) => void;
 }
 
-// ✅ FIXED: Chart data structure
+// ✅ Chart data structure
 interface ExtendedDataset {
   label: string;
   data: Array<{x: string, y: number}>;
@@ -62,7 +62,7 @@ export default function MultiFirmComparison({
   const comparisonChartRef = useRef<HTMLCanvasElement>(null);
   const historicalChartRef = useRef<HTMLCanvasElement>(null);
   
-  // ✅ FIXED: More distinct colors for better visibility
+  // ✅ More distinct colors for better visibility
   const firmColors = [
     { border: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)' }, // Blue
     { border: '#ef4444', background: 'rgba(239, 68, 68, 0.1)' },  // Red
@@ -89,7 +89,7 @@ export default function MultiFirmComparison({
     return new Intl.NumberFormat().format(num);
   };
 
-  // ✅ FIXED: Historical data processing with proper time series structure
+  // ✅ Historical data processing with proper time series structure
   const getFirmHistoricalData = (firmName: string) => {
     const firmHistorical = historicalData.filter(h => h.firm_name === firmName);
     
@@ -116,7 +116,7 @@ export default function MultiFirmComparison({
     return processedData;
   };
 
-  // ✅ FIXED: Industry average data processing
+  // ✅ Industry average data processing
   const getIndustryAverageData = () => {
     if (industryTrends.length === 0) {
       // Generate mock industry data
@@ -154,7 +154,7 @@ export default function MultiFirmComparison({
     });
   };
 
-  // ✅ FIXED: Create comparison chart with better styling
+  // ✅ Create comparison chart with better styling
   const createComparisonChart = () => {
     if (!comparisonChartRef.current || selectedFirms.length === 0) return;
 
@@ -251,7 +251,7 @@ export default function MultiFirmComparison({
     setCharts(prev => ({ ...prev, comparison: newChart }));
   };
 
-  // ✅ FIXED: Create historical trends chart with improved layout
+  // ✅ Create historical trends chart with improved layout
   const createHistoricalChart = () => {
     if (!historicalChartRef.current || selectedFirms.length === 0) return;
 
@@ -324,18 +324,18 @@ export default function MultiFirmComparison({
       data: { datasets },
       options: {
         responsive: true,
-        maintainAspectRatio: false, // ✅ This allows the chart to be flexible
+        maintainAspectRatio: false,
         interaction: {
           mode: 'index' as any,
           intersect: false,
         },
         plugins: {
           legend: {
-            position: 'bottom' as any, // ✅ Move legend to bottom to save space
+            position: 'bottom' as any,
             labels: {
               usePointStyle: true,
               padding: 15,
-              font: { size: 11 } // ✅ Smaller font
+              font: { size: 11 }
             }
           },
           title: {
@@ -417,18 +417,18 @@ export default function MultiFirmComparison({
 
   return (
     <div className="space-y-6">
-      {/* ✅ IMPROVED: Responsive summary cards */}
+      {/* ✅ Responsive summary cards */}
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900">Performance Summary</h3>
           <span className="text-sm text-gray-600">{selectedFirms.length} firms selected</span>
         </div>
         
-        {/* ✅ FIXED: Better responsive grid */}
+        {/* ✅ Better responsive grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {summaryData.map(firm => (
             <div key={firm.firmName} className="bg-gray-50 p-4 rounded-lg relative">
-              {/* ✅ Remove firm button */}
+              {/* Remove firm button */}
               <button
                 onClick={() => onRemoveFirm(firm.firmName)}
                 className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm"
@@ -450,12 +450,6 @@ export default function MultiFirmComparison({
                   <span className="text-gray-600">Resolution Rate:</span>
                   <span className="font-medium text-green-600">{formatPercentage(firm.currentClosure)}</span>
                 </div>
-                {firm.complaintCount > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Complaints:</span>
-                    <span className="font-medium">{formatNumber(firm.complaintCount)}</span>
-                  </div>
-                )}
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Trend:</span>
                   <span className={`font-medium ${firm.trend >= 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -468,27 +462,27 @@ export default function MultiFirmComparison({
         </div>
       </div>
 
-      {/* ✅ FIXED: Responsive charts layout */}
+      {/* ✅ Responsive charts layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Current Performance Comparison */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <div className="h-80 sm:h-96"> {/* ✅ Responsive height */}
+          <div className="h-80 sm:h-96">
             <canvas ref={comparisonChartRef}></canvas>
           </div>
         </div>
 
-        {/* ✅ FIXED: Historical Trends with better height management */}
+        {/* Historical Trends */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <div className="h-80 sm:h-96"> {/* ✅ Responsive height */}
+          <div className="h-80 sm:h-96">
             <canvas ref={historicalChartRef}></canvas>
           </div>
         </div>
       </div>
 
-      {/* ✅ Performance insights */}
+      {/* ✅ UPDATED: Performance insights (removed Total Complaints) */}
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border border-blue-100">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">📈 Key Insights</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div className="bg-white p-4 rounded-lg">
             <div className="text-2xl font-bold text-red-600">
               {formatPercentage(Math.max(...summaryData.map(f => f.currentUphold)))}
@@ -505,15 +499,6 @@ export default function MultiFirmComparison({
             <div className="text-gray-600">Lowest Uphold Rate</div>
             <div className="text-xs text-gray-500 mt-1">
               {summaryData.find(f => f.currentUphold === Math.min(...summaryData.map(s => s.currentUphold)))?.firmName}
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">
-              {formatNumber(summaryData.reduce((sum, f) => sum + f.complaintCount, 0))}
-            </div>
-            <div className="text-gray-600">Total Complaints</div>
-            <div className="text-xs text-gray-500 mt-1">
-              Across {selectedFirms.length} firms
             </div>
           </div>
         </div>
