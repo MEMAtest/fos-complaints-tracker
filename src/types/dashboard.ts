@@ -1,5 +1,5 @@
 // src/types/dashboard.ts
-// ✅ COMPLETE Dashboard Types with all new KPI fields
+// ✅ COMPLETE UPDATED VERSION with Enhanced Chart Types
 
 export interface FilterParams {
   years?: string[];
@@ -14,24 +14,24 @@ export interface KPIData {
   total_firms?: number;
   total_rows?: number;
   
-  // ✅ KEEP: banking_avg_percentage for backward compatibility
+  // ✅ Keep existing fields for backward compatibility
   banking_avg_percentage?: number;
   
-  // ✅ NEW: Required fields for Priority #1
+  // ✅ Required fields
   avg_percentage_upheld?: number;
   avg_closed_within_8_weeks?: number;
-avg_closed_within_3_days?: number; // ✅ ADD THIS LINE  
+  avg_closed_within_3_days?: number;
   
   sector_uphold_averages?: {[key: string]: number};
   sector_closure_averages?: {[key: string]: number};
   
-  // ✅ NEW: All sector averages for Product Analysis
+  // ✅ All sector averages for Product Analysis
   all_sector_averages?: {[key: string]: {uphold_rate: number, complaint_count: number}};
 }
 
 export interface TopPerformerData {
   firm_name: string;
-  complaint_count: number;
+  complaint_count?: number;
   avg_uphold_rate: number;
   avg_closure_rate: number;
 }
@@ -54,7 +54,7 @@ export interface ProductCategoryData {
 
 export interface IndustryComparisonData {
   firm_name: string;
-  complaint_count: number;
+  complaint_count?: number;
   avg_uphold_rate: number;
   avg_closure_rate: number;
 }
@@ -92,8 +92,6 @@ export interface DashboardAPIResponse {
     productCategories: ProductCategoryData[];
     industryComparison: IndustryComparisonData[];
     allFirms: FirmData[];
-    
-    // ✅ NEW: Historical trend data
     historicalTrends: HistoricalTrendData[];
     industryTrends: IndustryTrendData[];
   };
@@ -119,6 +117,33 @@ export interface APIErrorResponse {
 // ✅ Keep both for compatibility
 export interface DashboardResponse extends DashboardAPIResponse {}
 
+// ✅ NEW: Enhanced chart comparison interfaces for Change 1
+export interface ChartComparisonMode {
+  mode: 'absolute' | 'relative' | 'normalized';
+  scaleType: 'shared' | 'individual' | 'industry_relative';
+}
+
+export interface ChartScaleConfig {
+  min?: number;
+  max?: number;
+  stepSize?: number;
+}
+
+export interface ExtendedDataset {
+  label: string;
+  data: Array<{x: string, y: number}>;
+  borderColor: string;
+  backgroundColor: string;
+  borderWidth: number;
+  fill: boolean;
+  tension: number;
+  pointRadius: number;
+  pointHoverRadius: number;
+  yAxisID?: string;
+  borderDash?: number[];
+  type?: string;
+}
+
 // ✅ Additional interfaces for future features
 export interface MultiFirmComparisonData {
   firms: {
@@ -133,7 +158,6 @@ export interface MultiFirmComparisonData {
   };
 }
 
-// ✅ NEW: Trend analysis interface (different from raw historical data)
 export interface TrendAnalysisData {
   period: string;
   firm_name?: string;

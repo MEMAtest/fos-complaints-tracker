@@ -309,6 +309,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedFirms, setSelectedFirms] = useState<string[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('');
+  // ✅ NEW: Consumer Credit search functionality
+const [consumerCreditSearchTerm, setConsumerCreditSearchTerm] = useState('');
+const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [creditFilters, setCreditFilters] = useState<CreditFilters>({
     selectedFirms: []
   });
@@ -559,7 +562,17 @@ export default function Dashboard() {
   useEffect(() => {
     fetchDataOnce();
   }, [fetchDataOnce]);
-
+// ✅ NEW: Keyboard shortcuts for Consumer Credit search
+useEffect(() => {
+  const handleKeyPress = (e: KeyboardEvent) => {
+    if (activeTab === 'credit' && e.key === 'Escape') {
+      clearConsumerCreditSearch();
+    }
+  };
+  
+  window.addEventListener('keydown', handleKeyPress);
+  return () => window.removeEventListener('keydown', handleKeyPress);
+}, [activeTab]);
   // ✅ Chart.js loading with proper state management
   useEffect(() => {
     console.log('🚀 Loading Chart.js...');
@@ -1242,11 +1255,11 @@ export default function Dashboard() {
   };
 
   const selectAllCreditFirms = () => {
-    setCreditFilters(prev => ({
-      ...prev,
-      selectedFirms: data?.consumerCredit?.map(f => f.firm_name) || []
-    }));
-  };
+  setCreditFilters(prev => ({
+    ...prev,
+    selectedFirms: getFilteredAndSortedConsumerCredit().map(f => f.firm_name) || []
+  }));
+};
 
   const clearCreditFirmSelection = () => {
     setCreditFilters(prev => ({
@@ -1260,7 +1273,28 @@ export default function Dashboard() {
     if (num === null || num === undefined || isNaN(num)) return '0';
     return new Intl.NumberFormat().format(num);
   };
+// ✅ NEW: Consumer Credit search and filter functionality
+const getFilteredAndSortedConsumerCredit = () => {
+  const creditData = data?.consumerCredit || [];
+  
+  // Filter by search term
+  const filteredData = creditData.filter(firm => 
+    firm.firm_name.toLowerCase().includes(consumerCreditSearchTerm.toLowerCase())
+  );
+  
+  // Sort alphabetically
+  const sortedData = filteredData.sort((a, b) => {
+    const comparison = a.firm_name.localeCompare(b.firm_name);
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+  
+  return sortedData;
+};
 
+// Clear search function
+const clearConsumerCreditSearch = () => {
+  setConsumerCreditSearchTerm('');
+};
   const formatPercentage = (num: number | undefined | null): string => {
     if (num === null || num === undefined || isNaN(num)) return '0.0%';
     return `${num.toFixed(1)}%`;
@@ -1829,12 +1863,12 @@ export default function Dashboard() {
             {/* Multi-firm comparison with improved responsive design */}
             {selectedFirms.length > 0 && data && (
               <MultiFirmComparison
-                selectedFirms={selectedFirms}
-                firmData={data.topPerformers.concat(data.industryComparison || [])}
-                historicalData={data.historicalTrends || []}
-                industryTrends={data.industryTrends || []}
-                onRemoveFirm={handleFirmChange}
-              />
+  selectedFirms={selectedFirms}
+  firmData={data.topPerformers.concat(data.industryComparison || [])}
+  historicalData={data.historicalTrends || []}
+  industryTrends={data.industryTrends || []}
+  onClose={() => setShowMultiFirmComparison(false)}
+/>
             )}
 
             {selectedFirms.length === 0 && (
@@ -1899,50 +1933,116 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* Consumer Credit Focus Tab */}
-        {activeTab === 'credit' && (
-          <>
-            <div className="bg-white p-6 rounded-lg shadow mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Filter Consumer Credit Data</h3>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Firms to Compare
-                  <span className="text-xs text-gray-500 font-normal ml-1">(Click to select multiple)</span>
-                </label>
-                {/* ✅ FIXED: Removed complaint counts from filter list */}
-                <div className="border border-gray-300 rounded-md p-2 max-h-32 overflow-y-auto">
-                  {data?.consumerCredit && data?.consumerCredit.length > 0 ? (
-                    data?.consumerCredit.map(firm => (
-                      <label key={firm.firm_name} className="flex items-center py-1 px-2 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={creditFilters.selectedFirms.includes(firm.firm_name)}
-                          onChange={() => handleCreditFirmChange(firm.firm_name)}
-                          className="mr-2 rounded"
-                        />
-                        <span className="text-sm">{firm.firm_name}</span>
-                      </label>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500 p-2">Loading consumer credit data...</div>
-                  )}
-                </div>
-                <div className="mt-2 space-x-2">
-                  <button
-                    onClick={clearCreditFirmSelection}
-                    className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-                  >
-                    Clear Selection
-                  </button>
-                  <button
-                    onClick={selectAllCreditFirms}
-                    className="px-3 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300 transition-colors"
-                  >
-                    Select All
-                  </button>
-                </div>
-              </div>
+        {/* ✅ ENHANCED: Consumer Credit Focus Tab with Search */}
+{activeTab === 'credit' && (
+  <>
+    {/* ✅ NEW: Consumer Credit Search Interface */}
+    <div className="bg-white p-6 rounded-lg shadow mb-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        🔍 Search & Filter Consumer Credit Data
+      </h3>
+      
+      {/* Search Input */}
+      <div className="mb-4">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Search firms... (e.g., 'Santander', 'HSBC', 'Bank')"
+            value={consumerCreditSearchTerm}
+            onChange={(e) => setConsumerCreditSearchTerm(e.target.value)}
+            className="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+          />
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <span className="text-gray-400">🔍</span>
+          </div>
+          {consumerCreditSearchTerm && (
+            <button
+              onClick={clearConsumerCreditSearch}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        
+        {/* Search Results Summary */}
+        <div className="mt-2 flex items-center justify-between text-sm text-gray-600">
+          <span>
+            Showing {getFilteredAndSortedConsumerCredit().length} of {data?.consumerCredit?.length || 0} firms
+          </span>
+          <div className="flex items-center space-x-2">
+            <span>Sort:</span>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+            >
+              A-Z {sortOrder === 'asc' ? '↓' : '↑'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Enhanced Firm Selection with Search */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Select Firms to Compare
+          <span className="text-xs text-gray-500 font-normal ml-1">(Click to select multiple)</span>
+        </label>
+        
+        {/* Scrollable Firm List */}
+        <div className="border border-gray-300 rounded-md p-2 max-h-32 overflow-y-auto bg-gray-50">
+          {getFilteredAndSortedConsumerCredit().length > 0 ? (
+            getFilteredAndSortedConsumerCredit().map(firm => (
+              <label key={firm.firm_name} className="flex items-center py-1 px-2 hover:bg-white rounded cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={creditFilters.selectedFirms.includes(firm.firm_name)}
+                  onChange={() => handleCreditFirmChange(firm.firm_name)}
+                  className="mr-2 rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm flex-1">{firm.firm_name}</span>
+                <span className="ml-auto text-xs text-gray-500">
+                  ({formatNumber(firm.total_received)} complaints)
+                </span>
+              </label>
+            ))
+          ) : (
+            <div className="text-sm text-gray-500 p-2 text-center">
+              {consumerCreditSearchTerm ? 
+                `No firms found matching "${consumerCreditSearchTerm}"` : 
+                'No consumer credit data available with current filters'
+              }
             </div>
+          )}
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="mt-3 flex items-center justify-between">
+          <div className="space-x-2">
+            <button
+              onClick={clearCreditFirmSelection}
+              className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+            >
+              Clear Selection
+            </button>
+            <button
+              onClick={selectAllCreditFirms}
+              className="px-3 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300 transition-colors"
+            >
+              Select All Visible
+            </button>
+          </div>
+          
+          {/* Search Stats */}
+          {consumerCreditSearchTerm && (
+            <div className="text-xs text-gray-500">
+              🔍 Filtered by: "{consumerCreditSearchTerm}"
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
 
             {/* Consumer Credit Overview */}
             <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg mb-8 border border-purple-100">
