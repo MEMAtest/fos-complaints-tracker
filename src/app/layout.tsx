@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Analytics } from "@vercel/analytics/next"; // Add this import
 
 export const metadata: Metadata = {
   title: 'Financial Complaints Dashboard | MEMA Consultants',
@@ -36,7 +37,10 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#3b82f6" />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+        <Analytics /> {/* Add this component inside the body */}
+      </body>
     </html>
   )
 }
