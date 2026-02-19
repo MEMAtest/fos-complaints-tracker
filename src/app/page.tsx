@@ -33,6 +33,7 @@ const INITIAL_FILTERS: FOSDashboardFilters = {
   page: 1,
   pageSize: 25,
 };
+const DASHBOARD_TIMEOUT_MS = 45_000;
 
 function parseFiltersFromQueryString(search: string): FOSDashboardFilters {
   const params = new URLSearchParams(search);
@@ -306,7 +307,7 @@ export default function FOSComplaintsDashboardPage() {
     const timeoutId = window.setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 25_000);
+    }, DASHBOARD_TIMEOUT_MS);
     const startedAt = Date.now();
 
     setLoading(true);
@@ -340,7 +341,7 @@ export default function FOSComplaintsDashboardPage() {
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
         if (timedOut) {
-          setError('Dashboard query timed out after 25 seconds. Please retry.');
+          setError(`Dashboard query timed out after ${Math.round(DASHBOARD_TIMEOUT_MS / 1000)} seconds. Please retry.`);
         }
         return;
       }
