@@ -1015,11 +1015,11 @@ function buildWhereClause(filters: FOSDashboardFilters, alias: string, startInde
       const searchPattern = `%${term}%`;
       conditions.push(`
         (
-          COALESCE(${alias}.decision_reference, '') ILIKE $${index}
-          OR COALESCE(${alias}.business_name, '') ILIKE $${index}
-          OR COALESCE(${alias}.product_sector, '') ILIKE $${index}
-          OR COALESCE(${alias}.decision_summary, '') ILIKE $${index}
-          OR COALESCE(${alias}.decision_logic, '') ILIKE $${index}
+          ${alias}.decision_reference ILIKE $${index}
+          OR ${alias}.business_name ILIKE $${index}
+          OR ${alias}.product_sector ILIKE $${index}
+          OR ${alias}.decision_summary ILIKE $${index}
+          OR ${alias}.decision_logic ILIKE $${index}
         )
       `);
       params.push(searchPattern);
