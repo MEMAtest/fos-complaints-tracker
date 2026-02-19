@@ -7,6 +7,7 @@ export const runtime = 'nodejs';
 
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { expiresAt: number; payload: FOSAnalysisApiResponse }>();
+const RESPONSE_HEADERS = { 'Cache-Control': 's-maxage=300, stale-while-revalidate=900' };
 
 export async function GET(request: NextRequest) {
   const startedAt = Date.now();
@@ -16,15 +17,18 @@ export async function GET(request: NextRequest) {
     const cached = cache.get(cacheKey);
 
     if (cached && cached.expiresAt > Date.now()) {
-      return Response.json({
-        ...cached.payload,
-        generatedAt: new Date().toISOString(),
-        meta: {
-          cached: true,
-          queryMs: Date.now() - startedAt,
-          snapshotAt: cached.payload.meta?.snapshotAt || cached.payload.generatedAt,
-        },
-      } satisfies FOSAnalysisApiResponse);
+      return Response.json(
+        {
+          ...cached.payload,
+          generatedAt: new Date().toISOString(),
+          meta: {
+            cached: true,
+            queryMs: Date.now() - startedAt,
+            snapshotAt: cached.payload.meta?.snapshotAt || cached.payload.generatedAt,
+          },
+        } satisfies FOSAnalysisApiResponse,
+        { headers: RESPONSE_HEADERS }
+      );
     }
 
     const filters = parseFilters(request.nextUrl.searchParams);
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest) {
       payload,
     });
 
-    return Response.json(payload);
+    return Response.json(payload, { headers: RESPONSE_HEADERS });
   } catch (error) {
     return Response.json(
       {
