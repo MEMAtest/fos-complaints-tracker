@@ -80,8 +80,49 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
 
-  // Run sequentially to avoid pool exhaustion during rapid filter/search changes.
   const overviewRow = await queryOverview(filters);
+  const overview = {
+    totalCases: toInt(overviewRow?.total_cases),
+    upheldCases: toInt(overviewRow?.upheld_cases),
+    notUpheldCases: toInt(overviewRow?.not_upheld_cases),
+    partiallyUpheldCases: toInt(overviewRow?.partially_upheld_cases),
+    upheldRate: toNumber(overviewRow?.upheld_rate),
+    notUpheldRate: toNumber(overviewRow?.not_upheld_rate),
+    topRootCause: null as string | null,
+    topPrecedent: null as string | null,
+    earliestDecisionDate: toIsoDate(overviewRow?.earliest_decision_date),
+    latestDecisionDate: toIsoDate(overviewRow?.latest_decision_date),
+  };
+
+  if (overview.totalCases === 0) {
+    const [options, ingestion] = await Promise.all([queryFilterOptions(), queryIngestionStatus()]);
+    return {
+      overview,
+      trends: [],
+      outcomes: [],
+      products: [],
+      firms: [],
+      precedents: [],
+      rootCauses: [],
+      insights: [],
+      cases: [],
+      pagination: {
+        page: 1,
+        pageSize: filters.pageSize,
+        total: 0,
+        totalPages: 1,
+      },
+      filters: options,
+      ingestion,
+      dataQuality: {
+        missingDecisionDate: 0,
+        missingOutcome: 0,
+        withReasoningText: 0,
+      },
+    };
+  }
+
+  // Run sequentially to avoid pool exhaustion during rapid filter/search changes.
   const trendsRows = await queryTrends(filters);
   const outcomesRows = await queryOutcomeDistribution(filters);
   const productsRows = await queryProducts(filters);
@@ -92,19 +133,8 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
   const caseBundle = await queryCases(filters);
   const options = await queryFilterOptions();
   const ingestion = await queryIngestionStatus();
-
-  const overview = {
-    totalCases: toInt(overviewRow?.total_cases),
-    upheldCases: toInt(overviewRow?.upheld_cases),
-    notUpheldCases: toInt(overviewRow?.not_upheld_cases),
-    partiallyUpheldCases: toInt(overviewRow?.partially_upheld_cases),
-    upheldRate: toNumber(overviewRow?.upheld_rate),
-    notUpheldRate: toNumber(overviewRow?.not_upheld_rate),
-    topRootCause: nullableString(rootCauseRows[0]?.label),
-    topPrecedent: nullableString(precedentsRows[0]?.label),
-    earliestDecisionDate: toIsoDate(overviewRow?.earliest_decision_date),
-    latestDecisionDate: toIsoDate(overviewRow?.latest_decision_date),
-  };
+  overview.topRootCause = nullableString(rootCauseRows[0]?.label);
+  overview.topPrecedent = nullableString(precedentsRows[0]?.label);
 
   const trends = trendsRows.map((row) => ({
     year: toInt(row.year),
@@ -814,20 +844,30 @@ function buildWhereClause(filters: FOSDashboardFilters, alias: string, startInde
   }
 
   if (filters.query) {
-    const searchPattern = `%${filters.query}%`;
-    conditions.push(`
-      (
-        COALESCE(${alias}.decision_reference, '') ILIKE $${index}
-        OR COALESCE(${alias}.business_name, '') ILIKE $${index}
-        OR COALESCE(${alias}.product_sector, '') ILIKE $${index}
-        OR COALESCE(${alias}.decision_summary, '') ILIKE $${index}
-        OR COALESCE(${alias}.decision_logic, '') ILIKE $${index}
-        OR COALESCE(${alias}.final_decision_text, '') ILIKE $${index}
-        OR COALESCE(${alias}.ombudsman_reasoning_text, '') ILIKE $${index}
-      )
-    `);
-    params.push(searchPattern);
-    index += 1;
+    const terms = filters.query
+      .split(/\s+/)
+      .map((term) => term.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+
+    for (const term of terms) {
+      const searchPattern = `%${term}%`;
+      conditions.push(`
+        (
+          COALESCE(${alias}.decision_reference, '') ILIKE $${index}
+          OR COALESCE(${alias}.business_name, '') ILIKE $${index}
+          OR COALESCE(${alias}.product_sector, '') ILIKE $${index}
+          OR COALESCE(${alias}.decision_summary, '') ILIKE $${index}
+          OR COALESCE(${alias}.decision_logic, '') ILIKE $${index}
+          OR COALESCE(${alias}.complaint_text, '') ILIKE $${index}
+          OR COALESCE(${alias}.firm_response_text, '') ILIKE $${index}
+          OR COALESCE(${alias}.final_decision_text, '') ILIKE $${index}
+          OR COALESCE(${alias}.ombudsman_reasoning_text, '') ILIKE $${index}
+        )
+      `);
+      params.push(searchPattern);
+      index += 1;
+    }
   }
 
   return {

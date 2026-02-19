@@ -445,6 +445,8 @@ export default function FOSComplaintsDashboardPage() {
     const to = snapshot.overview.latestDecisionDate ? formatDate(snapshot.overview.latestDecisionDate) : 'n/a';
     return `Showing ${total} decisions in scope, covering ${from} to ${to}.`;
   }, [snapshot]);
+  const hasActiveFilters =
+    Boolean(filters.query) || filters.years.length > 0 || filters.outcomes.length > 0 || filters.products.length > 0 || filters.firms.length > 0 || filters.tags.length > 0;
 
   const toggleYear = useCallback((year: number) => {
     setFilters((prev) => ({
@@ -576,6 +578,11 @@ export default function FOSComplaintsDashboardPage() {
             >
               Retry now
             </button>
+          </section>
+        )}
+        {!loading && !error && snapshot && snapshot.overview.totalCases === 0 && hasActiveFilters && (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            No results for current filters{filters.query ? ` (query: "${filters.query}")` : ''}. Try broader terms or clear filters.
           </section>
         )}
 
