@@ -319,10 +319,7 @@ export default function FOSComplaintsDashboardPage() {
 
     try {
       const params = buildQueryParams(nextFilters);
-      const response = await fetch(`/api/fos/dashboard?${params.toString()}`, {
-        cache: 'no-store',
-        signal: controller.signal,
-      });
+      const response = await fetch(`/api/fos/dashboard?${params.toString()}`, { signal: controller.signal });
       let payload: FOSDashboardApiResponse | null = null;
       try {
         payload = (await response.json()) as FOSDashboardApiResponse;

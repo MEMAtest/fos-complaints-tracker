@@ -109,10 +109,7 @@ export default function AnalysisPage() {
     setLoadingElapsedSec(0);
 
     try {
-      const response = await fetch(`/api/fos/analysis?${buildQueryParams(nextFilters).toString()}`, {
-        cache: 'no-store',
-        signal: controller.signal,
-      });
+      const response = await fetch(`/api/fos/analysis?${buildQueryParams(nextFilters).toString()}`, { signal: controller.signal });
       let payload: FOSAnalysisApiResponse | null = null;
       try {
         payload = (await response.json()) as FOSAnalysisApiResponse;

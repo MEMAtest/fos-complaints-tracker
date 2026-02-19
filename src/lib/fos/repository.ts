@@ -1267,7 +1267,21 @@ function buildFilteredCte(filters: FOSDashboardFilters): CteBuildResult {
     cteSql: `
       WITH filtered AS MATERIALIZED (
         SELECT
-          d.*,
+          d.decision_reference,
+          d.pdf_sha256,
+          d.decision_date,
+          d.business_name,
+          d.product_sector,
+          d.outcome,
+          d.ombudsman_name,
+          d.decision_summary,
+          d.decision_logic,
+          d.precedents,
+          d.root_cause_tags,
+          d.vulnerability_flags,
+          d.pdf_url,
+          d.source_url,
+          d.ombudsman_reasoning_text,
           ${outcomeExpression('d')} AS outcome_bucket
         FROM fos_decisions d
         ${where.whereSql}
