@@ -246,19 +246,42 @@ export default function FOSComplaintsDashboardPage() {
     setError(null);
 
     try {
-      const params = buildQueryParams(nextFilters);
-      const response = await fetch(`/api/fos/dashboard?${params.toString()}`, { cache: 'no-store' });
-      const payload = (await response.json()) as FOSDashboardApiResponse;
+      let payload: FOSDashboardApiResponse | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const params = buildQueryParams(nextFilters);
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
 
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error || 'Unable to load dashboard data.');
+        try {
+          const response = await fetch(`/api/fos/dashboard?${params.toString()}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          });
+          const responsePayload = (await response.json()) as FOSDashboardApiResponse;
+
+          if (!response.ok || !responsePayload.success) {
+            throw new Error(responsePayload.error || 'Unable to load dashboard data.');
+          }
+
+          payload = responsePayload;
+          break;
+        } catch (requestError) {
+          const isTimeout = requestError instanceof DOMException && requestError.name === 'AbortError';
+          if (isTimeout && attempt === 0) {
+            continue;
+          }
+          throw requestError;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      }
+
+      if (!payload?.data) {
+        throw new Error('Unable to load dashboard data.');
       }
 
       setSnapshot(payload.data);
-      setFilters((prev) => ({
-        ...prev,
-        page: payload.data.pagination.page,
-      }));
+      setFilters((prev) => (prev.page === payload.data.pagination.page ? prev : { ...prev, page: payload.data.pagination.page }));
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Unknown dashboard error';
       setError(message);
@@ -267,12 +290,10 @@ export default function FOSComplaintsDashboardPage() {
     }
   }, []);
 
-  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
-
   useEffect(() => {
     if (!initialized) return;
     void fetchDashboard(filters);
-  }, [fetchDashboard, filters, filtersKey, initialized]);
+  }, [fetchDashboard, filters, initialized]);
 
   useEffect(() => {
     if (!initialized) return;
@@ -417,20 +438,20 @@ export default function FOSComplaintsDashboardPage() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <DashboardKpiCard
             label="Total decisions"
-            value={formatNumber(snapshot?.overview.totalCases || 0)}
+            value={snapshot ? formatNumber(snapshot.overview.totalCases) : loading ? '...' : '0'}
             helper="Published final ombudsman decisions in active scope."
             accent="bg-blue-400"
           />
           <DashboardKpiCard
             label="Upheld rate"
-            value={formatPercent(snapshot?.overview.upheldRate || 0)}
-            helper={`${formatNumber(snapshot?.overview.upheldCases || 0)} cases upheld`}
+            value={snapshot ? formatPercent(snapshot.overview.upheldRate) : loading ? '...' : formatPercent(0)}
+            helper={snapshot ? `${formatNumber(snapshot.overview.upheldCases)} cases upheld` : 'Awaiting dashboard response'}
             accent="bg-emerald-400"
           />
           <DashboardKpiCard
             label="Not upheld rate"
-            value={formatPercent(snapshot?.overview.notUpheldRate || 0)}
-            helper={`${formatNumber(snapshot?.overview.notUpheldCases || 0)} not upheld`}
+            value={snapshot ? formatPercent(snapshot.overview.notUpheldRate) : loading ? '...' : formatPercent(0)}
+            helper={snapshot ? `${formatNumber(snapshot.overview.notUpheldCases)} not upheld` : 'Awaiting dashboard response'}
             accent="bg-rose-400"
           />
           <DashboardKpiCard
