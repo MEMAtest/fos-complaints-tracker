@@ -80,12 +80,30 @@ export interface FOSCaseListItem {
   sourceUrl: string | null;
 }
 
+export type FOSSectionSource = 'stored' | 'inferred' | 'missing';
+
+export interface FOSCaseSectionSources {
+  complaint: FOSSectionSource;
+  firmResponse: FOSSectionSource;
+  ombudsmanReasoning: FOSSectionSource;
+  finalDecision: FOSSectionSource;
+}
+
+export interface FOSCaseSectionConfidence {
+  complaint: number;
+  firmResponse: number;
+  ombudsmanReasoning: number;
+  finalDecision: number;
+}
+
 export interface FOSCaseDetail extends FOSCaseListItem {
   complaintText: string | null;
   firmResponseText: string | null;
   ombudsmanReasoningText: string | null;
   finalDecisionText: string | null;
   fullText: string | null;
+  sectionSources: FOSCaseSectionSources;
+  sectionConfidence: FOSCaseSectionConfidence;
 }
 
 export interface FOSPagination {
@@ -141,4 +159,61 @@ export interface FOSDashboardSnapshot {
   filters: FOSFilterOptions;
   ingestion: FOSIngestionStatus;
   dataQuality: FOSDataQuality;
+}
+
+export interface FOSYearProductOutcomeCell {
+  year: number;
+  product: string;
+  total: number;
+  upheld: number;
+  notUpheld: number;
+  partiallyUpheld: number;
+  upheldRate: number;
+  notUpheldRate: number;
+}
+
+export interface FOSFirmBenchmarkPoint {
+  firm: string;
+  total: number;
+  upheldRate: number;
+  notUpheldRate: number;
+  avgDecisionYear: number | null;
+  predominantProduct: string | null;
+}
+
+export interface FOSPrecedentRootCauseCell {
+  precedent: string;
+  rootCause: string;
+  count: number;
+}
+
+export interface FOSProductTreeFirmNode {
+  firm: string;
+  total: number;
+  upheldRate: number;
+}
+
+export interface FOSProductTreeNode {
+  product: string;
+  total: number;
+  firms: FOSProductTreeFirmNode[];
+}
+
+export interface FOSYearNarrative {
+  year: number;
+  total: number;
+  upheldRate: number;
+  changeVsPrior: number | null;
+  topProduct: string | null;
+  topFirm: string | null;
+  headline: string;
+  detail: string;
+}
+
+export interface FOSAnalysisSnapshot {
+  yearProductOutcome: FOSYearProductOutcomeCell[];
+  firmBenchmark: FOSFirmBenchmarkPoint[];
+  precedentRootCauseMatrix: FOSPrecedentRootCauseCell[];
+  productTree: FOSProductTreeNode[];
+  yearNarratives: FOSYearNarrative[];
 }

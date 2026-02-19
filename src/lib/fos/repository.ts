@@ -1,5 +1,6 @@
 import { DatabaseClient } from '@/lib/database';
 import {
+  FOSAnalysisSnapshot,
   FOSCaseDetail,
   FOSCaseListItem,
   FOSDashboardFilters,
@@ -7,7 +8,10 @@ import {
   FOSFilterOptions,
   FOSIngestionStatus,
   FOSOutcome,
+  FOSSectionSource,
   FOSYearInsight,
+  FOSYearNarrative,
+  FOSYearProductOutcomeCell,
 } from './types';
 
 const DEFAULT_PAGE = 1;
@@ -162,6 +166,68 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
   };
 }
 
+export async function getAnalysisSnapshot(filters: FOSDashboardFilters): Promise<FOSAnalysisSnapshot> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+
+  const [hasPrecedentValues, hasRootCauseValues] = await Promise.all([
+    hasTagValues('precedents'),
+    hasTagValues('root_cause_tags'),
+  ]);
+
+  const aggregateRow = await queryAnalysisBundle(filters, hasPrecedentValues, hasRootCauseValues);
+  const yearProductOutcome = toObjectArray(aggregateRow?.year_product_outcome).map((row) => ({
+    year: toInt(row.year),
+    product: normalizeLabel(row.product, 'Unspecified'),
+    total: toInt(row.total),
+    upheld: toInt(row.upheld),
+    notUpheld: toInt(row.not_upheld),
+    partiallyUpheld: toInt(row.partially_upheld),
+    upheldRate: toNumber(row.upheld_rate),
+    notUpheldRate: toNumber(row.not_upheld_rate),
+  }));
+
+  const firmBenchmark = toObjectArray(aggregateRow?.firm_benchmark).map((row) => ({
+    firm: normalizeLabel(row.firm, 'Unknown firm'),
+    total: toInt(row.total),
+    upheldRate: toNumber(row.upheld_rate),
+    notUpheldRate: toNumber(row.not_upheld_rate),
+    avgDecisionYear: row.avg_decision_year == null ? null : Math.round(toNumber(row.avg_decision_year)),
+    predominantProduct: nullableString(row.predominant_product),
+  }));
+
+  const precedentRootCauseMatrix = toObjectArray(aggregateRow?.precedent_root_cause_matrix).map((row) => ({
+    precedent: normalizeTagLabel(String(row.precedent || 'unknown')),
+    rootCause: normalizeTagLabel(String(row.root_cause || 'unknown')),
+    count: toInt(row.count),
+  }));
+
+  const productTree = toObjectArray(aggregateRow?.product_tree).map((row) => ({
+    product: normalizeLabel(row.product, 'Unspecified'),
+    total: toInt(row.total),
+    firms: toObjectArray(row.firms).map((firmRow) => ({
+      firm: normalizeLabel(firmRow.firm, 'Unknown firm'),
+      total: toInt(firmRow.total),
+      upheldRate: toNumber(firmRow.upheld_rate),
+    })),
+  }));
+
+  const topFirmByYear = toObjectArray(aggregateRow?.top_firm_by_year).map((row) => ({
+    year: toInt(row.year),
+    firm: normalizeLabel(row.firm, 'Unknown firm'),
+  }));
+
+  const yearNarratives = buildYearNarratives(yearProductOutcome, topFirmByYear);
+
+  return {
+    yearProductOutcome,
+    firmBenchmark,
+    precedentRootCauseMatrix,
+    productTree,
+    yearNarratives,
+  };
+}
+
 export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | null> {
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
@@ -222,6 +288,18 @@ export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | nul
     ombudsmanReasoningText: nullableString(row.ombudsman_reasoning_text),
     finalDecisionText: nullableString(row.final_decision_text),
     fullText: nullableString(row.full_text),
+    sectionSources: {
+      complaint: 'missing',
+      firmResponse: 'missing',
+      ombudsmanReasoning: 'missing',
+      finalDecision: 'missing',
+    },
+    sectionConfidence: {
+      complaint: 0,
+      firmResponse: 0,
+      ombudsmanReasoning: 0,
+      finalDecision: 0,
+    },
   });
 }
 
@@ -444,6 +522,194 @@ async function queryAggregateBundle(
             )
           ELSE '[]'::jsonb
         END AS root_causes
+    `,
+    [...filtered.params, includePrecedents, includeRootCauses]
+  );
+
+  return rows[0] || null;
+}
+
+async function queryAnalysisBundle(
+  filters: FOSDashboardFilters,
+  includePrecedents: boolean,
+  includeRootCauses: boolean
+): Promise<Record<string, unknown> | null> {
+  const filtered = buildFilteredCte(filters);
+  const includePrecedentsIndex = filtered.nextIndex;
+  const includeRootCausesIndex = filtered.nextIndex + 1;
+
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      ${filtered.cteSql}
+      SELECT
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(y) ORDER BY y.year ASC, y.total DESC, y.product ASC)
+            FROM (
+              SELECT
+                EXTRACT(YEAR FROM decision_date)::INT AS year,
+                COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+                COUNT(*)::INT AS total,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::INT AS upheld,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::INT AS not_upheld,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'partially_upheld')::INT AS partially_upheld,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS upheld_rate,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS not_upheld_rate
+              FROM filtered
+              WHERE decision_date IS NOT NULL
+              GROUP BY EXTRACT(YEAR FROM decision_date)::INT, COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+            ) y
+          ),
+          '[]'::jsonb
+        ) AS year_product_outcome,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(fm) ORDER BY fm.total DESC, fm.firm ASC)
+            FROM (
+              SELECT
+                COALESCE(NULLIF(BTRIM(f.business_name), ''), 'Unknown firm') AS firm,
+                COUNT(*)::INT AS total,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE f.outcome_bucket = 'upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS upheld_rate,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE f.outcome_bucket = 'not_upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS not_upheld_rate,
+                ROUND(AVG(EXTRACT(YEAR FROM f.decision_date)))::INT AS avg_decision_year,
+                (
+                  SELECT COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified')
+                  FROM filtered f2
+                  WHERE COALESCE(NULLIF(BTRIM(f2.business_name), ''), 'Unknown firm')
+                    = COALESCE(NULLIF(BTRIM(f.business_name), ''), 'Unknown firm')
+                  GROUP BY COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified')
+                  ORDER BY COUNT(*) DESC, COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified') ASC
+                  LIMIT 1
+                ) AS predominant_product
+              FROM filtered f
+              GROUP BY COALESCE(NULLIF(BTRIM(f.business_name), ''), 'Unknown firm')
+              ORDER BY total DESC, firm ASC
+              LIMIT 120
+            ) fm
+          ),
+          '[]'::jsonb
+        ) AS firm_benchmark,
+        CASE
+          WHEN $${includePrecedentsIndex}::BOOLEAN AND $${includeRootCausesIndex}::BOOLEAN THEN
+            COALESCE(
+              (
+                SELECT jsonb_agg(row_to_json(mx) ORDER BY mx.count DESC, mx.precedent ASC, mx.root_cause ASC)
+                FROM (
+                  SELECT
+                    LOWER(BTRIM(p.value)) AS precedent,
+                    LOWER(BTRIM(rc.value)) AS root_cause,
+                    COUNT(*)::INT AS count
+                  FROM filtered f
+                  CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(f.precedents, '[]'::jsonb)) AS p(value)
+                  CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(f.root_cause_tags, '[]'::jsonb)) AS rc(value)
+                  WHERE BTRIM(p.value) <> '' AND BTRIM(rc.value) <> ''
+                  GROUP BY LOWER(BTRIM(p.value)), LOWER(BTRIM(rc.value))
+                  ORDER BY count DESC, precedent ASC, root_cause ASC
+                  LIMIT 180
+                ) mx
+              ),
+              '[]'::jsonb
+            )
+          ELSE '[]'::jsonb
+        END AS precedent_root_cause_matrix,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(pt) ORDER BY pt.total DESC, pt.product ASC)
+            FROM (
+              SELECT
+                products.product,
+                products.total,
+                COALESCE(
+                  (
+                    SELECT jsonb_agg(row_to_json(firm_node) ORDER BY firm_node.total DESC, firm_node.firm ASC)
+                    FROM (
+                      SELECT
+                        COALESCE(NULLIF(BTRIM(f2.business_name), ''), 'Unknown firm') AS firm,
+                        COUNT(*)::INT AS total,
+                        ROUND(
+                          COALESCE(
+                            COUNT(*) FILTER (WHERE f2.outcome_bucket = 'upheld')::NUMERIC
+                            / NULLIF(COUNT(*), 0) * 100,
+                            0
+                          ),
+                          2
+                        ) AS upheld_rate
+                      FROM filtered f2
+                      WHERE COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified') = products.product
+                      GROUP BY COALESCE(NULLIF(BTRIM(f2.business_name), ''), 'Unknown firm')
+                      ORDER BY total DESC, firm ASC
+                      LIMIT 10
+                    ) firm_node
+                  ),
+                  '[]'::jsonb
+                ) AS firms
+              FROM (
+                SELECT
+                  COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+                  COUNT(*)::INT AS total
+                FROM filtered
+                GROUP BY COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+                ORDER BY total DESC, product ASC
+                LIMIT 16
+              ) products
+            ) pt
+          ),
+          '[]'::jsonb
+        ) AS product_tree,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(tf) ORDER BY tf.year ASC)
+            FROM (
+              SELECT
+                ranked.year,
+                ranked.firm,
+                ranked.total
+              FROM (
+                SELECT
+                  EXTRACT(YEAR FROM decision_date)::INT AS year,
+                  COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') AS firm,
+                  COUNT(*)::INT AS total,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY EXTRACT(YEAR FROM decision_date)::INT
+                    ORDER BY COUNT(*) DESC, COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') ASC
+                  ) AS rank_in_year
+                FROM filtered
+                WHERE decision_date IS NOT NULL
+                GROUP BY EXTRACT(YEAR FROM decision_date)::INT, COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm')
+              ) ranked
+              WHERE ranked.rank_in_year = 1
+            ) tf
+          ),
+          '[]'::jsonb
+        ) AS top_firm_by_year
     `,
     [...filtered.params, includePrecedents, includeRootCauses]
   );
@@ -775,6 +1041,64 @@ async function queryYearInsights(trends: Array<{ year: number; total: number; up
   return insights.sort((a, b) => b.year - a.year);
 }
 
+function buildYearNarratives(
+  yearProductOutcome: FOSYearProductOutcomeCell[],
+  topFirmByYear: Array<{ year: number; firm: string }>
+): FOSYearNarrative[] {
+  if (!yearProductOutcome.length) return [];
+
+  const byYear = new Map<number, FOSYearProductOutcomeCell[]>();
+  for (const row of yearProductOutcome) {
+    const list = byYear.get(row.year) || [];
+    list.push(row);
+    byYear.set(row.year, list);
+  }
+
+  const topFirmLookup = new Map<number, string>();
+  for (const item of topFirmByYear) {
+    if (!item.year || !item.firm) continue;
+    topFirmLookup.set(item.year, item.firm);
+  }
+
+  const sortedYears = Array.from(byYear.keys()).sort((a, b) => a - b);
+  const yearlyTotals = sortedYears.map((year) => {
+    const items = byYear.get(year) || [];
+    const total = items.reduce((sum, item) => sum + item.total, 0);
+    const upheld = items.reduce((sum, item) => sum + item.upheld, 0);
+    const topProduct = [...items].sort((a, b) => b.total - a.total || a.product.localeCompare(b.product))[0]?.product || null;
+    return {
+      year,
+      total,
+      upheldRate: percentage(upheld, total),
+      topProduct,
+    };
+  });
+
+  return yearlyTotals
+    .map((item, index) => {
+      const previous = yearlyTotals[index - 1];
+      const delta = previous ? item.total - previous.total : null;
+      const deltaLabel =
+        delta == null
+          ? 'baseline period'
+          : `${delta > 0 ? '+' : ''}${delta.toLocaleString()} decisions vs prior year`;
+
+      return {
+        year: item.year,
+        total: item.total,
+        upheldRate: Number(item.upheldRate.toFixed(2)),
+        changeVsPrior: delta,
+        topProduct: item.topProduct,
+        topFirm: topFirmLookup.get(item.year) || null,
+        headline: `${item.year}: ${item.total.toLocaleString()} decisions (${item.upheldRate.toFixed(1)}% upheld)`,
+        detail: `Trend ${deltaLabel}. Top product: ${item.topProduct || 'n/a'}. Highest-volume firm: ${
+          topFirmLookup.get(item.year) || 'n/a'
+        }.`,
+      };
+    })
+    .sort((a, b) => b.year - a.year);
+}
+
 async function hasTagValues(column: 'precedents' | 'root_cause_tags'): Promise<boolean> {
   const now = Date.now();
   if (tagPresenceCache && now - tagPresenceCache.checkedAt < TABLE_CHECK_TTL_MS) {
@@ -1094,15 +1418,29 @@ function mapCaseListItem(row: Record<string, unknown>): FOSCaseListItem {
 
 function enrichCaseDetail(detail: FOSCaseDetail): FOSCaseDetail {
   const fullText = cleanDecisionText(detail.fullText);
-  const complaintText =
-    detail.complaintText ||
-    extractSection(fullText, COMPLAINT_MARKERS, [FIRM_RESPONSE_MARKERS, OMBUDSMAN_REASONING_MARKERS, FINAL_DECISION_MARKERS]);
-  const firmResponseText =
-    detail.firmResponseText || extractSection(fullText, FIRM_RESPONSE_MARKERS, [OMBUDSMAN_REASONING_MARKERS, FINAL_DECISION_MARKERS]);
-  const ombudsmanReasoningText =
-    detail.ombudsmanReasoningText || extractSection(fullText, OMBUDSMAN_REASONING_MARKERS, [FINAL_DECISION_MARKERS]);
-  const finalDecisionText = detail.finalDecisionText || extractSection(fullText, FINAL_DECISION_MARKERS, []);
-  const fallbackFinalDecision = finalDecisionText || extractFinalDecisionSentence(fullText);
+  const inferredComplaint = extractSection(fullText, COMPLAINT_MARKERS, [
+    FIRM_RESPONSE_MARKERS,
+    OMBUDSMAN_REASONING_MARKERS,
+    FINAL_DECISION_MARKERS,
+  ]);
+  const inferredFirmResponse = extractSection(fullText, FIRM_RESPONSE_MARKERS, [OMBUDSMAN_REASONING_MARKERS, FINAL_DECISION_MARKERS]);
+  const inferredReasoning = extractSection(fullText, OMBUDSMAN_REASONING_MARKERS, [FINAL_DECISION_MARKERS]);
+  const inferredFinalDecision = extractSection(fullText, FINAL_DECISION_MARKERS, []);
+  const fallbackFinalDecisionSentence = extractFinalDecisionSentence(fullText);
+
+  const complaintText = detail.complaintText || inferredComplaint;
+  const firmResponseText = detail.firmResponseText || inferredFirmResponse;
+  const ombudsmanReasoningText = detail.ombudsmanReasoningText || inferredReasoning;
+  const fallbackFinalDecision = detail.finalDecisionText || inferredFinalDecision || fallbackFinalDecisionSentence;
+
+  const complaintSource = resolveSectionSource(detail.complaintText, inferredComplaint, complaintText);
+  const firmResponseSource = resolveSectionSource(detail.firmResponseText, inferredFirmResponse, firmResponseText);
+  const ombudsmanReasoningSource = resolveSectionSource(
+    detail.ombudsmanReasoningText,
+    inferredReasoning,
+    ombudsmanReasoningText
+  );
+  const finalDecisionSource = resolveSectionSource(detail.finalDecisionText, inferredFinalDecision, fallbackFinalDecision);
   const tagSource = [
     detail.decisionLogic,
     detail.decisionSummary,
@@ -1131,6 +1469,22 @@ function enrichCaseDetail(detail: FOSCaseDetail): FOSCaseDetail {
     precedents,
     rootCauseTags,
     vulnerabilityFlags,
+    sectionSources: {
+      complaint: complaintSource,
+      firmResponse: firmResponseSource,
+      ombudsmanReasoning: ombudsmanReasoningSource,
+      finalDecision: finalDecisionSource,
+    },
+    sectionConfidence: {
+      complaint: sectionConfidence(complaintSource, complaintText),
+      firmResponse: sectionConfidence(firmResponseSource, firmResponseText),
+      ombudsmanReasoning: sectionConfidence(ombudsmanReasoningSource, ombudsmanReasoningText),
+      finalDecision: sectionConfidence(
+        finalDecisionSource,
+        fallbackFinalDecision,
+        fallbackFinalDecisionSentence != null && !detail.finalDecisionText && !inferredFinalDecision
+      ),
+    },
   };
 }
 
@@ -1289,6 +1643,28 @@ function trimText(value: string, maxLength: number): string | null {
   if (!normalized) return null;
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function resolveSectionSource(
+  storedValue: string | null | undefined,
+  inferredValue: string | null | undefined,
+  resolvedValue: string | null | undefined
+): FOSSectionSource {
+  if (storedValue && storedValue.trim()) return 'stored';
+  if (inferredValue && inferredValue.trim()) return 'inferred';
+  if (resolvedValue && resolvedValue.trim()) return 'inferred';
+  return 'missing';
+}
+
+function sectionConfidence(
+  source: FOSSectionSource,
+  text: string | null | undefined,
+  weakInference = false
+): number {
+  if (!text || !text.trim()) return 0;
+  if (source === 'stored') return 0.98;
+  if (source === 'inferred') return weakInference ? 0.62 : 0.78;
+  return 0;
 }
 
 function parseIntegerList(searchParams: URLSearchParams, key: string): number[] {

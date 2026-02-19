@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server';
-import { getDashboardSnapshot, parseFilters } from '@/lib/fos/repository';
-import { FOSDashboardApiResponse } from '@/types/fos-dashboard';
+import { getAnalysisSnapshot, parseFilters } from '@/lib/fos/repository';
+import { FOSAnalysisApiResponse } from '@/types/fos-dashboard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const CACHE_TTL_MS = 30_000;
-const cache = new Map<string, { expiresAt: number; payload: FOSDashboardApiResponse }>();
+const cache = new Map<string, { expiresAt: number; payload: FOSAnalysisApiResponse }>();
 
 export async function GET(request: NextRequest) {
   const startedAt = Date.now();
@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const cacheKey = request.nextUrl.searchParams.toString();
     const cached = cache.get(cacheKey);
+
     if (cached && cached.expiresAt > Date.now()) {
       return Response.json({
         ...cached.payload,
@@ -23,13 +24,14 @@ export async function GET(request: NextRequest) {
           queryMs: Date.now() - startedAt,
           snapshotAt: cached.payload.meta?.snapshotAt || cached.payload.generatedAt,
         },
-      } satisfies FOSDashboardApiResponse);
+      } satisfies FOSAnalysisApiResponse);
     }
 
     const filters = parseFilters(request.nextUrl.searchParams);
-    const snapshot = await getDashboardSnapshot(filters);
+    const snapshot = await getAnalysisSnapshot(filters);
     const snapshotAt = new Date().toISOString();
-    const payload = {
+
+    const payload: FOSAnalysisApiResponse = {
       success: true,
       generatedAt: snapshotAt,
       filters,
@@ -51,7 +53,7 @@ export async function GET(request: NextRequest) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch FOS dashboard data.',
+        error: error instanceof Error ? error.message : 'Failed to fetch analysis data.',
       },
       { status: 500 }
     );

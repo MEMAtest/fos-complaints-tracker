@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FOSCaseDetail, FOSDashboardFilters, FOSDashboardSnapshot, FOSOutcome } from '@/lib/fos/types';
-import { FOSCaseDetailApiResponse, FOSDashboardApiResponse } from '@/types/fos-dashboard';
+import { FOSApiMeta, FOSCaseDetailApiResponse, FOSDashboardApiResponse } from '@/types/fos-dashboard';
 
 const OUTCOME_LABELS: Record<FOSOutcome, string> = {
   upheld: 'Upheld',
@@ -148,23 +149,23 @@ function TrendBars({
           <button
             key={item.year}
             onClick={() => onToggleYear(item.year)}
-            className={`w-full rounded-xl border p-3 text-left transition ${
+            className={`w-full rounded-xl border p-2.5 text-left transition ${
               isActive ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50'
             }`}
           >
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-1.5 flex items-center justify-between">
               <p className="text-sm font-semibold text-slate-900">{item.year}</p>
               <p className="text-sm text-slate-600">{formatNumber(item.total)} decisions</p>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-200">
               <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500" style={{ width: `${width}%` }} />
             </div>
-            <div className="mt-2 flex h-2 overflow-hidden rounded-full border border-slate-200">
+            <div className="mt-1.5 flex h-2 overflow-hidden rounded-full border border-slate-200">
               <span className="bg-emerald-500" style={{ width: `${upheldShare}%` }} />
               <span className="bg-rose-500" style={{ width: `${notUpheldShare}%` }} />
               <span className="bg-indigo-400" style={{ width: `${partialShare}%` }} />
             </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+            <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500">
               <span>Upheld {formatPercent(upheldShare)}</span>
               <span>Not upheld {formatPercent(notUpheldShare)}</span>
             </div>
@@ -290,6 +291,7 @@ export default function FOSComplaintsDashboardPage() {
   const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
   const [averageLoadMs, setAverageLoadMs] = useState<number | null>(null);
   const [lastLoadMs, setLastLoadMs] = useState<number | null>(null);
+  const [responseMeta, setResponseMeta] = useState<FOSApiMeta | null>(null);
   const dashboardRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -337,6 +339,7 @@ export default function FOSComplaintsDashboardPage() {
       setLastLoadMs(durationMs);
       setAverageLoadMs((previous) => (previous == null ? durationMs : Math.round(previous * 0.7 + durationMs * 0.3)));
       setSnapshot(payload.data);
+      setResponseMeta(payload.meta || null);
       setFilters((prev) => (prev.page === payload.data.pagination.page ? prev : { ...prev, page: payload.data.pagination.page }));
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
@@ -433,11 +436,19 @@ export default function FOSComplaintsDashboardPage() {
 
   const loadingStatusText = useMemo(() => {
     if (!loading) return null;
+    const phase =
+      loadingElapsedSec < 2 ? 'Fetching filtered dataset' : loadingElapsedSec < 6 ? 'Aggregating charts and KPIs' : 'Rendering dashboard panels';
     if (estimatedRemainingSec != null) {
-      return `Refreshing dashboard... ${loadingElapsedSec}s elapsed, ~${estimatedRemainingSec}s remaining`;
+      return `${phase} · ${loadingElapsedSec}s elapsed · ~${estimatedRemainingSec}s remaining`;
     }
-    return `Refreshing dashboard... ${loadingElapsedSec}s elapsed`;
+    return `${phase} · ${loadingElapsedSec}s elapsed`;
   }, [estimatedRemainingSec, loading, loadingElapsedSec]);
+
+  const loadingProgressPct = useMemo(() => {
+    if (!loading || averageLoadMs == null || averageLoadMs <= 0) return null;
+    const pct = Math.round((loadingElapsedSec * 1000 * 100) / averageLoadMs);
+    return clamp(pct, 5, 95);
+  }, [averageLoadMs, loading, loadingElapsedSec]);
 
   const summaryLine = useMemo(() => {
     if (!snapshot) return '';
@@ -446,6 +457,14 @@ export default function FOSComplaintsDashboardPage() {
     const to = snapshot.overview.latestDecisionDate ? formatDate(snapshot.overview.latestDecisionDate) : 'n/a';
     return `Showing ${total} decisions in scope, covering ${from} to ${to}.`;
   }, [snapshot]);
+
+  const refreshMetaLine = useMemo(() => {
+    if (loading) return loadingStatusText;
+    if (!responseMeta) return null;
+    const cacheLabel = responseMeta.cached ? 'cache hit' : 'fresh query';
+    return `${cacheLabel} · ${responseMeta.queryMs}ms`;
+  }, [loading, loadingStatusText, responseMeta]);
+
   const hasActiveFilters =
     Boolean(filters.query) || filters.years.length > 0 || filters.outcomes.length > 0 || filters.products.length > 0 || filters.firms.length > 0 || filters.tags.length > 0;
 
@@ -503,8 +522,21 @@ export default function FOSComplaintsDashboardPage() {
           <div className="h-full w-1/3 animate-pulse bg-gradient-to-r from-blue-600 to-cyan-500" />
         </div>
       )}
-      <div className="relative mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-4 py-6 md:px-8">
-        <section className="overflow-hidden rounded-3xl border border-sky-200 bg-white/95 p-6 shadow-xl shadow-blue-100/70">
+      <div className="relative mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-4 py-5 md:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+            <span className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">Overview</span>
+            <Link
+              href={`/analysis?${buildQueryParams(filters).toString()}`}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            >
+              Analysis
+            </Link>
+          </div>
+          {refreshMetaLine && <p className="text-xs text-slate-500">{refreshMetaLine}</p>}
+        </div>
+
+        <section className="overflow-hidden rounded-3xl border border-sky-200 bg-white/95 p-5 shadow-xl shadow-blue-100/70">
           <div className="relative">
             <div className="absolute -right-20 -top-16 h-56 w-56 rounded-full bg-cyan-200/40 blur-3xl" />
             <div className="absolute -left-16 -bottom-20 h-56 w-56 rounded-full bg-blue-300/35 blur-3xl" />
@@ -512,10 +544,10 @@ export default function FOSComplaintsDashboardPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500">MEMA Consultants</p>
-                  <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
+                  <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900 md:text-[2.6rem]">
                     FOS Complaints Intelligence
                   </h1>
-                  <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                  <p className="mt-1.5 max-w-3xl text-sm text-slate-600">
                     Search-first adjudication intelligence from the Financial Ombudsman decisions corpus, with live
                     drill-down by year, product, firm, and precedent patterns.
                   </p>
@@ -523,8 +555,10 @@ export default function FOSComplaintsDashboardPage() {
                 <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                   <span className={`h-2 w-2 rounded-full ${loading ? 'animate-pulse bg-blue-500' : 'bg-emerald-500'}`} />
                   {loadingStatusText ||
-                    (snapshot?.ingestion.lastSuccessAt
-                      ? `Updated ${formatDateTime(snapshot.ingestion.lastSuccessAt)}`
+                    (responseMeta?.snapshotAt
+                      ? `Updated ${formatDateTime(responseMeta.snapshotAt)}`
+                      : snapshot?.ingestion.lastSuccessAt
+                        ? `Updated ${formatDateTime(snapshot.ingestion.lastSuccessAt)}`
                       : 'Update timestamp unavailable')}
                 </div>
               </div>
@@ -557,12 +591,23 @@ export default function FOSComplaintsDashboardPage() {
                     {summaryLine || 'Loading dashboard snapshot...'} Press Enter or click &quot;Apply search&quot; to run query.
                   </span>
                   {loading && (
-                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
-                      {loadingStatusText}
-                    </span>
+                    <>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">{loadingStatusText}</span>
+                      {loadingProgressPct != null && (
+                        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs text-blue-700">
+                          <span className="h-1.5 w-20 overflow-hidden rounded-full bg-blue-100">
+                            <span className="block h-full bg-blue-500" style={{ width: `${loadingProgressPct}%` }} />
+                          </span>
+                          {loadingProgressPct}%
+                        </span>
+                      )}
+                    </>
                   )}
                   {!loading && lastLoadMs != null && (
-                    <span className="text-xs text-slate-500">Last refresh: {(lastLoadMs / 1000).toFixed(1)}s</span>
+                    <span className="text-xs text-slate-500">
+                      Last refresh: {(lastLoadMs / 1000).toFixed(1)}s
+                      {responseMeta ? ` · ${responseMeta.cached ? 'cache hit' : 'fresh query'} · ${responseMeta.queryMs}ms` : ''}
+                    </span>
                   )}
                 </div>
               </div>
@@ -665,7 +710,7 @@ export default function FOSComplaintsDashboardPage() {
               </div>
             </div>
             {snapshot ? (
-              <div className="max-h-[360px] overflow-y-auto pr-1">
+              <div className="max-h-[300px] overflow-y-auto pr-1">
                 <TrendBars snapshot={snapshot} activeYears={filters.years} onToggleYear={toggleYear} />
               </div>
             ) : (
@@ -789,11 +834,21 @@ export default function FOSComplaintsDashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_340px] xl:items-start">
+        <section className="grid gap-4 xl:grid-cols-[1fr_360px] xl:items-start">
           <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <header className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-lg font-semibold text-slate-900">Case explorer</h2>
-              <p className="text-sm text-slate-500">Click a row to open full complaint, reasoning, and decision content.</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Case explorer</h2>
+                  <p className="text-sm text-slate-500">Click a row to open full complaint, reasoning, and decision content.</p>
+                </div>
+                <Link
+                  href={`/analysis?${buildQueryParams(filters).toString()}`}
+                  className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                >
+                  Open deep analysis
+                </Link>
+              </div>
             </header>
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse">
@@ -861,29 +916,68 @@ export default function FOSComplaintsDashboardPage() {
             </footer>
           </article>
 
-          <article className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">Top firms in scope</h3>
-            <p className="mt-1 text-sm text-slate-500">High-volume firms under current filters.</p>
-            <div className="mt-4 max-h-[620px] space-y-3 overflow-y-auto pr-1">
-              {(snapshot?.firms || []).slice(0, 10).map((firm) => (
-                <button
-                  key={firm.firm}
-                  onClick={() => setFilters((prev) => ({ ...prev, firms: prev.firms.includes(firm.firm) ? [] : [firm.firm], page: 1 }))}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    filters.firms.includes(firm.firm)
-                      ? 'border-blue-300 bg-blue-50'
-                      : 'border-slate-200 hover:border-blue-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <p className="line-clamp-1 text-sm font-medium text-slate-900">{firm.firm}</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {formatNumber(firm.total)} cases | upheld {formatPercent(firm.upheldRate)}
-                  </p>
-                </button>
-              ))}
-              {(snapshot?.firms || []).length === 0 && <EmptyState label="No firm breakdown available." />}
-            </div>
-          </article>
+          <div className="grid gap-4 self-start">
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-base font-semibold text-slate-900">Top firms in scope</h3>
+              <p className="mt-1 text-sm text-slate-500">High-volume firms under current filters.</p>
+              <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                {(snapshot?.firms || []).slice(0, 10).map((firm) => (
+                  <button
+                    key={firm.firm}
+                    onClick={() => setFilters((prev) => ({ ...prev, firms: prev.firms.includes(firm.firm) ? [] : [firm.firm], page: 1 }))}
+                    className={`w-full rounded-xl border p-3 text-left transition ${
+                      filters.firms.includes(firm.firm)
+                        ? 'border-blue-300 bg-blue-50'
+                        : 'border-slate-200 hover:border-blue-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <p className="line-clamp-1 text-sm font-medium text-slate-900">{firm.firm}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {formatNumber(firm.total)} cases | upheld {formatPercent(firm.upheldRate)}
+                    </p>
+                  </button>
+                ))}
+                {(snapshot?.firms || []).length === 0 && <EmptyState label="No firm breakdown available." />}
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-base font-semibold text-slate-900">Firm concentration</h3>
+              <p className="mt-1 text-sm text-slate-500">Share of visible case volume by top firms.</p>
+              <div className="mt-4 space-y-2">
+                {(snapshot?.firms || []).slice(0, 6).map((firm) => {
+                  const denominator = Math.max(snapshot?.overview.totalCases || 1, 1);
+                  const share = (firm.total / denominator) * 100;
+                  return (
+                    <button
+                      key={`firm-share-${firm.firm}`}
+                      onClick={() =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          firms: prev.firms.includes(firm.firm) ? [] : [firm.firm],
+                          page: 1,
+                        }))
+                      }
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                        filters.firms.includes(firm.firm)
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-slate-200 hover:border-blue-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="line-clamp-1 text-xs font-medium text-slate-800">{firm.firm}</span>
+                        <span className="text-xs text-slate-600">{share.toFixed(1)}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500" style={{ width: `${share}%` }} />
+                      </div>
+                    </button>
+                  );
+                })}
+                {(snapshot?.firms || []).length === 0 && <EmptyState label="No firm concentration data available." />}
+              </div>
+            </article>
+          </div>
         </section>
       </div>
 
@@ -940,13 +1034,30 @@ export default function FOSComplaintsDashboardPage() {
                 </header>
 
                 <DetailBlock title="Decision logic" text={selectedCase.decisionLogic || selectedCase.decisionSummary || 'Not available.'} />
-                <DetailBlock title="The complaint" text={selectedCase.complaintText || 'No explicit complaint section found in source text.'} />
-                <DetailBlock title="Firm response" text={selectedCase.firmResponseText || 'No explicit firm-response section found in source text.'} />
+                <DetailBlock
+                  title="The complaint"
+                  text={selectedCase.complaintText || 'Section unavailable. Review source text preview below.'}
+                  source={selectedCase.sectionSources.complaint}
+                  confidence={selectedCase.sectionConfidence.complaint}
+                />
+                <DetailBlock
+                  title="Firm response"
+                  text={selectedCase.firmResponseText || 'Section unavailable. Review source text preview below.'}
+                  source={selectedCase.sectionSources.firmResponse}
+                  confidence={selectedCase.sectionConfidence.firmResponse}
+                />
                 <DetailBlock
                   title="Ombudsman reasoning"
-                  text={selectedCase.ombudsmanReasoningText || 'No explicit ombudsman-reasoning section found in source text.'}
+                  text={selectedCase.ombudsmanReasoningText || 'Section unavailable. Review source text preview below.'}
+                  source={selectedCase.sectionSources.ombudsmanReasoning}
+                  confidence={selectedCase.sectionConfidence.ombudsmanReasoning}
                 />
-                <DetailBlock title="Final decision" text={selectedCase.finalDecisionText || 'No explicit final-decision section found in source text.'} />
+                <DetailBlock
+                  title="Final decision"
+                  text={selectedCase.finalDecisionText || 'Section unavailable. Review source text preview below.'}
+                  source={selectedCase.sectionSources.finalDecision}
+                  confidence={selectedCase.sectionConfidence.finalDecision}
+                />
                 {selectedCase.fullText && (
                   <DetailBlock title="Source text preview" text={truncate(selectedCase.fullText, 2500)} />
                 )}
@@ -977,12 +1088,42 @@ function QualityRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DetailBlock({ title, text }: { title: string; text: string }) {
+function DetailBlock({
+  title,
+  text,
+  source,
+  confidence,
+}: {
+  title: string;
+  text: string;
+  source?: 'stored' | 'inferred' | 'missing';
+  confidence?: number;
+}) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+        {source && <SectionSourceBadge source={source} confidence={confidence} />}
+      </div>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{text}</p>
     </section>
+  );
+}
+
+function SectionSourceBadge({ source, confidence }: { source: 'stored' | 'inferred' | 'missing'; confidence?: number }) {
+  const styles =
+    source === 'stored'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : source === 'inferred'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : 'border-slate-200 bg-slate-100 text-slate-600';
+  const label = source === 'stored' ? 'stored extract' : source === 'inferred' ? 'inferred extract' : 'missing';
+
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${styles}`}>
+      {label}
+      {confidence != null ? ` · ${Math.round(confidence * 100)}%` : ''}
+    </span>
   );
 }
 

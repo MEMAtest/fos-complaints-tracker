@@ -5,10 +5,13 @@
 :root {
   --surface-page: #f5f8ff;
   --surface-card: #ffffff;
+  --surface-soft: #edf3ff;
+  --surface-accent: #dbe9ff;
   --ink-900: #0f172a;
   --ink-700: #334155;
   --ink-500: #64748b;
   --line-default: #e2e8f0;
+  --line-strong: #cbd7ed;
 }
 
 html,
@@ -18,7 +21,10 @@ body {
 
 body {
   margin: 0;
-  background: var(--surface-page);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(14, 165, 233, 0.12), transparent 30%),
+    radial-gradient(circle at 88% 8%, rgba(59, 130, 246, 0.12), transparent 34%),
+    var(--surface-page);
   color: var(--ink-900);
   font-family: var(--font-body), sans-serif;
 }
