@@ -14,6 +14,7 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const TABLE_CHECK_TTL_MS = 60_000;
+const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60_000;
 const SUPPORTED_OUTCOMES: FOSOutcome[] = [
   'upheld',
   'not_upheld',
@@ -55,6 +56,7 @@ let tagPresenceCache:
       rootCauseTags: boolean;
     }
   | null = null;
+let filterOptionsCache: { checkedAt: number; value: FOSFilterOptions } | null = null;
 
 export function parseFilters(searchParams: URLSearchParams): FOSDashboardFilters {
   const years = parseIntegerList(searchParams, 'year');
@@ -141,7 +143,7 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
     count: toInt(row.count),
   }));
 
-  const insights = await queryYearInsights(filters, trends);
+  const insights = await queryYearInsights(trends);
 
   return {
     overview,
@@ -508,6 +510,11 @@ async function queryCases(filters: FOSDashboardFilters): Promise<{
 }
 
 async function queryFilterOptions(): Promise<FOSFilterOptions> {
+  const now = Date.now();
+  if (filterOptionsCache && now - filterOptionsCache.checkedAt < FILTER_OPTIONS_CACHE_TTL_MS) {
+    return filterOptionsCache.value;
+  }
+
   const [yearRows, productRows, firmRows] = await Promise.all([
     DatabaseClient.query<Record<string, unknown>>(
       `
@@ -539,48 +546,20 @@ async function queryFilterOptions(): Promise<FOSFilterOptions> {
     ),
   ]);
 
-  return {
+  const value = {
     years: yearRows.map((row) => toInt(row.year)).filter((year) => year > 0),
     outcomes: SUPPORTED_OUTCOMES,
     products: productRows.map((row) => normalizeLabel(row.product, 'Unspecified')).filter(Boolean),
     firms: firmRows.map((row) => normalizeLabel(row.firm, 'Unknown firm')).filter(Boolean),
     tags: [],
   };
+
+  filterOptionsCache = { checkedAt: now, value };
+  return value;
 }
 
-async function queryYearInsights(
-  filters: FOSDashboardFilters,
-  trends: Array<{ year: number; total: number; upheld: number; notUpheld: number }>
-): Promise<FOSYearInsight[]> {
+async function queryYearInsights(trends: Array<{ year: number; total: number; upheld: number; notUpheld: number }>): Promise<FOSYearInsight[]> {
   if (!trends.length) return [];
-
-  const filtered = buildFilteredCte(filters);
-  const topProducts = await DatabaseClient.query<Record<string, unknown>>(
-    `
-      ${filtered.cteSql}
-      SELECT year, product, total
-      FROM (
-        SELECT
-          EXTRACT(YEAR FROM decision_date)::INT AS year,
-          COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
-          COUNT(*)::INT AS total,
-          ROW_NUMBER() OVER (
-            PARTITION BY EXTRACT(YEAR FROM decision_date)::INT
-            ORDER BY COUNT(*) DESC, COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') ASC
-          ) AS rank
-        FROM filtered
-        WHERE decision_date IS NOT NULL
-        GROUP BY EXTRACT(YEAR FROM decision_date)::INT, COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
-      ) ranked
-      WHERE rank = 1
-    `,
-    filtered.params
-  );
-
-  const productByYear = new Map<number, string>();
-  topProducts.forEach((row) => {
-    productByYear.set(toInt(row.year), normalizeLabel(row.product, 'Unspecified'));
-  });
 
   const sorted = [...trends].sort((a, b) => a.year - b.year);
   const insights: FOSYearInsight[] = [];
@@ -595,12 +574,10 @@ async function queryYearInsights(
         ? 'baseline year in the current filter window'
         : `${delta > 0 ? '+' : ''}${delta} vs prior year`;
 
-    const topProduct = productByYear.get(item.year) || 'Unspecified';
-
     insights.push({
       year: item.year,
       headline: `${item.year}: ${item.total.toLocaleString()} decisions, ${upheldRate.toFixed(1)}% upheld`,
-      detail: `Primary product group: ${topProduct}. Root-cause tagging pending enrichment. Volume trend: ${deltaText}.`,
+      detail: `Upheld ${item.upheld.toLocaleString()} vs not upheld ${item.notUpheld.toLocaleString()}. Volume trend: ${deltaText}.`,
     });
   }
 

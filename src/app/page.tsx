@@ -285,6 +285,10 @@ export default function FOSComplaintsDashboardPage() {
   const [selectedCase, setSelectedCase] = useState<FOSCaseDetail | null>(null);
   const [caseLoading, setCaseLoading] = useState(false);
   const [caseError, setCaseError] = useState<string | null>(null);
+  const [requestStartedAt, setRequestStartedAt] = useState<number | null>(null);
+  const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
+  const [averageLoadMs, setAverageLoadMs] = useState<number | null>(null);
+  const [lastLoadMs, setLastLoadMs] = useState<number | null>(null);
   const dashboardRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -298,10 +302,17 @@ export default function FOSComplaintsDashboardPage() {
     dashboardRequestRef.current?.abort();
     const controller = new AbortController();
     dashboardRequestRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), 25_000);
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 25_000);
+    const startedAt = Date.now();
 
     setLoading(true);
     setError(null);
+    setRequestStartedAt(startedAt);
+    setLoadingElapsedSec(0);
 
     try {
       const params = buildQueryParams(nextFilters);
@@ -309,16 +320,28 @@ export default function FOSComplaintsDashboardPage() {
         cache: 'no-store',
         signal: controller.signal,
       });
-      const payload = (await response.json()) as FOSDashboardApiResponse;
-
-      if (!response.ok || !payload.success || !payload.data) {
-        throw new Error('Unable to load dashboard data.');
+      let payload: FOSDashboardApiResponse | null = null;
+      try {
+        payload = (await response.json()) as FOSDashboardApiResponse;
+      } catch {
+        payload = null;
       }
 
+      if (!response.ok || !payload?.success || !payload.data) {
+        const message = payload?.error || `Dashboard request failed (${response.status}).`;
+        throw new Error(message);
+      }
+
+      const durationMs = Date.now() - startedAt;
+      setLastLoadMs(durationMs);
+      setAverageLoadMs((previous) => (previous == null ? durationMs : Math.round(previous * 0.7 + durationMs * 0.3)));
       setSnapshot(payload.data);
       setFilters((prev) => (prev.page === payload.data.pagination.page ? prev : { ...prev, page: payload.data.pagination.page }));
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
+        if (timedOut) {
+          setError('Dashboard query timed out after 25 seconds. Please retry.');
+        }
         return;
       }
       const message = requestError instanceof Error ? requestError.message : 'Unknown dashboard error';
@@ -328,6 +351,7 @@ export default function FOSComplaintsDashboardPage() {
       if (dashboardRequestRef.current === controller) {
         dashboardRequestRef.current = null;
         setLoading(false);
+        setRequestStartedAt(null);
       }
     }
   }, []);
@@ -351,6 +375,16 @@ export default function FOSComplaintsDashboardPage() {
     },
     []
   );
+
+  useEffect(() => {
+    if (!loading || requestStartedAt == null) return;
+    const update = () => {
+      setLoadingElapsedSec(Math.max(0, Math.floor((Date.now() - requestStartedAt) / 1000)));
+    };
+    update();
+    const intervalId = window.setInterval(update, 250);
+    return () => window.clearInterval(intervalId);
+  }, [loading, requestStartedAt]);
 
   useEffect(() => {
     if (!selectedCaseId) {
@@ -388,6 +422,21 @@ export default function FOSComplaintsDashboardPage() {
 
   const activeProduct = filters.products[0] || null;
   const activeOutcome = filters.outcomes[0] || null;
+  const activeTag = filters.tags[0] || null;
+
+  const estimatedRemainingSec = useMemo(() => {
+    if (!loading || averageLoadMs == null) return null;
+    const remainingMs = Math.max(0, averageLoadMs - loadingElapsedSec * 1000);
+    return Math.ceil(remainingMs / 1000);
+  }, [averageLoadMs, loading, loadingElapsedSec]);
+
+  const loadingStatusText = useMemo(() => {
+    if (!loading) return null;
+    if (estimatedRemainingSec != null) {
+      return `Refreshing dashboard... ${loadingElapsedSec}s elapsed, ~${estimatedRemainingSec}s remaining`;
+    }
+    return `Refreshing dashboard... ${loadingElapsedSec}s elapsed`;
+  }, [estimatedRemainingSec, loading, loadingElapsedSec]);
 
   const summaryLine = useMemo(() => {
     if (!snapshot) return '';
@@ -470,11 +519,10 @@ export default function FOSComplaintsDashboardPage() {
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                   <span className={`h-2 w-2 rounded-full ${loading ? 'animate-pulse bg-blue-500' : 'bg-emerald-500'}`} />
-                  {loading
-                    ? 'Refreshing dashboard...'
-                    : snapshot?.ingestion.lastSuccessAt
+                  {loadingStatusText ||
+                    (snapshot?.ingestion.lastSuccessAt
                       ? `Updated ${formatDateTime(snapshot.ingestion.lastSuccessAt)}`
-                      : 'Update timestamp unavailable'}
+                      : 'Update timestamp unavailable')}
                 </div>
               </div>
 
@@ -503,8 +551,16 @@ export default function FOSComplaintsDashboardPage() {
                     Clear all filters
                   </button>
                   <span className="text-xs text-slate-500">
-                    {summaryLine} Press Enter or click &quot;Apply search&quot; to run query.
+                    {summaryLine || 'Loading dashboard snapshot...'} Press Enter or click &quot;Apply search&quot; to run query.
                   </span>
+                  {loading && (
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                      {loadingStatusText}
+                    </span>
+                  )}
+                  {!loading && lastLoadMs != null && (
+                    <span className="text-xs text-slate-500">Last refresh: {(lastLoadMs / 1000).toFixed(1)}s</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -512,7 +568,15 @@ export default function FOSComplaintsDashboardPage() {
         </section>
 
         {error && (
-          <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</section>
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            <span>{error}</span>
+            <button
+              onClick={() => void fetchDashboard(filters)}
+              className="rounded-full border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:border-rose-400"
+            >
+              Retry now
+            </button>
+          </section>
         )}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -685,13 +749,13 @@ export default function FOSComplaintsDashboardPage() {
               <TagBars
                 title="Top precedents"
                 items={snapshot?.precedents || []}
-                activeTag={filters.tags[0] || null}
+                activeTag={activeTag}
                 onToggle={setTagFilter}
               />
               <TagBars
                 title="Top root causes"
                 items={snapshot?.rootCauses || []}
-                activeTag={filters.tags[0] || null}
+                activeTag={activeTag}
                 onToggle={setTagFilter}
               />
             </div>
