@@ -590,6 +590,50 @@ async function queryAggregateBundle(
 }
 
 async function queryOverviewAndQuality(filters: FOSDashboardFilters): Promise<Record<string, unknown> | null> {
+  const hasFilters =
+    Boolean(filters.query) ||
+    filters.years.length > 0 ||
+    filters.outcomes.length > 0 ||
+    filters.products.length > 0 ||
+    filters.firms.length > 0 ||
+    filters.tags.length > 0;
+
+  if (!hasFilters) {
+    const rows = await DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          COUNT(*)::INT AS total_cases,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::INT AS upheld_cases,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::INT AS not_upheld_cases,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'partially_upheld')::INT AS partially_upheld_cases,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS upheld_rate,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS not_upheld_rate,
+          MIN(d.decision_date) AS earliest_decision_date,
+          MAX(d.decision_date) AS latest_decision_date,
+          COUNT(*) FILTER (WHERE d.decision_date IS NULL)::INT AS missing_decision_date,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'unknown')::INT AS missing_outcome,
+          COUNT(*) FILTER (WHERE NULLIF(BTRIM(COALESCE(d.ombudsman_reasoning_text, '')), '') IS NOT NULL)::INT AS with_reasoning_text
+        FROM fos_decisions d
+      `
+    );
+
+    return rows[0] || null;
+  }
+
   const filtered = buildFilteredCte(filters);
   const rows = await DatabaseClient.query<Record<string, unknown>>(
     `
