@@ -78,31 +78,18 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
 
-  const [
-    overviewRow,
-    trendsRows,
-    outcomesRows,
-    productsRows,
-    firmsRows,
-    precedentsRows,
-    rootCauseRows,
-    qualityRow,
-    caseBundle,
-    options,
-    ingestion,
-  ] = await Promise.all([
-    queryOverview(filters),
-    queryTrends(filters),
-    queryOutcomeDistribution(filters),
-    queryProducts(filters),
-    queryFirms(filters),
-    queryTagFrequency(filters, 'precedents', 12),
-    queryTagFrequency(filters, 'root_cause_tags', 12),
-    queryDataQuality(filters),
-    queryCases(filters),
-    queryFilterOptions(),
-    queryIngestionStatus(),
-  ]);
+  // Run sequentially to avoid pool exhaustion during rapid filter/search changes.
+  const overviewRow = await queryOverview(filters);
+  const trendsRows = await queryTrends(filters);
+  const outcomesRows = await queryOutcomeDistribution(filters);
+  const productsRows = await queryProducts(filters);
+  const firmsRows = await queryFirms(filters);
+  const precedentsRows = await queryTagFrequency(filters, 'precedents', 12);
+  const rootCauseRows = await queryTagFrequency(filters, 'root_cause_tags', 12);
+  const qualityRow = await queryDataQuality(filters);
+  const caseBundle = await queryCases(filters);
+  const options = await queryFilterOptions();
+  const ingestion = await queryIngestionStatus();
 
   const overview = {
     totalCases: toInt(overviewRow?.total_cases),

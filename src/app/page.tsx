@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FOSCaseDetail, FOSDashboardFilters, FOSDashboardSnapshot, FOSOutcome } from '@/lib/fos/types';
 import { FOSCaseDetailApiResponse, FOSDashboardApiResponse } from '@/types/fos-dashboard';
 
@@ -89,19 +89,33 @@ function DashboardKpiCard({
   value,
   helper,
   accent,
+  onClick,
 }: {
   label: string;
   value: string;
   helper: string;
   accent: string;
+  onClick?: () => void;
 }) {
-  return (
-    <article className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  const card = (
+    <article
+      className={`group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+        onClick ? 'cursor-pointer transition hover:border-blue-300 hover:shadow-md' : ''
+      }`}
+    >
       <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-20 ${accent}`} />
       <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{value}</p>
       <p className="mt-1 text-xs text-slate-500">{helper}</p>
     </article>
+  );
+
+  if (!onClick) return card;
+
+  return (
+    <button onClick={onClick} className="w-full text-left">
+      {card}
+    </button>
   );
 }
 
@@ -166,17 +180,19 @@ function HorizontalBars({
   activeValue,
   onToggle,
   valueFormatter,
+  className,
 }: {
   title: string;
   items: Array<{ label: string; total: number; rate: number }>;
   activeValue: string | null;
   onToggle: (value: string) => void;
   valueFormatter: (item: { label: string; total: number; rate: number }) => string;
+  className?: string;
 }) {
   const max = Math.max(...items.map((item) => item.total), 1);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className || ''}`}>
       <h3 className="text-base font-semibold text-slate-900">{title}</h3>
       <div className="mt-4 space-y-3">
         {items.length === 0 && <EmptyState label="No records for this view." />}
@@ -206,6 +222,50 @@ function HorizontalBars({
   );
 }
 
+function TagBars({
+  title,
+  items,
+  activeTag,
+  onToggle,
+}: {
+  title: string;
+  items: Array<{ label: string; count: number }>;
+  activeTag: string | null;
+  onToggle: (tag: string) => void;
+}) {
+  const max = Math.max(...items.map((item) => item.count), 1);
+
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{title}</p>
+      <div className="mt-2 space-y-2">
+        {items.length === 0 && <EmptyState label={`No ${title.toLowerCase()} for this scope.`} />}
+        {items.map((item) => {
+          const active = activeTag === item.label;
+          const width = (item.count / max) * 100;
+          return (
+            <button
+              key={`${title}-${item.label}`}
+              onClick={() => onToggle(item.label)}
+              className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                active ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-200 hover:bg-slate-50'
+              }`}
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="line-clamp-1 text-xs font-medium text-slate-800">{item.label}</span>
+                <span className="text-xs text-slate-600">{formatNumber(item.count)}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500" style={{ width: `${width}%` }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ label }: { label: string }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
@@ -225,6 +285,7 @@ export default function FOSComplaintsDashboardPage() {
   const [selectedCase, setSelectedCase] = useState<FOSCaseDetail | null>(null);
   const [caseLoading, setCaseLoading] = useState(false);
   const [caseError, setCaseError] = useState<string | null>(null);
+  const dashboardRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const parsed = parseFiltersFromQueryString(window.location.search);
@@ -233,60 +294,41 @@ export default function FOSComplaintsDashboardPage() {
     setInitialized(true);
   }, []);
 
-  useEffect(() => {
-    if (!initialized) return;
-    const timeout = window.setTimeout(() => {
-      setFilters((prev) => (prev.query === queryDraft ? prev : { ...prev, query: queryDraft, page: 1 }));
-    }, 250);
-    return () => window.clearTimeout(timeout);
-  }, [queryDraft, initialized]);
-
   const fetchDashboard = useCallback(async (nextFilters: FOSDashboardFilters) => {
+    dashboardRequestRef.current?.abort();
+    const controller = new AbortController();
+    dashboardRequestRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 25_000);
+
     setLoading(true);
     setError(null);
 
     try {
-      let payload: FOSDashboardApiResponse | null = null;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const params = buildQueryParams(nextFilters);
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
+      const params = buildQueryParams(nextFilters);
+      const response = await fetch(`/api/fos/dashboard?${params.toString()}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      const payload = (await response.json()) as FOSDashboardApiResponse;
 
-        try {
-          const response = await fetch(`/api/fos/dashboard?${params.toString()}`, {
-            cache: 'no-store',
-            signal: controller.signal,
-          });
-          const responsePayload = (await response.json()) as FOSDashboardApiResponse;
-
-          if (!response.ok || !responsePayload.success) {
-            throw new Error(responsePayload.error || 'Unable to load dashboard data.');
-          }
-
-          payload = responsePayload;
-          break;
-        } catch (requestError) {
-          const isTimeout = requestError instanceof DOMException && requestError.name === 'AbortError';
-          if (isTimeout && attempt === 0) {
-            continue;
-          }
-          throw requestError;
-        } finally {
-          window.clearTimeout(timeoutId);
-        }
-      }
-
-      if (!payload?.data) {
+      if (!response.ok || !payload.success || !payload.data) {
         throw new Error('Unable to load dashboard data.');
       }
 
       setSnapshot(payload.data);
       setFilters((prev) => (prev.page === payload.data.pagination.page ? prev : { ...prev, page: payload.data.pagination.page }));
     } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') {
+        return;
+      }
       const message = requestError instanceof Error ? requestError.message : 'Unknown dashboard error';
       setError(message);
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeoutId);
+      if (dashboardRequestRef.current === controller) {
+        dashboardRequestRef.current = null;
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -302,6 +344,13 @@ export default function FOSComplaintsDashboardPage() {
     const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
     window.history.replaceState({}, '', nextUrl);
   }, [filters, initialized]);
+
+  useEffect(
+    () => () => {
+      dashboardRequestRef.current?.abort();
+    },
+    []
+  );
 
   useEffect(() => {
     if (!selectedCaseId) {
@@ -372,6 +421,19 @@ export default function FOSComplaintsDashboardPage() {
     }));
   }, []);
 
+  const applySearchQuery = useCallback(() => {
+    const nextQuery = queryDraft.trim();
+    setFilters((prev) => (prev.query === nextQuery ? prev : { ...prev, query: nextQuery, page: 1 }));
+  }, [queryDraft]);
+
+  const setTagFilter = useCallback((tag: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      tags: prev.tags.includes(tag) ? [] : [tag],
+      page: 1,
+    }));
+  }, []);
+
   const setPage = useCallback((page: number) => {
     setFilters((prev) => ({ ...prev, page }));
   }, []);
@@ -384,6 +446,11 @@ export default function FOSComplaintsDashboardPage() {
   return (
     <main className="relative min-h-screen bg-[#f5f8ff] pb-20">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(37,99,235,0.16),transparent_42%),radial-gradient(circle_at_88%_8%,rgba(14,165,233,0.12),transparent_38%)]" />
+      {loading && (
+        <div className="sticky top-0 z-40 h-1 w-full overflow-hidden bg-blue-100/80">
+          <div className="h-full w-1/3 animate-pulse bg-gradient-to-r from-blue-600 to-cyan-500" />
+        </div>
+      )}
       <div className="relative mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-4 py-6 md:px-8">
         <section className="overflow-hidden rounded-3xl border border-sky-200 bg-white/95 p-6 shadow-xl shadow-blue-100/70">
           <div className="relative">
@@ -402,10 +469,12 @@ export default function FOSComplaintsDashboardPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {snapshot?.ingestion.lastSuccessAt
-                    ? `Updated ${formatDateTime(snapshot.ingestion.lastSuccessAt)}`
-                    : 'Update timestamp unavailable'}
+                  <span className={`h-2 w-2 rounded-full ${loading ? 'animate-pulse bg-blue-500' : 'bg-emerald-500'}`} />
+                  {loading
+                    ? 'Refreshing dashboard...'
+                    : snapshot?.ingestion.lastSuccessAt
+                      ? `Updated ${formatDateTime(snapshot.ingestion.lastSuccessAt)}`
+                      : 'Update timestamp unavailable'}
                 </div>
               </div>
 
@@ -414,17 +483,28 @@ export default function FOSComplaintsDashboardPage() {
                 <input
                   value={queryDraft}
                   onChange={(event) => setQueryDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') applySearchQuery();
+                  }}
                   placeholder="Case reference, firm, product, precedent, reasoning keyword..."
                   className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none ring-0 transition focus:border-blue-400 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.12)]"
                 />
                 <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={applySearchQuery}
+                    className="rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-100"
+                  >
+                    Apply search
+                  </button>
                   <button
                     onClick={clearFilters}
                     className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-white"
                   >
                     Clear all filters
                   </button>
-                  <span className="text-xs text-slate-500">{summaryLine}</span>
+                  <span className="text-xs text-slate-500">
+                    {summaryLine} Press Enter or click &quot;Apply search&quot; to run query.
+                  </span>
                 </div>
               </div>
             </div>
@@ -459,24 +539,45 @@ export default function FOSComplaintsDashboardPage() {
             value={snapshot?.overview.topRootCause || 'n/a'}
             helper="Most frequent root-cause tag in filtered corpus."
             accent="bg-cyan-400"
+            onClick={
+              snapshot?.overview.topRootCause && snapshot.overview.topRootCause !== 'n/a'
+                ? () => setTagFilter(snapshot.overview.topRootCause as string)
+                : undefined
+            }
           />
           <DashboardKpiCard
             label="Top precedent"
             value={snapshot?.overview.topPrecedent || 'n/a'}
             helper="Most cited rule/principle in filtered corpus."
             accent="bg-indigo-400"
+            onClick={
+              snapshot?.overview.topPrecedent && snapshot.overview.topPrecedent !== 'n/a'
+                ? () => setTagFilter(snapshot.overview.topPrecedent as string)
+                : undefined
+            }
           />
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1.65fr_1fr]">
+        <section className="order-2 grid gap-4 xl:grid-cols-[1.65fr_1fr] xl:items-start">
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Year trend and drill-down</h2>
-                <p className="text-sm text-slate-500">Click a year to filter the entire dashboard instantly.</p>
+                <p className="text-sm text-slate-500">Multi-select enabled. Click one or more years to filter the dashboard.</p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>{filters.years.length} selected</span>
+                {filters.years.length > 0 && (
+                  <button
+                    onClick={() => setFilters((prev) => ({ ...prev, years: [], page: 1 }))}
+                    className="rounded-full border border-slate-300 px-2.5 py-1 font-medium text-slate-700 hover:border-slate-400"
+                  >
+                    Clear years
+                  </button>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
-                {(snapshot?.filters.years || []).slice(0, 12).map((year) => (
+                {(snapshot?.filters.years || []).map((year) => (
                   <button
                     key={year}
                     onClick={() => toggleYear(year)}
@@ -492,13 +593,15 @@ export default function FOSComplaintsDashboardPage() {
               </div>
             </div>
             {snapshot ? (
-              <TrendBars snapshot={snapshot} activeYears={filters.years} onToggleYear={toggleYear} />
+              <div className="max-h-[360px] overflow-y-auto pr-1">
+                <TrendBars snapshot={snapshot} activeYears={filters.years} onToggleYear={toggleYear} />
+              </div>
             ) : (
               <EmptyState label={loading ? 'Loading trend data...' : 'No trend data available.'} />
             )}
           </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Ingestion and quality</h2>
             <p className="mt-1 text-sm text-slate-500">Pipeline health, data freshness, and quality checks.</p>
             {snapshot ? (
@@ -542,8 +645,8 @@ export default function FOSComplaintsDashboardPage() {
           </article>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-3">
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="order-1 grid gap-4 xl:grid-cols-3 xl:items-start">
+          <article className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900">Outcome split</h3>
             <p className="mt-1 text-sm text-slate-500">Click an outcome to filter every panel.</p>
             <div className="mt-4 space-y-2">
@@ -572,40 +675,25 @@ export default function FOSComplaintsDashboardPage() {
             activeValue={activeProduct}
             onToggle={toggleProduct}
             valueFormatter={(item) => `${formatNumber(item.total)} | upheld ${formatPercent(item.rate)}`}
+            className="self-start"
           />
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">Precedent frequency</h3>
-            <p className="mt-1 text-sm text-slate-500">Top cited references in current filter scope.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {(snapshot?.precedents || []).map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      tags: prev.tags.includes(item.label) ? [] : [item.label],
-                      page: 1,
-                    }))
-                  }
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                    filters.tags.includes(item.label)
-                      ? 'border-blue-300 bg-blue-100 text-blue-700'
-                      : 'border-slate-300 bg-white text-slate-700 hover:border-blue-200'
-                  }`}
-                >
-                  {item.label} ({item.count})
-                </button>
-              ))}
-              {(snapshot?.precedents || []).length === 0 && <EmptyState label="No precedent tags in current scope." />}
-            </div>
-            <h4 className="mt-5 text-sm font-semibold text-slate-900">Root-cause concentration</h4>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(snapshot?.rootCauses || []).map((item) => (
-                <span key={item.label} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs text-cyan-800">
-                  {item.label} ({item.count})
-                </span>
-              ))}
+          <article className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-base font-semibold text-slate-900">Precedent and root-cause drill-down</h3>
+            <p className="mt-1 text-sm text-slate-500">Click a bar to filter by that precedent/root-cause tag.</p>
+            <div className="mt-4 space-y-4">
+              <TagBars
+                title="Top precedents"
+                items={snapshot?.precedents || []}
+                activeTag={filters.tags[0] || null}
+                onToggle={setTagFilter}
+              />
+              <TagBars
+                title="Top root causes"
+                items={snapshot?.rootCauses || []}
+                activeTag={filters.tags[0] || null}
+                onToggle={setTagFilter}
+              />
             </div>
           </article>
         </section>
@@ -629,7 +717,7 @@ export default function FOSComplaintsDashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_340px]">
+        <section className="grid gap-4 xl:grid-cols-[1fr_340px] xl:items-start">
           <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <header className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-lg font-semibold text-slate-900">Case explorer</h2>
@@ -701,10 +789,10 @@ export default function FOSComplaintsDashboardPage() {
             </footer>
           </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900">Top firms in scope</h3>
             <p className="mt-1 text-sm text-slate-500">High-volume firms under current filters.</p>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 max-h-[620px] space-y-3 overflow-y-auto pr-1">
               {(snapshot?.firms || []).slice(0, 10).map((firm) => (
                 <button
                   key={firm.firm}
@@ -780,10 +868,16 @@ export default function FOSComplaintsDashboardPage() {
                 </header>
 
                 <DetailBlock title="Decision logic" text={selectedCase.decisionLogic || selectedCase.decisionSummary || 'Not available.'} />
-                <DetailBlock title="The complaint" text={selectedCase.complaintText || 'Not extracted.'} />
-                <DetailBlock title="Firm response" text={selectedCase.firmResponseText || 'Not extracted.'} />
-                <DetailBlock title="Ombudsman reasoning" text={selectedCase.ombudsmanReasoningText || 'Not extracted.'} />
-                <DetailBlock title="Final decision" text={selectedCase.finalDecisionText || 'Not extracted.'} />
+                <DetailBlock title="The complaint" text={selectedCase.complaintText || 'No explicit complaint section found in source text.'} />
+                <DetailBlock title="Firm response" text={selectedCase.firmResponseText || 'No explicit firm-response section found in source text.'} />
+                <DetailBlock
+                  title="Ombudsman reasoning"
+                  text={selectedCase.ombudsmanReasoningText || 'No explicit ombudsman-reasoning section found in source text.'}
+                />
+                <DetailBlock title="Final decision" text={selectedCase.finalDecisionText || 'No explicit final-decision section found in source text.'} />
+                {selectedCase.fullText && (
+                  <DetailBlock title="Source text preview" text={truncate(selectedCase.fullText, 2500)} />
+                )}
 
                 <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Smart tags</h3>
