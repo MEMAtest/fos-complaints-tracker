@@ -600,15 +600,7 @@ async function queryAnalysisBundle(
                   2
                 ) AS not_upheld_rate,
                 ROUND(AVG(EXTRACT(YEAR FROM f.decision_date)))::INT AS avg_decision_year,
-                (
-                  SELECT COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified')
-                  FROM filtered f2
-                  WHERE COALESCE(NULLIF(BTRIM(f2.business_name), ''), 'Unknown firm')
-                    = COALESCE(NULLIF(BTRIM(f.business_name), ''), 'Unknown firm')
-                  GROUP BY COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified')
-                  ORDER BY COUNT(*) DESC, COALESCE(NULLIF(BTRIM(f2.product_sector), ''), 'Unspecified') ASC
-                  LIMIT 1
-                ) AS predominant_product
+                MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(BTRIM(f.product_sector), ''), 'Unspecified')) AS predominant_product
               FROM filtered f
               GROUP BY COALESCE(NULLIF(BTRIM(f.business_name), ''), 'Unknown firm')
               ORDER BY total DESC, firm ASC
