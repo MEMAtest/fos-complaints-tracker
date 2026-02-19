@@ -590,19 +590,19 @@ export default function FOSComplaintsDashboardPage() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <DashboardKpiCard
             label="Total decisions"
-            value={snapshot ? formatNumber(snapshot.overview.totalCases) : loading ? '...' : '0'}
+            value={snapshot ? formatNumber(snapshot.overview.totalCases) : loading ? '...' : '--'}
             helper="Published final ombudsman decisions in active scope."
             accent="bg-blue-400"
           />
           <DashboardKpiCard
             label="Upheld rate"
-            value={snapshot ? formatPercent(snapshot.overview.upheldRate) : loading ? '...' : formatPercent(0)}
+            value={snapshot ? formatPercent(snapshot.overview.upheldRate) : loading ? '...' : '--'}
             helper={snapshot ? `${formatNumber(snapshot.overview.upheldCases)} cases upheld` : 'Awaiting dashboard response'}
             accent="bg-emerald-400"
           />
           <DashboardKpiCard
             label="Not upheld rate"
-            value={snapshot ? formatPercent(snapshot.overview.notUpheldRate) : loading ? '...' : formatPercent(0)}
+            value={snapshot ? formatPercent(snapshot.overview.notUpheldRate) : loading ? '...' : '--'}
             helper={snapshot ? `${formatNumber(snapshot.overview.notUpheldCases)} not upheld` : 'Awaiting dashboard response'}
             accent="bg-rose-400"
           />
