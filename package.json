@@ -11,7 +11,8 @@
     "db:cutover-fos": "node scripts/cutover-fos.mjs",
     "db:import-fos-parsed": "node scripts/import-fos-parsed.mjs",
     "db:backfill-fos-enrichment": "node scripts/backfill-fos-enrichment.mjs",
-    "db:add-fos-search-indexes": "node scripts/add-fos-search-indexes.mjs"
+    "db:add-fos-search-indexes": "node scripts/add-fos-search-indexes.mjs",
+    "db:add-fos-performance-indexes": "node scripts/add-fos-performance-indexes.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.0",
