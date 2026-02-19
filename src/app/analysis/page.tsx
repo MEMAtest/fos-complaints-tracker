@@ -225,8 +225,8 @@ export default function AnalysisPage() {
   }, [snapshot]);
 
   const availableYears = useMemo(() => yearRollup.map((row) => row.year), [yearRollup]);
+  const yearMaxTotal = useMemo(() => Math.max(...yearRollup.map((item) => item.total), 1), [yearRollup]);
   const topProducts = useMemo(() => (snapshot?.productTree || []).map((item) => item.product).slice(0, 10), [snapshot]);
-  const topFirms = useMemo(() => (snapshot?.firmBenchmark || []).map((item) => item.firm).slice(0, 14), [snapshot]);
 
   const totalCases = useMemo(() => yearRollup.reduce((sum, row) => sum + row.total, 0), [yearRollup]);
   const upheldCases = useMemo(() => yearRollup.reduce((sum, row) => sum + row.upheld, 0), [yearRollup]);
@@ -282,6 +282,23 @@ export default function AnalysisPage() {
     return Math.max(max, 1);
   }, [matrixLookup]);
 
+  const productUpholdLeaderboard = useMemo(() => {
+    const grouped = new Map<string, { product: string; total: number; upheld: number }>();
+    for (const row of snapshot?.yearProductOutcome || []) {
+      const existing = grouped.get(row.product) || { product: row.product, total: 0, upheld: 0 };
+      existing.total += row.total;
+      existing.upheld += row.upheld;
+      grouped.set(row.product, existing);
+    }
+    return Array.from(grouped.values())
+      .map((item) => ({
+        ...item,
+        upheldRate: item.total ? (item.upheld / item.total) * 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total || a.product.localeCompare(b.product))
+      .slice(0, 8);
+  }, [snapshot]);
+
   const firmBenchmarkMax = useMemo(
     () => Math.max(...(snapshot?.firmBenchmark || []).map((item) => item.total), 1),
     [snapshot]
@@ -327,6 +344,8 @@ export default function AnalysisPage() {
   const clearFilters = useCallback(() => {
     setFilters((prev) => ({ ...INITIAL_FILTERS, pageSize: prev.pageSize }));
     setQueryDraft('');
+    setSnapshot(null);
+    setMeta(null);
   }, []);
 
   return (
@@ -399,6 +418,9 @@ export default function AnalysisPage() {
               )}
               {!loading && lastLoadMs != null && <span className="text-xs text-slate-500">Last refresh {(lastLoadMs / 1000).toFixed(1)}s</span>}
             </div>
+            {loading && !hasActiveFilters && (
+              <p className="mt-2 text-xs text-slate-500">Refreshing full-corpus analysis after clearing filters…</p>
+            )}
           </div>
 
           <div className="mt-4 space-y-2">
@@ -495,12 +517,11 @@ export default function AnalysisPage() {
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Year over year adjudication trend</h2>
             <p className="mt-1 text-sm text-slate-500">Click a year to include or remove it from the full analysis scope.</p>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 max-h-[460px] space-y-3 overflow-y-auto pr-1">
               {yearRollup.map((row, index) => {
                 const previous = yearRollup[index - 1];
                 const delta = previous ? row.total - previous.total : null;
-                const max = Math.max(...yearRollup.map((item) => item.total), 1);
-                const barWidth = (row.total / max) * 100;
+                const barWidth = (row.total / yearMaxTotal) * 100;
                 const upheldShare = row.total ? (row.upheld / row.total) * 100 : 0;
                 const notShare = row.total ? (row.notUpheld / row.total) * 100 : 0;
                 const partialShare = Math.max(0, 100 - upheldShare - notShare);
@@ -599,6 +620,36 @@ export default function AnalysisPage() {
                 </tbody>
               </table>
               {!heatmapYears.length && <EmptyState label="No heatmap values under current filters." />}
+            </div>
+            <div className="mt-4">
+              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Product upheld-rate leaderboard</p>
+              <div className="mt-2 space-y-2">
+                {productUpholdLeaderboard.map((item) => {
+                  const width = clamp(Math.round((item.upheldRate / 100) * 100), 0, 100);
+                  return (
+                    <button
+                      key={`leader-${item.product}`}
+                      onClick={() => toggleProduct(item.product)}
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                        filters.products.includes(item.product)
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-slate-200 hover:border-blue-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="line-clamp-1 text-xs font-medium text-slate-800">{item.product}</span>
+                        <span className="text-xs text-slate-600">
+                          {formatPercent(item.upheldRate)} | {formatNumber(item.total)} cases
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${width}%` }} />
+                      </div>
+                    </button>
+                  );
+                })}
+                {!productUpholdLeaderboard.length && <EmptyState label="No product leaderboard under this scope." />}
+              </div>
             </div>
           </article>
         </section>

@@ -89,12 +89,13 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
     hasTagValues('root_cause_tags'),
   ]);
   const aggregateRow = await queryAggregateBundle(filters, hasPrecedentValues, hasRootCauseValues);
-  const caseBundle = await queryCases(filters);
+  const totalCases = toInt(aggregateRow?.total_cases);
+  const caseBundle = await queryCases(filters, totalCases);
   const options = await queryFilterOptions();
   const ingestion = await queryIngestionStatus();
 
   const overview = {
-    totalCases: toInt(aggregateRow?.total_cases),
+    totalCases,
     upheldCases: toInt(aggregateRow?.upheld_cases),
     notUpheldCases: toInt(aggregateRow?.not_upheld_cases),
     partiallyUpheldCases: toInt(aggregateRow?.partially_upheld_cases),
@@ -885,7 +886,7 @@ async function queryTagFrequency(
   );
 }
 
-async function queryCases(filters: FOSDashboardFilters): Promise<{
+async function queryCases(filters: FOSDashboardFilters, totalOverride?: number): Promise<{
   items: FOSCaseListItem[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }> {
@@ -894,6 +895,7 @@ async function queryCases(filters: FOSDashboardFilters): Promise<{
     const offset = (page - 1) * filters.pageSize;
     const limitIndex = filtered.nextIndex;
     const offsetIndex = filtered.nextIndex + 1;
+
     return DatabaseClient.query<Record<string, unknown>>(
       `
         ${filtered.cteSql}
@@ -912,8 +914,7 @@ async function queryCases(filters: FOSDashboardFilters): Promise<{
           f.root_cause_tags,
           f.vulnerability_flags,
           f.pdf_url,
-          f.source_url,
-          COUNT(*) OVER()::INT AS total_rows
+          f.source_url
         FROM filtered f
         ORDER BY f.decision_date DESC NULLS LAST, f.decision_reference ASC NULLS LAST
         LIMIT $${limitIndex}
@@ -923,9 +924,20 @@ async function queryCases(filters: FOSDashboardFilters): Promise<{
     );
   };
 
-  const requestedPage = Math.max(1, filters.page);
-  let rows = await runPageQuery(requestedPage);
-  if (rows.length === 0) {
+  const fetchTotal = async () => {
+    const rows = await DatabaseClient.query<Record<string, unknown>>(
+      `
+        ${filtered.cteSql}
+        SELECT COUNT(*)::INT AS total_rows
+        FROM filtered
+      `,
+      filtered.params
+    );
+    return toInt(rows[0]?.total_rows);
+  };
+
+  const total = totalOverride != null ? Math.max(0, totalOverride) : await fetchTotal();
+  if (total === 0) {
     return {
       items: [],
       pagination: {
@@ -937,15 +949,9 @@ async function queryCases(filters: FOSDashboardFilters): Promise<{
     };
   }
 
-  let total = toInt(rows[0]?.total_rows);
-  let totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
-  let safePage = clamp(requestedPage, 1, totalPages);
-
-  if (safePage !== requestedPage) {
-    rows = await runPageQuery(safePage);
-    total = rows.length > 0 ? toInt(rows[0]?.total_rows) : total;
-    totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
-  }
+  const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
+  const safePage = clamp(Math.max(1, filters.page), 1, totalPages);
+  const rows = await runPageQuery(safePage);
 
   return {
     items: rows.map((row) => mapCaseListItem(row)),

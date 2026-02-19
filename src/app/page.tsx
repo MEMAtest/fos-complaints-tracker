@@ -815,24 +815,26 @@ export default function FOSComplaintsDashboardPage() {
           </article>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Yearly analysis snapshots</h2>
-              <p className="text-sm text-slate-500">Generated trend summaries for each year in scope.</p>
+        {snapshot && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Yearly analysis snapshots</h2>
+                <p className="text-sm text-slate-500">Generated trend summaries for each year in scope.</p>
+              </div>
             </div>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {(snapshot?.insights || []).map((insight) => (
-              <article key={insight.year} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{insight.year}</p>
-                <h3 className="mt-1 text-sm font-semibold text-slate-900">{insight.headline}</h3>
-                <p className="mt-2 text-sm text-slate-600">{insight.detail}</p>
-              </article>
-            ))}
-            {(snapshot?.insights || []).length === 0 && <EmptyState label="No yearly insights available for this filter set." />}
-          </div>
-        </section>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {snapshot.insights.map((insight) => (
+                <article key={insight.year} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{insight.year}</p>
+                  <h3 className="mt-1 text-sm font-semibold text-slate-900">{insight.headline}</h3>
+                  <p className="mt-2 text-sm text-slate-600">{insight.detail}</p>
+                </article>
+              ))}
+              {snapshot.insights.length === 0 && <EmptyState label="No yearly insights available for this filter set." />}
+            </div>
+          </section>
+        )}
 
         <section className="grid gap-4 xl:grid-cols-[1fr_360px] xl:items-start">
           <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
