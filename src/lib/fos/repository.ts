@@ -216,7 +216,7 @@ export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | nul
   if (!rows[0]) return null;
 
   const row = rows[0];
-  return {
+  return enrichCaseDetail({
     caseId: String(row.case_id || caseId),
     decisionReference: String(row.decision_reference || row.case_id || caseId),
     decisionDate: toIsoDate(row.decision_date),
@@ -237,7 +237,7 @@ export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | nul
     ombudsmanReasoningText: nullableString(row.ombudsman_reasoning_text),
     finalDecisionText: nullableString(row.final_decision_text),
     fullText: nullableString(row.full_text),
-  };
+  });
 }
 
 export async function getIngestionStatus(): Promise<FOSIngestionStatus> {
@@ -929,6 +929,205 @@ function mapCaseListItem(row: Record<string, unknown>): FOSCaseListItem {
     pdfUrl: nullableString(row.pdf_url),
     sourceUrl: nullableString(row.source_url),
   };
+}
+
+function enrichCaseDetail(detail: FOSCaseDetail): FOSCaseDetail {
+  const fullText = cleanDecisionText(detail.fullText);
+  const complaintText =
+    detail.complaintText ||
+    extractSection(fullText, COMPLAINT_MARKERS, [FIRM_RESPONSE_MARKERS, OMBUDSMAN_REASONING_MARKERS, FINAL_DECISION_MARKERS]);
+  const firmResponseText =
+    detail.firmResponseText || extractSection(fullText, FIRM_RESPONSE_MARKERS, [OMBUDSMAN_REASONING_MARKERS, FINAL_DECISION_MARKERS]);
+  const ombudsmanReasoningText =
+    detail.ombudsmanReasoningText || extractSection(fullText, OMBUDSMAN_REASONING_MARKERS, [FINAL_DECISION_MARKERS]);
+  const finalDecisionText = detail.finalDecisionText || extractSection(fullText, FINAL_DECISION_MARKERS, []);
+  const fallbackFinalDecision = finalDecisionText || extractFinalDecisionSentence(fullText);
+  const tagSource = [
+    detail.decisionLogic,
+    detail.decisionSummary,
+    complaintText,
+    firmResponseText,
+    ombudsmanReasoningText,
+    fallbackFinalDecision,
+    fullText?.slice(0, 12000),
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const precedents = detail.precedents.length > 0 ? detail.precedents : detectTags(tagSource, PRECEDENT_RULES);
+  const rootCauseTags = detail.rootCauseTags.length > 0 ? detail.rootCauseTags : detectTags(tagSource, ROOT_CAUSE_RULES);
+  const vulnerabilityFlags =
+    detail.vulnerabilityFlags.length > 0 ? detail.vulnerabilityFlags : detectTags(tagSource, VULNERABILITY_RULES);
+  const decisionLogic = detail.decisionLogic || synthesizeDecisionLogic(detail.decisionSummary, ombudsmanReasoningText, fallbackFinalDecision);
+
+  return {
+    ...detail,
+    decisionLogic,
+    complaintText,
+    firmResponseText,
+    ombudsmanReasoningText,
+    finalDecisionText: fallbackFinalDecision,
+    precedents,
+    rootCauseTags,
+    vulnerabilityFlags,
+  };
+}
+
+type TagRule = { label: string; pattern: RegExp };
+
+const COMPLAINT_MARKERS = [
+  /\bthe complaint\b/i,
+  /\bbackground to the complaint\b/i,
+  /\bwhat happened\b/i,
+  /\bmy understanding\b/i,
+];
+
+const FIRM_RESPONSE_MARKERS = [
+  /\bwhat (the )?(business|firm) says\b/i,
+  /\bthe (business|firm) says\b/i,
+  /\bthe insurer says\b/i,
+  /\bthe lender says\b/i,
+  /\bour investigator thought\b/i,
+];
+
+const OMBUDSMAN_REASONING_MARKERS = [
+  /\bwhat i[' ]?ve decided\b/i,
+  /\bwhat i have decided\b/i,
+  /\bmy findings\b/i,
+  /\bmy decision\b/i,
+  /\breasons for decision\b/i,
+  /\bwhat i think\b/i,
+];
+
+const FINAL_DECISION_MARKERS = [/\bmy final decision\b/i, /\bfinal decision\b/i];
+
+const PRECEDENT_RULES: TagRule[] = [
+  { label: 'DISP', pattern: /\bDISP\b/i },
+  { label: 'PRIN', pattern: /\bPRIN\b/i },
+  { label: 'ICOBS', pattern: /\bICOBS\b/i },
+  { label: 'COBS', pattern: /\bCOBS\b/i },
+  { label: 'MCOB', pattern: /\bMCOB\b/i },
+  { label: 'CONC', pattern: /\bCONC\b/i },
+  { label: 'SYSC', pattern: /\bSYSC\b/i },
+  { label: 'FCA Principles', pattern: /\bFCA principles?\b/i },
+  { label: 'FSMA', pattern: /\bFSMA\b|\bFinancial Services and Markets Act\b/i },
+  { label: 'Consumer Credit Act 1974', pattern: /\bConsumer Credit Act\b|\bCCA\b/i },
+  { label: 'Section 75 CCA', pattern: /\bsection\s*75\b/i },
+  { label: 'Section 140A CCA', pattern: /\bsection\s*140a\b/i },
+  { label: 'Insurance Act 2015', pattern: /\bInsurance Act 2015\b/i },
+];
+
+const ROOT_CAUSE_RULES: TagRule[] = [
+  {
+    label: 'Communication failure',
+    pattern: /\b(poor|unclear|misleading)\s+communication\b|\bfailed to explain\b|\bnot (told|informed)\b/i,
+  },
+  {
+    label: 'Delay in claim handling',
+    pattern: /\b(delay|delayed|late|timescale|waiting time|took too long)\b/i,
+  },
+  {
+    label: 'Policy wording ambiguity',
+    pattern: /\b(policy wording|ambiguous|unclear term|small print|exclusion clause)\b/i,
+  },
+  {
+    label: 'Affordability assessment failure',
+    pattern: /\b(affordability|unaffordable|creditworthiness|irresponsible lending)\b/i,
+  },
+  {
+    label: 'Administrative error',
+    pattern: /\b(administrative|clerical|processing|data entry|system)\s+error\b/i,
+  },
+  {
+    label: 'Fraud or scam concern',
+    pattern: /\b(fraud|scam|authorised push payment|app fraud)\b/i,
+  },
+  {
+    label: 'Non-disclosure or misrepresentation',
+    pattern: /\b(non[- ]?disclosure|misrepresentation|failed to disclose)\b/i,
+  },
+];
+
+const VULNERABILITY_RULES: TagRule[] = [
+  { label: 'Bereavement', pattern: /\b(bereave|bereavement|late husband|late wife|widow|widower)\b/i },
+  { label: 'Mental health', pattern: /\b(mental health|depression|anxiety|stress)\b/i },
+  { label: 'Physical health', pattern: /\b(illness|disability|long[- ]term condition|hospital)\b/i },
+  { label: 'Financial hardship', pattern: /\b(financial hardship|hardship|arrears|debt|struggling financially)\b/i },
+  { label: 'Domestic abuse', pattern: /\b(domestic abuse|coercive control|financial abuse)\b/i },
+  { label: 'Unemployment', pattern: /\b(unemploy|redundan)\b/i },
+  { label: 'Language barrier', pattern: /\b(language barrier|english is not (my|their) first language|interpreter)\b/i },
+];
+
+function extractSection(
+  fullText: string | null,
+  startMarkers: RegExp[],
+  endMarkerGroups: RegExp[][]
+): string | null {
+  if (!fullText) return null;
+  const startIndex = findMarkerIndex(fullText, startMarkers);
+  if (startIndex < 0) return null;
+
+  let endIndex = fullText.length;
+  for (const markers of endMarkerGroups) {
+    const markerIndex = findMarkerIndex(fullText, markers, startIndex + 1);
+    if (markerIndex >= 0 && markerIndex < endIndex) {
+      endIndex = markerIndex;
+    }
+  }
+
+  return trimText(fullText.slice(startIndex, endIndex), 7000);
+}
+
+function findMarkerIndex(text: string, markers: RegExp[], from = 0): number {
+  let best = -1;
+  const slice = text.slice(from);
+  for (const marker of markers) {
+    const match = slice.match(marker);
+    if (!match || match.index == null) continue;
+    const index = from + match.index;
+    if (best < 0 || index < best) best = index;
+  }
+  return best;
+}
+
+function extractFinalDecisionSentence(fullText: string | null): string | null {
+  if (!fullText) return null;
+  const match = fullText.match(/\b(i (do not|don't|partly|partially|fully)?\s*uphold[^.?!]{0,220}[.?!])/i);
+  if (!match) return null;
+  return trimText(match[0], 500);
+}
+
+function synthesizeDecisionLogic(...parts: Array<string | null | undefined>): string | null {
+  const source = parts.find((value) => Boolean(value && value.trim()));
+  if (!source) return null;
+  const clean = source.replace(/\s+/g, ' ').trim();
+  if (!clean) return null;
+
+  const sentences = clean.match(/[^.?!]+[.?!]?/g) || [clean];
+  const summary = sentences.slice(0, 2).join(' ').trim();
+  return trimText(summary, 420);
+}
+
+function detectTags(text: string, rules: TagRule[]): string[] {
+  if (!text.trim()) return [];
+  const matches: string[] = [];
+  for (const rule of rules) {
+    if (rule.pattern.test(text)) matches.push(rule.label);
+  }
+  return matches;
+}
+
+function cleanDecisionText(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.replace(/\u0000/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  return normalized || null;
+}
+
+function trimText(value: string, maxLength: number): string | null {
+  const normalized = value.replace(/\u0000/g, '').trim();
+  if (!normalized) return null;
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
 function parseIntegerList(searchParams: URLSearchParams, key: string): number[] {
