@@ -467,6 +467,10 @@ async function main() {
     updatedAt: null,
   };
 
+  state.completed = false;
+  delete state.finishedAt;
+  if (!state.startedAt) state.startedAt = new Date().toISOString();
+
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -483,12 +487,16 @@ async function main() {
       `Starting enrichment backfill | candidate rows: ${state.candidateTotal.toLocaleString()} | batch size: ${batchSize.toLocaleString()}`
     );
 
+    let exhausted = false;
     while (true) {
       if (limit && state.scanned >= limit) break;
       const remaining = limit ? limit - state.scanned : batchSize;
       const effectiveBatchSize = Math.max(1, Math.min(batchSize, remaining));
       const rows = await fetchBatch(client, state.lastId, effectiveBatchSize);
-      if (!rows.length) break;
+      if (!rows.length) {
+        exhausted = true;
+        break;
+      }
 
       const updates = [];
       for (const row of rows) {
@@ -506,7 +514,7 @@ async function main() {
       state.batches += 1;
       state.updatedAt = new Date().toISOString();
 
-      if (state.batches % 10 === 0 || updates.length > 0) {
+      if (state.batches % 10 === 0) {
         const pct = state.candidateTotal > 0 ? ((state.scanned / state.candidateTotal) * 100).toFixed(2) : '0.00';
         console.log(
           `batch=${state.batches} scanned=${state.scanned.toLocaleString()} updated=${state.updated.toLocaleString()} progress=${pct}%`
@@ -515,12 +523,12 @@ async function main() {
       await writeState(stateFile, state);
     }
 
-    state.completed = true;
-    state.finishedAt = new Date().toISOString();
-    state.updatedAt = state.finishedAt;
+    state.completed = exhausted;
+    state.finishedAt = exhausted ? new Date().toISOString() : null;
+    state.updatedAt = new Date().toISOString();
     await writeState(stateFile, state);
     console.log(
-      `Backfill complete | scanned=${state.scanned.toLocaleString()} updated=${state.updated.toLocaleString()} state=${stateFile}`
+      `${exhausted ? 'Backfill complete' : 'Backfill paused'} | scanned=${state.scanned.toLocaleString()} updated=${state.updated.toLocaleString()} state=${stateFile}`
     );
   } finally {
     client.release();
