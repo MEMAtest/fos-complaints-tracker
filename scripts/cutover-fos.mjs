@@ -106,7 +106,7 @@ async function main() {
     for (const tableName of LEGACY_TABLES) {
       const exists = await tableExists(client, tableName);
       if (exists) {
-        await client.query(`DROP TABLE public.${tableName}`);
+        await client.query(`DROP TABLE public.${tableName} CASCADE`);
       }
     }
 
