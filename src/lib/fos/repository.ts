@@ -84,11 +84,23 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
 
+  const hasScopeFilters =
+    Boolean(filters.query) ||
+    filters.years.length > 0 ||
+    filters.outcomes.length > 0 ||
+    filters.products.length > 0 ||
+    filters.firms.length > 0 ||
+    filters.tags.length > 0;
+
   const [hasPrecedentValues, hasRootCauseValues] = await Promise.all([
     hasTagValues('precedents'),
     hasTagValues('root_cause_tags'),
   ]);
-  const aggregateRow = await queryAggregateBundle(filters, hasPrecedentValues, hasRootCauseValues);
+  const aggregateRow = await queryAggregateBundle(
+    filters,
+    hasPrecedentValues && hasScopeFilters,
+    hasRootCauseValues && hasScopeFilters
+  );
   const totalCases = toInt(aggregateRow?.total_cases);
   const caseBundle = await queryCases(filters, totalCases);
   const options = await queryFilterOptions();
@@ -890,6 +902,82 @@ async function queryCases(filters: FOSDashboardFilters, totalOverride?: number):
   items: FOSCaseListItem[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }> {
+  const hasFilters =
+    Boolean(filters.query) ||
+    filters.years.length > 0 ||
+    filters.outcomes.length > 0 ||
+    filters.products.length > 0 ||
+    filters.firms.length > 0 ||
+    filters.tags.length > 0;
+
+  const total = totalOverride != null ? Math.max(0, totalOverride) : null;
+  if (total === 0) {
+    return {
+      items: [],
+      pagination: {
+        page: 1,
+        pageSize: filters.pageSize,
+        total: 0,
+        totalPages: 1,
+      },
+    };
+  }
+
+  if (!hasFilters) {
+    const safeTotal = total ?? toInt((await DatabaseClient.queryOne<{ total_rows: number }>(`SELECT COUNT(*)::INT AS total_rows FROM fos_decisions`))?.total_rows);
+    if (safeTotal === 0) {
+      return {
+        items: [],
+        pagination: {
+          page: 1,
+          pageSize: filters.pageSize,
+          total: 0,
+          totalPages: 1,
+        },
+      };
+    }
+
+    const totalPages = Math.max(1, Math.ceil(safeTotal / filters.pageSize));
+    const safePage = clamp(Math.max(1, filters.page), 1, totalPages);
+    const offset = (safePage - 1) * filters.pageSize;
+
+    const rows = await DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          ${caseIdExpression('d')} AS case_id,
+          d.decision_reference,
+          d.decision_date,
+          EXTRACT(YEAR FROM d.decision_date)::INT AS year,
+          NULLIF(BTRIM(d.business_name), '') AS firm_name,
+          NULLIF(BTRIM(d.product_sector), '') AS product_group,
+          ${outcomeExpression('d')} AS outcome,
+          NULLIF(BTRIM(d.ombudsman_name), '') AS ombudsman_name,
+          d.decision_summary,
+          d.decision_logic,
+          d.precedents,
+          d.root_cause_tags,
+          d.vulnerability_flags,
+          d.pdf_url,
+          d.source_url
+        FROM fos_decisions d
+        ORDER BY d.decision_date DESC NULLS LAST, d.decision_reference ASC NULLS LAST
+        LIMIT $1
+        OFFSET $2
+      `,
+      [filters.pageSize, offset]
+    );
+
+    return {
+      items: rows.map((row) => mapCaseListItem(row)),
+      pagination: {
+        page: safePage,
+        pageSize: filters.pageSize,
+        total: safeTotal,
+        totalPages,
+      },
+    };
+  }
+
   const filtered = buildFilteredCte(filters);
   const runPageQuery = async (page: number) => {
     const offset = (page - 1) * filters.pageSize;
@@ -936,8 +1024,8 @@ async function queryCases(filters: FOSDashboardFilters, totalOverride?: number):
     return toInt(rows[0]?.total_rows);
   };
 
-  const total = totalOverride != null ? Math.max(0, totalOverride) : await fetchTotal();
-  if (total === 0) {
+  const filteredTotal = totalOverride != null ? Math.max(0, totalOverride) : await fetchTotal();
+  if (filteredTotal === 0) {
     return {
       items: [],
       pagination: {
@@ -949,7 +1037,7 @@ async function queryCases(filters: FOSDashboardFilters, totalOverride?: number):
     };
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / filters.pageSize));
   const safePage = clamp(Math.max(1, filters.page), 1, totalPages);
   const rows = await runPageQuery(safePage);
 
@@ -958,7 +1046,7 @@ async function queryCases(filters: FOSDashboardFilters, totalOverride?: number):
     pagination: {
       page: safePage,
       pageSize: filters.pageSize,
-      total,
+      total: filteredTotal,
       totalPages,
     },
   };
