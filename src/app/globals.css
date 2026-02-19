@@ -2,32 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom scrollbar for better UX */
+:root {
+  --surface-page: #f5f8ff;
+  --surface-card: #ffffff;
+  --ink-900: #0f172a;
+  --ink-700: #334155;
+  --ink-500: #64748b;
+  --line-default: #e2e8f0;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--ink-900);
+  font-family: var(--font-body), sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading), sans-serif;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #e8edf6;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #b7c3d9;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: #9eacc9;
 }
 
-/* Smooth transitions */
-* {
-  transition: all 0.2s ease;
-}
-
-/* Button focus states for accessibility */
 button:focus {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;

@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       filters,
       data: snapshot,
-      dataSource: 'fos_decisions',
     };
 
     cache.set(cacheKey, {
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch dashboard data.',
+        error: error instanceof Error ? error.message : 'Failed to fetch FOS dashboard data.',
       },
       { status: 500 }
     );

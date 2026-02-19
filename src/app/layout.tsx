@@ -1,46 +1,62 @@
-import type { Metadata } from 'next'
-import './globals.css'
-import { Analytics } from "@vercel/analytics/next"; // Add this import
+import type { Metadata } from 'next';
+import { Manrope, Sora } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
+import './globals.css';
+
+const headingFont = Sora({
+  subsets: ['latin'],
+  variable: '--font-heading',
+  weight: ['500', '600', '700'],
+});
+
+const bodyFont = Manrope({
+  subsets: ['latin'],
+  variable: '--font-body',
+  weight: ['400', '500', '600', '700'],
+});
 
 export const metadata: Metadata = {
-  title: 'Financial Complaints Dashboard | MEMA Consultants',
-  description: 'Comprehensive analysis of complaint resolution performance across financial firms. Live data from regulatory reporting requirements.',
-  keywords: 'financial complaints, FCA, regulatory compliance, complaint resolution, financial services',
+  title: 'FOS Complaints Intelligence | MEMA Consultants',
+  description:
+    'Search-first analytics for Financial Ombudsman decisions with yearly trend analysis, drill-down insights, and full case detail.',
+  keywords: [
+    'financial ombudsman',
+    'FOS complaints',
+    'complaints analytics',
+    'adjudication intelligence',
+    'MEMA consultants',
+  ],
   authors: [{ name: 'MEMA Consultants' }],
   openGraph: {
-    title: 'Financial Complaints Dashboard',
-    description: 'Comprehensive analysis of complaint resolution performance across financial firms',
+    title: 'FOS Complaints Intelligence',
+    description: 'Interactive analytics and precedent intelligence for Financial Ombudsman decisions.',
     url: 'https://foscomplaints.memaconsultants.com',
     siteName: 'FOS Complaints Tracker',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Financial Complaints Dashboard',
-    description: 'Comprehensive analysis of complaint resolution performance across financial firms',
+    title: 'FOS Complaints Intelligence',
+    description: 'Interactive analytics and precedent intelligence for Financial Ombudsman decisions.',
   },
   robots: {
     index: true,
     follow: true,
   },
-}
+};
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/favicon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#3b82f6" />
+        <meta name="theme-color" content="#0f1f4f" />
       </head>
-      <body className="antialiased">
+      <body className={`${bodyFont.variable} ${headingFont.variable} antialiased`}>
         {children}
-        <Analytics /> {/* Add this component inside the body */}
+        <Analytics />
       </body>
     </html>
-  )
+  );
 }

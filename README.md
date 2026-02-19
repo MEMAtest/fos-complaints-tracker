@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FOS Complaints Tracker
 
-## Getting Started
+Search-first analytics application for Financial Ombudsman decisions, built for MEMA Consultants.
 
-First, run the development server:
+## What changed in this cutover
+
+- Dashboard now runs on `fos_decisions` only.
+- Legacy dataset tables are retired by the cutover script after backup.
+- UI is redesigned around:
+  - global search
+  - year and product drill-down
+  - yearly insight summaries
+  - full case slide-over detail
+  - ingestion and data-quality diagnostics
+
+## Core API routes
+
+- `GET /api/fos/dashboard` - full dashboard snapshot (KPIs, trends, distributions, case list, filters, ingestion status)
+- `GET /api/fos/overview` - top-level KPI overview
+- `GET /api/fos/trends` - yearly trends, outcome split, and yearly insight cards
+- `GET /api/fos/distribution/products` - product-level distribution
+- `GET /api/fos/distribution/firms` - firm-level distribution
+- `GET /api/fos/precedents` - precedent and root-cause frequencies
+- `GET /api/fos/cases` - paginated case list with filters
+- `GET /api/fos/cases/:caseId` - full case detail
+- `GET /api/fos/ingestion-status` - ingestion status only
+- `GET /api/fos/progress` - compatibility progress payload for old monitors
+- `GET /api/dashboard` - compatibility alias to FOS dashboard snapshot
+
+## Local setup
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Required env var:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `DATABASE_URL` (PostgreSQL)
 
-## Learn More
+## Database cutover flow
 
-To learn more about Next.js, take a look at the following resources:
+1. Check current table state:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run db:check
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2. Run single maintenance-window cutover:
 
-## Deploy on Vercel
+```bash
+npm run db:cutover-fos
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The cutover script does the following in one transaction:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- creates timestamped backup schema (`backup_fos_cutover_YYYYMMDD_HHMMSS`)
+- copies legacy tables into that schema if they exist
+- applies `db/migrations/20260219_fos_cutover.sql`
+- drops legacy tables from `public`
+
+3. Import parsed FOS decision corpus into `fos_decisions`:
+
+```bash
+npm run db:import-fos-parsed -- --batch-size 300
+```
+
+Optional flags:
+
+- `--limit <n>` for partial import test
+- `--no-resume` to ignore saved progress state
+- `--state-file <path>` to override default state file
+- `--include-full-text` to store full PDF text (off by default)
+
+## Notes
+
+- The cutover script is destructive for legacy tables **after backup**.
+- Keep the backup schema for the agreed retention window (default: 7 days).

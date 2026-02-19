@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FOS Complaints">
+  <defs>
+    <linearGradient id="g" x1="8" x2="56" y1="8" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d4ed8" />
+      <stop offset="1" stop-color="#0891b2" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#eaf2ff" />
+  <path
+    fill="url(#g)"
+    d="M14 18c0-2.2 1.8-4 4-4h9.2c2.1 0 4 1.7 4 3.9v6.2h-6.8c-2.2 0-4 1.8-4 4v6.6c0 2.2 1.8 4 4 4h6.8V50H18c-2.2 0-4-1.8-4-4zm17.2 17.6h10.4c2.2 0 4-1.8 4-4v-3.5c0-2.2-1.8-4-4-4H31.2zm0-21.6h15.4c2.2 0 4 1.8 4 4v32h-8.1V24h-11.3z"
+  />
+</svg>

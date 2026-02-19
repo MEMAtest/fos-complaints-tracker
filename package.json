@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:check": "node scripts/check-fos-ready.mjs",
+    "db:cutover-fos": "node scripts/cutover-fos.mjs",
+    "db:import-fos-parsed": "node scripts/import-fos-parsed.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.0",
