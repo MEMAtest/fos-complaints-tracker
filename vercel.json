@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/fos/keepalive",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
