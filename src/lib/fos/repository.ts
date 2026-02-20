@@ -92,108 +92,73 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
     filters.firms.length > 0 ||
     filters.tags.length > 0;
 
-  const [analysisSnapshot, overviewRow, options, ingestion] = await Promise.all([
-    getAnalysisSnapshot(filters, { includeTagMatrix: hasScopeFilters }),
-    queryOverviewAndQuality(filters),
+  const [hasPrecedentValues, hasRootCauseValues] = await Promise.all([
+    hasTagValues('precedents'),
+    hasTagValues('root_cause_tags'),
+  ]);
+
+  const aggregateRow = await queryAggregateBundle(
+    filters,
+    hasPrecedentValues && hasScopeFilters,
+    hasRootCauseValues && hasScopeFilters
+  );
+  const totalCases = toInt(aggregateRow?.total_cases);
+
+  const [caseBundle, options, ingestion] = await Promise.all([
+    queryCases(filters, totalCases),
     queryFilterOptions(),
     queryIngestionStatus(),
   ]);
 
-  const totalCases = toInt(overviewRow?.total_cases);
-  const caseBundle = await queryCases(filters, totalCases);
-
-  const trendMap = new Map<number, { year: number; total: number; upheld: number; notUpheld: number; partiallyUpheld: number; unknown: number }>();
-  const productMap = new Map<string, { product: string; total: number; upheld: number }>();
-
-  for (const cell of analysisSnapshot.yearProductOutcome) {
-    const trend = trendMap.get(cell.year) || {
-      year: cell.year,
-      total: 0,
-      upheld: 0,
-      notUpheld: 0,
-      partiallyUpheld: 0,
-      unknown: 0,
-    };
-    trend.total += cell.total;
-    trend.upheld += cell.upheld;
-    trend.notUpheld += cell.notUpheld;
-    trend.partiallyUpheld += cell.partiallyUpheld;
-    trend.unknown += Math.max(0, cell.total - cell.upheld - cell.notUpheld - cell.partiallyUpheld);
-    trendMap.set(cell.year, trend);
-
-    const product = productMap.get(cell.product) || {
-      product: cell.product,
-      total: 0,
-      upheld: 0,
-    };
-    product.total += cell.total;
-    product.upheld += cell.upheld;
-    productMap.set(cell.product, product);
-  }
-
-  const trends = Array.from(trendMap.values()).sort((a, b) => a.year - b.year);
-  const products = Array.from(productMap.values())
-    .sort((a, b) => b.total - a.total || a.product.localeCompare(b.product))
-    .slice(0, 12)
-    .map((item) => ({
-      product: normalizeLabel(item.product, 'Unspecified'),
-      total: item.total,
-      upheldRate: percentage(item.upheld, item.total),
-    }));
-
-  const firms = analysisSnapshot.firmBenchmark.slice(0, 15).map((item) => ({
-    firm: normalizeLabel(item.firm, 'Unknown firm'),
-    total: item.total,
-    upheldRate: item.upheldRate,
-    notUpheldRate: item.notUpheldRate,
-  }));
-
-  const precedentTotals = new Map<string, number>();
-  const rootCauseTotals = new Map<string, number>();
-  for (const item of analysisSnapshot.precedentRootCauseMatrix) {
-    precedentTotals.set(item.precedent, (precedentTotals.get(item.precedent) || 0) + item.count);
-    rootCauseTotals.set(item.rootCause, (rootCauseTotals.get(item.rootCause) || 0) + item.count);
-  }
-
-  const precedents = Array.from(precedentTotals.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 12)
-    .map(([label, count]) => ({
-      label: normalizeTagLabel(label),
-      count,
-    }));
-
-  const rootCauses = Array.from(rootCauseTotals.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 12)
-    .map(([label, count]) => ({
-      label: normalizeTagLabel(label),
-      count,
-    }));
-
-  const upheldCases = toInt(overviewRow?.upheld_cases);
-  const notUpheldCases = toInt(overviewRow?.not_upheld_cases);
-  const partiallyUpheldCases = toInt(overviewRow?.partially_upheld_cases);
-  const unknownCases = Math.max(0, totalCases - upheldCases - notUpheldCases - partiallyUpheldCases);
-  const outcomes = [
-    { outcome: 'upheld' as FOSOutcome, count: upheldCases },
-    { outcome: 'not_upheld' as FOSOutcome, count: notUpheldCases },
-    { outcome: 'partially_upheld' as FOSOutcome, count: partiallyUpheldCases },
-    { outcome: 'unknown' as FOSOutcome, count: unknownCases },
-  ].filter((item) => item.count > 0);
-
   const overview = {
     totalCases,
-    upheldCases,
-    notUpheldCases,
-    partiallyUpheldCases,
-    upheldRate: toNumber(overviewRow?.upheld_rate),
-    notUpheldRate: toNumber(overviewRow?.not_upheld_rate),
-    topRootCause: nullableString(rootCauses[0]?.label),
-    topPrecedent: nullableString(precedents[0]?.label),
-    earliestDecisionDate: toIsoDate(overviewRow?.earliest_decision_date),
-    latestDecisionDate: toIsoDate(overviewRow?.latest_decision_date),
+    upheldCases: toInt(aggregateRow?.upheld_cases),
+    notUpheldCases: toInt(aggregateRow?.not_upheld_cases),
+    partiallyUpheldCases: toInt(aggregateRow?.partially_upheld_cases),
+    upheldRate: toNumber(aggregateRow?.upheld_rate),
+    notUpheldRate: toNumber(aggregateRow?.not_upheld_rate),
+    topRootCause: nullableString(toObjectArray(aggregateRow?.root_causes)[0]?.label),
+    topPrecedent: nullableString(toObjectArray(aggregateRow?.precedents)[0]?.label),
+    earliestDecisionDate: toIsoDate(aggregateRow?.earliest_decision_date),
+    latestDecisionDate: toIsoDate(aggregateRow?.latest_decision_date),
   };
+
+  const trends = toObjectArray(aggregateRow?.trends).map((row) => ({
+    year: toInt(row.year),
+    total: toInt(row.total),
+    upheld: toInt(row.upheld),
+    notUpheld: toInt(row.not_upheld),
+    partiallyUpheld: toInt(row.partially_upheld),
+    unknown: toInt(row.unknown_count),
+  }));
+
+  const outcomes = toObjectArray(aggregateRow?.outcomes).map((row) => ({
+    outcome: normalizeOutcome(String(row.outcome || 'unknown')),
+    count: toInt(row.count),
+  }));
+
+  const products = toObjectArray(aggregateRow?.products).map((row) => ({
+    product: normalizeLabel(row.product, 'Unspecified'),
+    total: toInt(row.total),
+    upheldRate: toNumber(row.upheld_rate),
+  }));
+
+  const firms = toObjectArray(aggregateRow?.firms).map((row) => ({
+    firm: normalizeLabel(row.firm, 'Unknown firm'),
+    total: toInt(row.total),
+    upheldRate: toNumber(row.upheld_rate),
+    notUpheldRate: toNumber(row.not_upheld_rate),
+  }));
+
+  const precedents = toObjectArray(aggregateRow?.precedents).map((row) => ({
+    label: normalizeTagLabel(String(row.label || 'unknown')),
+    count: toInt(row.count),
+  }));
+
+  const rootCauses = toObjectArray(aggregateRow?.root_causes).map((row) => ({
+    label: normalizeTagLabel(String(row.label || 'unknown')),
+    count: toInt(row.count),
+  }));
 
   const insights = await queryYearInsights(trends);
 
@@ -211,9 +176,9 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
     filters: options,
     ingestion,
     dataQuality: {
-      missingDecisionDate: toInt(overviewRow?.missing_decision_date),
-      missingOutcome: toInt(overviewRow?.missing_outcome),
-      withReasoningText: toInt(overviewRow?.with_reasoning_text),
+      missingDecisionDate: toInt(aggregateRow?.missing_decision_date),
+      missingOutcome: toInt(aggregateRow?.missing_outcome),
+      withReasoningText: toInt(aggregateRow?.with_reasoning_text),
     },
   };
 }
