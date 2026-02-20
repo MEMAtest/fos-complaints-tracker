@@ -80,9 +80,13 @@ export function parseFilters(searchParams: URLSearchParams): FOSDashboardFilters
   };
 }
 
-export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promise<FOSDashboardSnapshot> {
+export async function getDashboardSnapshot(
+  filters: FOSDashboardFilters,
+  options: { includeCases?: boolean } = {}
+): Promise<FOSDashboardSnapshot> {
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
+  const includeCases = options.includeCases ?? true;
 
   const hasScopeFilters =
     Boolean(filters.query) ||
@@ -104,11 +108,22 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
   );
   const totalCases = toInt(aggregateRow?.total_cases);
 
-  const [caseBundle, options, ingestion] = await Promise.all([
-    queryCases(filters, totalCases),
+  const [filterOptions, ingestion] = await Promise.all([
     queryFilterOptions(),
     queryIngestionStatus(),
   ]);
+
+  const caseBundle = includeCases
+    ? await queryCases(filters, totalCases)
+    : {
+        items: [],
+        pagination: {
+          page: clamp(Math.max(1, filters.page), 1, Math.max(1, Math.ceil(totalCases / filters.pageSize))),
+          pageSize: filters.pageSize,
+          total: totalCases,
+          totalPages: Math.max(1, Math.ceil(totalCases / filters.pageSize)),
+        },
+      };
 
   const overview = {
     totalCases,
@@ -173,7 +188,7 @@ export async function getDashboardSnapshot(filters: FOSDashboardFilters): Promis
     insights,
     cases: caseBundle.items,
     pagination: caseBundle.pagination,
-    filters: options,
+    filters: filterOptions,
     ingestion,
     dataQuality: {
       missingDecisionDate: toInt(aggregateRow?.missing_decision_date),
@@ -326,6 +341,15 @@ export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | nul
       finalDecision: 0,
     },
   });
+}
+
+export async function getCaseList(filters: FOSDashboardFilters): Promise<{
+  items: FOSCaseListItem[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+  return queryCases(filters);
 }
 
 export async function getIngestionStatus(): Promise<FOSIngestionStatus> {

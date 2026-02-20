@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
     }
 
     const filters = parseFilters(request.nextUrl.searchParams);
-    const snapshot = await getDashboardSnapshot(filters);
+    const includeCases = request.nextUrl.searchParams.get('includeCases') !== 'false';
+    const snapshot = await getDashboardSnapshot(filters, { includeCases });
     const snapshotAt = new Date().toISOString();
     const payload = {
       success: true,

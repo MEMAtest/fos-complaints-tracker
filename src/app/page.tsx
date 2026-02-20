@@ -36,6 +36,15 @@ const INITIAL_FILTERS: FOSDashboardFilters = {
 };
 const DASHBOARD_TIMEOUT_MS = 45_000;
 
+type FOSCaseListApiResponse = {
+  success: boolean;
+  data?: {
+    cases: FOSDashboardSnapshot['cases'];
+    pagination: FOSDashboardSnapshot['pagination'];
+  };
+  error?: string;
+};
+
 function parseFiltersFromQueryString(search: string): FOSDashboardFilters {
   const params = new URLSearchParams(search);
   const parseStringList = (key: string): string[] =>
@@ -287,18 +296,63 @@ export default function FOSComplaintsDashboardPage() {
   const [selectedCase, setSelectedCase] = useState<FOSCaseDetail | null>(null);
   const [caseLoading, setCaseLoading] = useState(false);
   const [caseError, setCaseError] = useState<string | null>(null);
+  const [casesLoading, setCasesLoading] = useState(false);
+  const [casesError, setCasesError] = useState<string | null>(null);
   const [requestStartedAt, setRequestStartedAt] = useState<number | null>(null);
   const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
   const [averageLoadMs, setAverageLoadMs] = useState<number | null>(null);
   const [lastLoadMs, setLastLoadMs] = useState<number | null>(null);
   const [responseMeta, setResponseMeta] = useState<FOSApiMeta | null>(null);
   const dashboardRequestRef = useRef<AbortController | null>(null);
+  const casesRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const parsed = parseFiltersFromQueryString(window.location.search);
     setFilters(parsed);
     setQueryDraft(parsed.query);
     setInitialized(true);
+  }, []);
+
+  const fetchCaseRows = useCallback(async (nextFilters: FOSDashboardFilters) => {
+    casesRequestRef.current?.abort();
+    const controller = new AbortController();
+    casesRequestRef.current = controller;
+    setCasesLoading(true);
+    setCasesError(null);
+
+    try {
+      const params = buildQueryParams(nextFilters);
+      const response = await fetch(`/api/fos/cases?${params.toString()}`, { signal: controller.signal });
+      let payload: FOSCaseListApiResponse | null = null;
+      try {
+        payload = (await response.json()) as FOSCaseListApiResponse;
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok || !payload?.success || !payload.data) {
+        throw new Error(payload?.error || `Case list request failed (${response.status}).`);
+      }
+
+      setSnapshot((previous) =>
+        previous
+          ? {
+              ...previous,
+              cases: payload.data?.cases || [],
+              pagination: payload.data?.pagination || previous.pagination,
+            }
+          : previous
+      );
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
+      const message = requestError instanceof Error ? requestError.message : 'Unable to load case rows.';
+      setCasesError(message);
+    } finally {
+      if (casesRequestRef.current === controller) {
+        casesRequestRef.current = null;
+        setCasesLoading(false);
+      }
+    }
   }, []);
 
   const fetchDashboard = useCallback(async (nextFilters: FOSDashboardFilters) => {
@@ -314,11 +368,13 @@ export default function FOSComplaintsDashboardPage() {
 
     setLoading(true);
     setError(null);
+    setCasesError(null);
     setRequestStartedAt(startedAt);
     setLoadingElapsedSec(0);
 
     try {
       const params = buildQueryParams(nextFilters);
+      params.set('includeCases', 'false');
       const response = await fetch(`/api/fos/dashboard?${params.toString()}`, { signal: controller.signal });
       let payload: FOSDashboardApiResponse | null = null;
       try {
@@ -335,9 +391,13 @@ export default function FOSComplaintsDashboardPage() {
       const durationMs = Date.now() - startedAt;
       setLastLoadMs(durationMs);
       setAverageLoadMs((previous) => (previous == null ? durationMs : Math.round(previous * 0.7 + durationMs * 0.3)));
-      setSnapshot(payload.data);
+      setSnapshot({
+        ...payload.data,
+        cases: [],
+      });
       setResponseMeta(payload.meta || null);
       setFilters((prev) => (prev.page === payload.data.pagination.page ? prev : { ...prev, page: payload.data.pagination.page }));
+      void fetchCaseRows(nextFilters);
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
         if (timedOut) {
@@ -355,7 +415,7 @@ export default function FOSComplaintsDashboardPage() {
         setRequestStartedAt(null);
       }
     }
-  }, []);
+  }, [fetchCaseRows]);
 
   useEffect(() => {
     if (!initialized) return;
@@ -373,6 +433,7 @@ export default function FOSComplaintsDashboardPage() {
   useEffect(
     () => () => {
       dashboardRequestRef.current?.abort();
+      casesRequestRef.current?.abort();
     },
     []
   );
@@ -880,10 +941,26 @@ export default function FOSComplaintsDashboardPage() {
                       <td className="px-4 py-3 text-slate-600">{truncate(item.decisionLogic || item.decisionSummary || 'n/a', 120)}</td>
                     </tr>
                   ))}
-                  {(snapshot?.cases || []).length === 0 && (
+                  {casesError && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6">
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                          {casesError}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {casesLoading && (
                     <tr>
                       <td colSpan={6} className="px-4 py-10">
-                        <EmptyState label={loading ? 'Loading case rows...' : 'No cases match your current filters.'} />
+                        <EmptyState label="Loading case rows..." />
+                      </td>
+                    </tr>
+                  )}
+                  {(snapshot?.cases || []).length === 0 && !casesLoading && !casesError && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10">
+                        <EmptyState label="No cases match your current filters." />
                       </td>
                     </tr>
                   )}
@@ -899,14 +976,14 @@ export default function FOSComplaintsDashboardPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(Math.max(1, filters.page - 1))}
-                  disabled={!snapshot || snapshot.pagination.page <= 1}
+                  disabled={!snapshot || snapshot.pagination.page <= 1 || casesLoading}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Prev
                 </button>
                 <button
                   onClick={() => setPage(Math.min(snapshot?.pagination.totalPages || 1, filters.page + 1))}
-                  disabled={!snapshot || snapshot.pagination.page >= snapshot.pagination.totalPages}
+                  disabled={!snapshot || snapshot.pagination.page >= snapshot.pagination.totalPages || casesLoading}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
