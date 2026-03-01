@@ -11,11 +11,12 @@
     "db:cutover-fos": "node scripts/cutover-fos.mjs",
     "db:import-fos-parsed": "node scripts/import-fos-parsed.mjs",
     "db:backfill-fos-enrichment": "node scripts/backfill-fos-enrichment.mjs",
+    "db:backfill-fos-enrichment:canary": "node scripts/backfill-fos-enrichment.mjs --limit 25000 --batch-size 250 --state-file tmp/fos-backfill-canary-state.json --report-file tmp/reports/fos-backfill-canary-report.json",
+    "db:report-fos-quality": "node scripts/report-fos-data-quality.mjs",
     "db:add-fos-search-indexes": "node scripts/add-fos-search-indexes.mjs",
     "db:add-fos-performance-indexes": "node scripts/add-fos-performance-indexes.mjs"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.9.0",
     "@vercel/analytics": "^1.5.0",
     "clsx": "^2.1.1",
     "next": "14.2.35",
