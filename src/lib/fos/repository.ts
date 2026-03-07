@@ -24,6 +24,11 @@ const MAX_PAGE_SIZE = 100;
 const TABLE_CHECK_TTL_MS = 60_000;
 const TAG_PRESENCE_CACHE_TTL_MS = 15 * 60_000;
 const FILTER_OPTIONS_CACHE_TTL_MS = 15 * 60_000;
+const SUMMARY_SNAPSHOT_KEYS = {
+  dashboard: 'dashboard_default',
+  analysis: 'analysis_default',
+  rootCauses: 'root_causes_default',
+} as const;
 const SUPPORTED_OUTCOMES: FOSOutcome[] = [
   'upheld',
   'not_upheld',
@@ -56,6 +61,11 @@ type CteBuildResult = {
   params: unknown[];
   nextIndex: number;
 };
+
+type DashboardSummaryPayload = Pick<
+  FOSDashboardSnapshot,
+  'overview' | 'trends' | 'outcomes' | 'products' | 'firms' | 'precedents' | 'rootCauses' | 'insights' | 'filters' | 'dataQuality'
+>;
 
 let tableCheckCache: { exists: boolean; checkedAt: number } | null = null;
 let tagPresenceCache:
@@ -93,6 +103,35 @@ export async function getDashboardSnapshot(
   await ensureFosDecisionsTableExists();
   const includeCases = options.includeCases ?? true;
   const hasScopeFilters = hasActiveScopeFilters(filters);
+
+  if (!hasScopeFilters) {
+    const [summary, ingestion] = await Promise.all([
+      querySummarySnapshot<DashboardSummaryPayload>(SUMMARY_SNAPSHOT_KEYS.dashboard),
+      queryIngestionStatus(),
+    ]);
+
+    if (summary) {
+      const totalCases = summary.overview.totalCases;
+      const caseBundle = includeCases
+        ? await queryCases(filters, totalCases)
+        : {
+            items: [],
+            pagination: {
+              page: clamp(Math.max(1, filters.page), 1, Math.max(1, Math.ceil(totalCases / filters.pageSize))),
+              pageSize: filters.pageSize,
+              total: totalCases,
+              totalPages: Math.max(1, Math.ceil(totalCases / filters.pageSize)),
+            },
+          };
+
+      return {
+        ...summary,
+        cases: caseBundle.items,
+        pagination: caseBundle.pagination,
+        ingestion,
+      };
+    }
+  }
 
   const precedentsPromise = hasScopeFilters ? queryTagFrequency(filters, 'precedents', 12) : Promise.resolve([]);
   const rootCausesPromise = hasScopeFilters ? queryTagFrequency(filters, 'root_cause_tags', 12) : Promise.resolve([]);
@@ -206,6 +245,13 @@ export async function getAnalysisSnapshot(
   await ensureFosDecisionsTableExists();
 
   const includeTagMatrix = options.includeTagMatrix ?? true;
+  if (!hasActiveScopeFilters(filters)) {
+    const summary = await querySummarySnapshot<FOSAnalysisSnapshot>(SUMMARY_SNAPSHOT_KEYS.analysis);
+    if (summary) {
+      return summary;
+    }
+  }
+
   const [
     yearProductOutcomeRows,
     firmBenchmarkRows,
@@ -398,6 +444,13 @@ export async function getRootCauseSnapshot(
 ): Promise<FOSRootCauseSnapshot> {
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
+
+  if (!hasActiveScopeFilters(filters)) {
+    const summary = await querySummarySnapshot<FOSRootCauseSnapshot>(SUMMARY_SNAPSHOT_KEYS.rootCauses);
+    if (summary) {
+      return summary;
+    }
+  }
 
   const hasRootCauses = await hasTagValues('root_cause_tags');
   if (!hasRootCauses) {
@@ -2477,6 +2530,26 @@ function ensureDatabaseConfigured(): void {
   }
 }
 
+async function querySummarySnapshot<T>(snapshotKey: string): Promise<T | null> {
+  try {
+    const row = await DatabaseClient.queryOne<{ payload: unknown }>(
+      `
+        SELECT payload
+        FROM fos_summary_snapshots
+        WHERE snapshot_key = $1
+      `,
+      [snapshotKey]
+    );
+
+    return row ? parseJsonValue<T>(row.payload) : null;
+  } catch (error) {
+    if (isMissingRelationError(error, 'fos_summary_snapshots')) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export function hasActiveScopeFilters(filters: FOSDashboardFilters): boolean {
   return (
     Boolean(filters.query) ||
@@ -3089,4 +3162,25 @@ function parsePositiveInt(value: string | null, fallback: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function parseJsonValue<T>(input: unknown): T | null {
+  if (input == null) return null;
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      return null;
+    }
+  }
+  return input as T;
+}
+
+function isMissingRelationError(error: unknown, relationName: string): boolean {
+  const code = String((error as { code?: string })?.code || '').toUpperCase();
+  if (code === '42P01') return true;
+  const message = String((error as { message?: string })?.message || '').toLowerCase();
+  return message.includes(`relation "${relationName.toLowerCase()}" does not exist`);
 }

@@ -109,6 +109,27 @@ Local smoke test:
 npm run fos:daily-ingest -- --start-date 2025-01-01 --end-date 2025-12-31 --limit 1 --skip-import
 ```
 
+## Summary read-model refresh
+
+Unfiltered dashboard, analysis, and root-cause API paths can read from DB-backed summary snapshots when they exist.
+
+- Schema: `db/migrations/20260307_fos_summary_snapshots.sql`
+- Refresh command: `npm run db:refresh-fos-summaries`
+- Scheduled workflow: `.github/workflows/fos-refresh-summaries.yml`
+- Schedule: every 15 minutes
+
+Manual refresh:
+
+```bash
+npm run db:refresh-fos-summaries
+```
+
+Optional targeted refresh:
+
+```bash
+npm run db:refresh-fos-summaries -- --keys dashboard,analysis
+```
+
 ## Hetzner migration checks
 
 1. Verify local and deploy env files target the same DB host:

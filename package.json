@@ -12,6 +12,7 @@
     "db:probe-connectivity": "node scripts/probe-db-connectivity.mjs",
     "db:check": "node scripts/check-fos-ready.mjs",
     "db:cutover-fos": "node scripts/cutover-fos.mjs",
+    "db:refresh-fos-summaries": "node scripts/refresh-fos-summaries.mjs",
     "db:import-fos-parsed": "node scripts/import-fos-parsed.mjs",
     "db:backfill-fos-enrichment": "node scripts/backfill-fos-enrichment.mjs",
     "db:backfill-fos-enrichment:canary": "node scripts/backfill-fos-enrichment.mjs --limit 25000 --batch-size 250 --state-file tmp/fos-backfill-canary-state.json --report-file tmp/reports/fos-backfill-canary-report.json",
