@@ -27,11 +27,14 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
   const [responseMeta, setResponseMeta] = useState<FOSApiMeta | null>(null);
   const dashboardRequestRef = useRef<AbortController | null>(null);
   const casesRequestRef = useRef<AbortController | null>(null);
+  const requestSequenceRef = useRef(0);
+  const renderedRequestIdRef = useRef(0);
+  const pendingCaseBundleRef = useRef<FOSCaseListApiResponse['data'] | null>(null);
   const progress = useLoadingProgress(loading);
   const progressRef = useRef<ProgressRef>(progress);
   progressRef.current = progress;
 
-  const fetchCaseRows = useCallback(async (nextFilters: FOSDashboardFilters) => {
+  const loadCaseRows = useCallback(async (nextFilters: FOSDashboardFilters) => {
     casesRequestRef.current?.abort();
     const controller = new AbortController();
     casesRequestRef.current = controller;
@@ -48,12 +51,11 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
         throw new Error(payload?.error || `Case list request failed (${response.status}).`);
       }
 
-      setSnapshot((prev) =>
-        prev ? { ...prev, cases: payload.data?.cases || [], pagination: payload.data?.pagination || prev.pagination } : prev
-      );
+      return payload.data;
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setCasesError(err instanceof Error ? err.message : 'Unable to load case rows.');
+      return null;
     } finally {
       if (casesRequestRef.current === controller) {
         casesRequestRef.current = null;
@@ -62,10 +64,23 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
     }
   }, []);
 
+  const fetchCaseRows = useCallback(async (nextFilters: FOSDashboardFilters) => {
+    const data = await loadCaseRows(nextFilters);
+    if (!data) return;
+
+    setSnapshot((prev) =>
+      prev ? { ...prev, cases: data.cases || [], pagination: data.pagination || prev.pagination } : prev
+    );
+  }, [loadCaseRows]);
+
   const fetchDashboard = useCallback(async (nextFilters: FOSDashboardFilters) => {
     dashboardRequestRef.current?.abort();
     const controller = new AbortController();
     dashboardRequestRef.current = controller;
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
+    renderedRequestIdRef.current = 0;
+    pendingCaseBundleRef.current = null;
     let timedOut = false;
     const timeoutId = window.setTimeout(() => { timedOut = true; controller.abort(); }, DASHBOARD_TIMEOUT_MS);
     const startedAt = Date.now();
@@ -76,6 +91,21 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
     progressRef.current.startTracking();
 
     try {
+      const caseRowsPromise = loadCaseRows(nextFilters).then((data) => {
+        if (!data || requestSequenceRef.current !== requestId) return null;
+
+        pendingCaseBundleRef.current = data;
+        if (renderedRequestIdRef.current !== requestId) {
+          return data;
+        }
+
+        setSnapshot((prev) =>
+          prev ? { ...prev, cases: data.cases || [], pagination: data.pagination || prev.pagination } : prev
+        );
+        pendingCaseBundleRef.current = null;
+        return data;
+      });
+
       const params = buildQueryParams(nextFilters);
       params.set('includeCases', 'false');
       const response = await fetch(`/api/fos/dashboard?${params.toString()}`, { signal: controller.signal });
@@ -87,14 +117,22 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
       }
 
       progressRef.current.recordDuration(Date.now() - startedAt);
-      setSnapshot({ ...payload.data, cases: [] });
+      renderedRequestIdRef.current = requestId;
+      const caseRows = pendingCaseBundleRef.current;
+      if (caseRows) pendingCaseBundleRef.current = null;
+      setSnapshot({
+        ...payload.data,
+        cases: caseRows?.cases || [],
+        pagination: caseRows?.pagination || payload.data.pagination,
+      });
       setResponseMeta(payload.meta || null);
-      void fetchCaseRows(nextFilters);
+      void caseRowsPromise;
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         if (timedOut) setError(`Dashboard query timed out after ${Math.round(DASHBOARD_TIMEOUT_MS / 1000)}s. Please retry.`);
         return;
       }
+      pendingCaseBundleRef.current = null;
       setError(err instanceof Error ? err.message : 'Unknown dashboard error');
     } finally {
       window.clearTimeout(timeoutId);
@@ -104,7 +142,7 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
         progressRef.current.stopTracking();
       }
     }
-  }, [fetchCaseRows]);
+  }, [loadCaseRows]);
 
   useEffect(() => {
     if (!initialized) return;
