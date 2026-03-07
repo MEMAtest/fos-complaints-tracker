@@ -68,11 +68,11 @@ function OuterRingLabel(props: PieLabelRenderProps) {
 
   if (percent < 0.03) return null;
   const RADIAN = Math.PI / 180;
-  const radius = outerRadius + 14;
+  const radius = outerRadius + 18;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
   const textAnchor = midAngle > 90 && midAngle < 270 ? 'end' : 'start';
-  const maxLen = 18;
+  const maxLen = 26;
   const label = name.length > maxLen ? name.slice(0, maxLen - 1) + '\u2026' : name;
 
   return (
@@ -82,7 +82,7 @@ function OuterRingLabel(props: PieLabelRenderProps) {
       textAnchor={textAnchor}
       dominantBaseline="central"
       fill="#475569"
-      fontSize={9}
+      fontSize={10}
       fontWeight={400}
     >
       {label}
@@ -125,7 +125,7 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
   return (
     <div className="relative">
       <ResponsiveContainer width="100%" height={480}>
-        <PieChart>
+        <PieChart margin={{ top: 10, right: 140, bottom: 10, left: 140 }}>
           {/* Inner ring: broad categories */}
           <Pie
             data={innerData}
