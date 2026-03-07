@@ -18,6 +18,11 @@ type FOSCaseListApiResponse = {
   error?: string;
 };
 
+type FOSCaseListData = {
+  cases: FOSDashboardSnapshot['cases'];
+  pagination: FOSDashboardSnapshot['pagination'];
+};
+
 export function useFosDashboard(filters: FOSDashboardFilters, initialized: boolean) {
   const [snapshot, setSnapshot] = useState<FOSDashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +34,7 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
   const casesRequestRef = useRef<AbortController | null>(null);
   const requestSequenceRef = useRef(0);
   const renderedRequestIdRef = useRef(0);
-  const pendingCaseBundleRef = useRef<FOSCaseListApiResponse['data'] | null>(null);
+  const pendingCaseBundleRef = useRef<FOSCaseListData | null>(null);
   const progress = useLoadingProgress(loading);
   const progressRef = useRef<ProgressRef>(progress);
   progressRef.current = progress;
@@ -118,12 +123,16 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
 
       progressRef.current.recordDuration(Date.now() - startedAt);
       renderedRequestIdRef.current = requestId;
-      const caseRows = pendingCaseBundleRef.current;
-      if (caseRows) pendingCaseBundleRef.current = null;
+      const caseBundle =
+        (pendingCaseBundleRef.current as FOSCaseListData | null) || {
+          cases: [] as FOSDashboardSnapshot['cases'],
+          pagination: payload.data.pagination,
+        };
+      pendingCaseBundleRef.current = null;
       setSnapshot({
         ...payload.data,
-        cases: caseRows?.cases || [],
-        pagination: caseRows?.pagination || payload.data.pagination,
+        cases: caseBundle.cases,
+        pagination: caseBundle.pagination,
       });
       setResponseMeta(payload.meta || null);
       void caseRowsPromise;
