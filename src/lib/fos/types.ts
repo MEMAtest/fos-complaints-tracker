@@ -210,10 +210,57 @@ export interface FOSYearNarrative {
   detail: string;
 }
 
+export interface FOSMonthlyProductBreakdown {
+  month: string;
+  product: string;
+  count: number;
+}
+
+export interface FOSDecisionDayMonthCell {
+  month: number;
+  dayOfWeek: number;
+  count: number;
+}
+
 export interface FOSAnalysisSnapshot {
   yearProductOutcome: FOSYearProductOutcomeCell[];
   firmBenchmark: FOSFirmBenchmarkPoint[];
   precedentRootCauseMatrix: FOSPrecedentRootCauseCell[];
   productTree: FOSProductTreeNode[];
   yearNarratives: FOSYearNarrative[];
+  monthlyProductBreakdown: FOSMonthlyProductBreakdown[];
+  decisionDayMonthGrid: FOSDecisionDayMonthCell[];
+}
+
+// Root Cause Analysis types
+export interface FOSRootCauseTrend {
+  label: string;
+  count: number;
+  trend: { year: number; count: number }[];
+}
+
+export interface FOSRootCauseHierarchy {
+  name: string;
+  children: { name: string; value: number }[];
+}
+
+export interface FOSRootCauseSnapshot {
+  rootCauses: FOSRootCauseTrend[];
+  hierarchy: FOSRootCauseHierarchy[];
+  frequency: FOSTagCount[];
+}
+
+// Firm Comparison types
+export interface FOSFirmComparisonData {
+  name: string;
+  totalCases: number;
+  upheldRate: number;
+  notUpheldRate: number;
+  topProducts: { product: string; total: number; upheldRate: number }[];
+  yearBreakdown: { year: number; total: number; upheldRate: number }[];
+}
+
+export interface FOSComparisonSnapshot {
+  firmA: FOSFirmComparisonData;
+  firmB: FOSFirmComparisonData;
 }

@@ -1,0 +1,145 @@
+name: FOS Daily Ingestion
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: Recent UTC overlap window to scrape
+        required: false
+        default: "14"
+      limit:
+        description: Optional cap for parsed decisions
+        required: false
+        default: ""
+      skip_import:
+        description: Run scrape and parse only
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "20 4 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: fos-daily-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run daily ingestion
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_SSL_MODE: require
+          WINDOW_DAYS: ${{ github.event.inputs.window_days || '14' }}
+          LIMIT: ${{ github.event.inputs.limit || '' }}
+          SKIP_IMPORT: ${{ github.event.inputs.skip_import || 'false' }}
+        run: |
+          set -euo pipefail
+          ARGS=(--window-days "$WINDOW_DAYS")
+          ARGS+=(--allow-empty)
+          if [ -n "$LIMIT" ]; then
+            ARGS+=(--limit "$LIMIT")
+          fi
+          if [ "$SKIP_IMPORT" = "true" ]; then
+            ARGS+=(--skip-import)
+          fi
+          npm run fos:daily-ingest -- "${ARGS[@]}"
+
+      - name: Upload ingestion artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fos-daily-${{ github.run_id }}
+          path: tmp/fos-daily
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Open or update failure issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "FOS daily ingestion failed";
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+
+            const existing = issues.find((issue) => issue.title === title);
+            const body = [
+              "The scheduled FOS daily ingestion workflow failed.",
+              "",
+              `Run: ${runUrl}`,
+              `Commit: ${context.sha}`,
+              `Triggered by: ${context.eventName}`,
+            ].join("\n");
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Close failure issue on recovery
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "FOS daily ingestion failed";
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+
+            for (const issue of issues.filter((item) => item.title === title)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Recovered successfully in ${runUrl}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: "closed",
+              });
+            }

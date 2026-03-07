@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Manrope, Sora } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
+import { SidebarLayout } from '@/components/layout/sidebar-layout';
 import './globals.css';
 
 const headingFont = Sora({
@@ -54,7 +55,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color" content="#0f1f4f" />
       </head>
       <body className={`${bodyFont.variable} ${headingFont.variable} antialiased`}>
-        {children}
+        <SidebarLayout>
+          {children}
+        </SidebarLayout>
         <Analytics />
       </body>
     </html>

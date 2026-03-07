@@ -48,9 +48,9 @@ Required env var:
 Optional DB runtime env vars:
 
 - `DB_SSL_MODE` (`disable`, `require`, `verify-ca`, `verify-full`) to force TLS mode
-- `DB_CONNECT_RETRIES` (default `3`) connection retry count for scripts/app DB calls
-- `DB_RETRY_BASE_MS` (default `350`) initial retry delay
-- `DB_RETRY_MAX_MS` (default `4000`) max retry delay
+- `DB_CONNECT_RETRIES` (default `3` for scripts, `2` for app runtime) connection retry count
+- `DB_RETRY_BASE_MS` (default `350` for scripts, `200` for app runtime) initial retry delay
+- `DB_RETRY_MAX_MS` (default `4000` for scripts, `2000` for app runtime) max retry delay
 - `DEBUG_API_SECRET` (required for `/api/debug-*` endpoints, bearer token)
 - `CRON_SECRET` (recommended in production for `/api/fos/keepalive`)
 
@@ -76,6 +76,38 @@ If `DEBUG_API_SECRET` is missing, debug endpoints return `503`.
 Recommended production header:
 
 `Authorization: Bearer <CRON_SECRET>`
+
+## Daily ingestion automation
+
+Daily scrape + parse + import now runs through GitHub Actions:
+
+- Workflow: `.github/workflows/fos-daily-ingestion.yml`
+- Schedule: `20 4 * * *` (daily at 04:20 UTC)
+- Runtime command: `npm run fos:daily-ingest`
+- Failure alerting: opens or updates a GitHub issue titled `FOS daily ingestion failed`
+
+Required GitHub Actions secret:
+
+- `DATABASE_URL` for the Hetzner PostgreSQL target
+
+Workflow runtime notes:
+
+- `DB_SSL_MODE=require` is forced in the workflow for Hetzner TLS
+- `--allow-empty` is passed in the scheduled workflow, so days with no newly published decisions do not fail the job
+- the daily ingestion path does not use OpenAI
+- artifacts for each run are uploaded from `tmp/fos-daily`
+
+Manual trigger options:
+
+- `window_days` to control the recent overlap window
+- `limit` to cap the number of parsed decisions
+- `skip_import=true` to run scraper/parser only
+
+Local smoke test:
+
+```bash
+npm run fos:daily-ingest -- --start-date 2025-01-01 --end-date 2025-12-31 --limit 1 --skip-import
+```
 
 ## Hetzner migration checks
 
