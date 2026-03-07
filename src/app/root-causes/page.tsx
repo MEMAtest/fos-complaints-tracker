@@ -52,6 +52,8 @@ export default function RootCausesPage() {
   const [meta, setMeta] = useState<RootCauseApiMeta | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const progress = useLoadingProgress(loading);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
 
   const fetchRootCauses = useCallback(async (nextFilters: FOSDashboardFilters) => {
     requestRef.current?.abort();
@@ -63,7 +65,7 @@ export default function RootCausesPage() {
 
     setLoading(true);
     setError(null);
-    progress.startTracking();
+    progressRef.current.startTracking();
 
     try {
       const response = await fetch(
@@ -77,7 +79,7 @@ export default function RootCausesPage() {
         throw new Error(payload?.error || `Root cause request failed (${response.status}).`);
       }
 
-      progress.recordDuration(Date.now() - startedAt);
+      progressRef.current.recordDuration(Date.now() - startedAt);
       setSnapshot(payload.data);
       setMeta(payload.meta || null);
     } catch (err) {
@@ -91,10 +93,10 @@ export default function RootCausesPage() {
       if (requestRef.current === controller) {
         requestRef.current = null;
         setLoading(false);
-        progress.stopTracking();
+        progressRef.current.stopTracking();
       }
     }
-  }, [progress]);
+  }, []);
 
   useEffect(() => {
     if (!initialized) return;

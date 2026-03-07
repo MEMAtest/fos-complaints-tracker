@@ -7,6 +7,8 @@ import { DASHBOARD_TIMEOUT_MS } from '@/lib/fos/constants';
 import { buildQueryParams } from './use-fos-filters';
 import { useLoadingProgress } from './use-loading-progress';
 
+type ProgressRef = { startTracking: () => void; recordDuration: (ms: number) => void; stopTracking: () => void };
+
 type FOSCaseListApiResponse = {
   success: boolean;
   data?: {
@@ -26,6 +28,8 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
   const dashboardRequestRef = useRef<AbortController | null>(null);
   const casesRequestRef = useRef<AbortController | null>(null);
   const progress = useLoadingProgress(loading);
+  const progressRef = useRef<ProgressRef>(progress);
+  progressRef.current = progress;
 
   const fetchCaseRows = useCallback(async (nextFilters: FOSDashboardFilters) => {
     casesRequestRef.current?.abort();
@@ -69,7 +73,7 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
     setLoading(true);
     setError(null);
     setCasesError(null);
-    progress.startTracking();
+    progressRef.current.startTracking();
 
     try {
       const params = buildQueryParams(nextFilters);
@@ -82,7 +86,7 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
         throw new Error(payload?.error || `Dashboard request failed (${response.status}).`);
       }
 
-      progress.recordDuration(Date.now() - startedAt);
+      progressRef.current.recordDuration(Date.now() - startedAt);
       setSnapshot({ ...payload.data, cases: [] });
       setResponseMeta(payload.meta || null);
       void fetchCaseRows(nextFilters);
@@ -97,10 +101,10 @@ export function useFosDashboard(filters: FOSDashboardFilters, initialized: boole
       if (dashboardRequestRef.current === controller) {
         dashboardRequestRef.current = null;
         setLoading(false);
-        progress.stopTracking();
+        progressRef.current.stopTracking();
       }
     }
-  }, [fetchCaseRows, progress]);
+  }, [fetchCaseRows]);
 
   useEffect(() => {
     if (!initialized) return;

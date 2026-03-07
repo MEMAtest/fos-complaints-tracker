@@ -14,6 +14,8 @@ export function useFosAnalysis(filters: FOSDashboardFilters, initialized: boolea
   const [meta, setMeta] = useState<FOSApiMeta | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const progress = useLoadingProgress(loading);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
 
   const fetchAnalysis = useCallback(async (nextFilters: FOSDashboardFilters) => {
     requestRef.current?.abort();
@@ -25,7 +27,7 @@ export function useFosAnalysis(filters: FOSDashboardFilters, initialized: boolea
 
     setLoading(true);
     setError(null);
-    progress.startTracking();
+    progressRef.current.startTracking();
 
     try {
       const response = await fetch(`/api/fos/analysis?${buildQueryParams(nextFilters).toString()}`, { signal: controller.signal });
@@ -36,7 +38,7 @@ export function useFosAnalysis(filters: FOSDashboardFilters, initialized: boolea
         throw new Error(payload?.error || `Analysis request failed (${response.status}).`);
       }
 
-      progress.recordDuration(Date.now() - startedAt);
+      progressRef.current.recordDuration(Date.now() - startedAt);
       setSnapshot(payload.data);
       setMeta(payload.meta || null);
     } catch (err) {
@@ -50,10 +52,10 @@ export function useFosAnalysis(filters: FOSDashboardFilters, initialized: boolea
       if (requestRef.current === controller) {
         requestRef.current = null;
         setLoading(false);
-        progress.stopTracking();
+        progressRef.current.stopTracking();
       }
     }
-  }, [progress]);
+  }, []);
 
   useEffect(() => {
     if (!initialized) return;

@@ -31,6 +31,8 @@ export default function ComparisonPage() {
   const [meta, setMeta] = useState<{ cached: boolean; queryMs: number } | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const progress = useLoadingProgress(loading);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
 
   // Fetch list of firms from the analysis API
   useEffect(() => {
@@ -77,7 +79,7 @@ export default function ComparisonPage() {
 
     setLoading(true);
     setError(null);
-    progress.startTracking();
+    progressRef.current.startTracking();
 
     try {
       const params = buildQueryParams(filters);
@@ -95,7 +97,7 @@ export default function ComparisonPage() {
         throw new Error(payload?.error || `Comparison request failed (${response.status}).`);
       }
 
-      progress.recordDuration(Date.now() - startedAt);
+      progressRef.current.recordDuration(Date.now() - startedAt);
       setSnapshot(payload.data);
       setMeta(payload.meta || null);
     } catch (err) {
@@ -109,10 +111,10 @@ export default function ComparisonPage() {
       if (requestRef.current === controller) {
         requestRef.current = null;
         setLoading(false);
-        progress.stopTracking();
+        progressRef.current.stopTracking();
       }
     }
-  }, [filters, progress]);
+  }, [filters]);
 
   // Trigger comparison fetch when both firms are selected
   useEffect(() => {

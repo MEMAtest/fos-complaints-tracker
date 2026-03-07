@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { clamp } from '@/lib/utils';
 
 export function useLoadingProgress(loading: boolean) {
@@ -9,19 +9,19 @@ export function useLoadingProgress(loading: boolean) {
   const [averageLoadMs, setAverageLoadMs] = useState<number | null>(null);
   const [lastLoadMs, setLastLoadMs] = useState<number | null>(null);
 
-  const startTracking = () => {
+  const startTracking = useCallback(() => {
     setRequestStartedAt(Date.now());
     setLoadingElapsedSec(0);
-  };
+  }, []);
 
-  const recordDuration = (durationMs: number) => {
+  const recordDuration = useCallback((durationMs: number) => {
     setLastLoadMs(durationMs);
     setAverageLoadMs((prev) => (prev == null ? durationMs : Math.round(prev * 0.7 + durationMs * 0.3)));
-  };
+  }, []);
 
-  const stopTracking = () => {
+  const stopTracking = useCallback(() => {
     setRequestStartedAt(null);
-  };
+  }, []);
 
   useEffect(() => {
     if (!loading || requestStartedAt == null) return;
