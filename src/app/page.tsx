@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters } from '@/hooks/use-fos-filters';
 import { useFosDashboard, useCaseDetail } from '@/hooks/use-fos-dashboard';
 import { KpiCard } from '@/components/dashboard/kpi-card';
@@ -185,41 +186,27 @@ export default function FOSComplaintsDashboardPage() {
 
         {/* Trend chart (~65%) + Outcome donut (~35%) */}
         <section className="grid gap-4 xl:grid-cols-[1.85fr_1fr] xl:items-start">
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Year trend and drill-down</h2>
-                <p className="text-sm text-slate-500">Click a year to filter. Multi-select enabled.</p>
-              </div>
-              {filters.years.length > 0 && (
-                <span className="text-xs text-slate-500">{filters.years.length} selected</span>
-              )}
-            </div>
+          <ExpandableCard title="Year trend and drill-down" description="Click a year to filter. Multi-select enabled.">
             {snapshot ? (
               <TrendChart trends={snapshot.trends} activeYears={filters.years} onToggleYear={toggleYear} />
             ) : (
               <div className="h-[320px] animate-pulse rounded-xl bg-slate-100" />
             )}
-          </article>
+          </ExpandableCard>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">Outcome split</h3>
-            <p className="mt-1 mb-4 text-sm text-slate-500">Click an outcome to filter every panel.</p>
+          <ExpandableCard title="Outcome split" description="Click an outcome to filter every panel.">
             <OutcomeDonut
               outcomes={snapshot?.outcomes || []}
               activeOutcome={activeOutcome}
               onToggleOutcome={toggleOutcome}
             />
-          </article>
+          </ExpandableCard>
         </section>
 
         {/* Case explorer (full width) */}
         <section>
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between p-5 pb-0">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Case Explorer</h2>
-              </div>
+          <ExpandableCard title="Case Explorer" description="Browse individual case decisions.">
+            <div className="mb-2 flex justify-end">
               <Link
                 href="/analysis"
                 className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
@@ -228,31 +215,27 @@ export default function FOSComplaintsDashboardPage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
-            <div className="p-5 pt-3">
-              <CaseExplorer
-                cases={snapshot?.cases || []}
-                pagination={snapshot?.pagination || null}
-                loading={casesLoading}
-                error={casesError}
-                onSelectCase={setSelectedCaseId}
-                onPageChange={setPage}
-                currentPage={filters.page}
-              />
-            </div>
-          </div>
+            <CaseExplorer
+              cases={snapshot?.cases || []}
+              pagination={snapshot?.pagination || null}
+              loading={casesLoading}
+              error={casesError}
+              onSelectCase={setSelectedCaseId}
+              onPageChange={setPage}
+              currentPage={filters.page}
+            />
+          </ExpandableCard>
         </section>
 
         {/* Product mix (compact) */}
         <section>
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">Product mix</h3>
-            <p className="mt-1 mb-4 text-sm text-slate-500">Click a bar to filter by product.</p>
+          <ExpandableCard title="Product mix" description="Click a bar to filter by product.">
             <ProductBarChart
               products={snapshot?.products || []}
               activeProduct={activeProduct}
               onToggleProduct={toggleProduct}
             />
-          </article>
+          </ExpandableCard>
         </section>
       </div>
 

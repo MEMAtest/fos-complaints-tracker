@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters, buildQueryParams } from '@/hooks/use-fos-filters';
 import { useLoadingProgress } from '@/hooks/use-loading-progress';
 import { SearchBar } from '@/components/dashboard/search-bar';
@@ -255,50 +256,32 @@ export default function RootCausesPage() {
 
         {/* ---- sunburst chart + top causes table ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.6fr_1fr] xl:items-start">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Root cause hierarchy</CardTitle>
-              <p className="text-sm text-slate-500">Inner ring: broad categories. Outer ring: specific causes.</p>
-            </CardHeader>
-            <CardContent>
-              {snapshot ? (
-                <SunburstChart hierarchy={snapshot.hierarchy} />
-              ) : (
-                <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
-              )}
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Root cause hierarchy" description="Inner ring: broad categories. Outer ring: specific causes.">
+            {snapshot ? (
+              <SunburstChart hierarchy={snapshot.hierarchy} />
+            ) : (
+              <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
+            )}
+          </ExpandableCard>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Top root causes</CardTitle>
-              <p className="text-sm text-slate-500">Most frequent causes with year-over-year trend sparklines.</p>
-            </CardHeader>
-            <CardContent>
-              {snapshot ? (
-                <TopCausesTable rootCauses={snapshot.rootCauses} />
-              ) : (
-                <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
-              )}
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Top root causes" description="Most frequent causes with year-over-year trend sparklines.">
+            {snapshot ? (
+              <TopCausesTable rootCauses={snapshot.rootCauses} />
+            ) : (
+              <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
+            )}
+          </ExpandableCard>
         </section>
 
         {/* ---- treemap (full width) ---- */}
         <section>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Root cause frequency treemap</CardTitle>
-              <p className="text-sm text-slate-500">Block size proportional to occurrence count. Hover for details.</p>
-            </CardHeader>
-            <CardContent>
-              {snapshot ? (
-                <CauseTreemap frequency={snapshot.frequency} />
-              ) : (
-                <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
-              )}
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Root cause frequency treemap" description="Block size proportional to occurrence count. Hover for details.">
+            {snapshot ? (
+              <CauseTreemap frequency={snapshot.frequency} />
+            ) : (
+              <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
+            )}
+          </ExpandableCard>
         </section>
 
         {/* ---- empty state ---- */}

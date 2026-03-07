@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters } from '@/hooks/use-fos-filters';
 import { useFosAnalysis } from '@/hooks/use-fos-analysis';
 import { SearchBar } from '@/components/dashboard/search-bar';
@@ -182,143 +183,83 @@ export default function AnalysisPage() {
 
         {/* ---- dual upheld gauges + bubble chart ---- */}
         <section className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Upheld vs Not Upheld rates</CardTitle>
-              <p className="text-sm text-slate-500">Overall rates vs 50% baseline threshold.</p>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <UpheldRateGauge upheldRate={upheldRate} label="Upheld rate" color="#06b6d4" />
-                <UpheldRateGauge upheldRate={totalCases ? (notUpheldCases / totalCases) * 100 : 0} label="Not upheld rate" color="#f43f5e" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Product performance</CardTitle>
-              <p className="text-sm text-slate-500">Products by total cases, upheld rate, and volume.</p>
-            </CardHeader>
-            <CardContent>
-              <ProductBubbleChart yearProductOutcome={snapshot?.yearProductOutcome || []} />
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Upheld vs Not Upheld rates" description="Overall rates vs 50% baseline threshold.">
+            <div className="grid grid-cols-2 gap-4">
+              <UpheldRateGauge upheldRate={upheldRate} label="Upheld rate" color="#06b6d4" />
+              <UpheldRateGauge upheldRate={totalCases ? (notUpheldCases / totalCases) * 100 : 0} label="Not upheld rate" color="#f43f5e" />
+            </div>
+          </ExpandableCard>
+          <ExpandableCard title="Product performance" description="Products by total cases, upheld rate, and volume.">
+            <ProductBubbleChart yearProductOutcome={snapshot?.yearProductOutcome || []} />
+          </ExpandableCard>
         </section>
 
         {/* ---- heatmap + product leaderboard ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr] xl:items-start">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Year x product upheld-rate heatmap</CardTitle>
-              <p className="text-sm text-slate-500">Click any cell to combine year and product filters.</p>
-            </CardHeader>
-            <CardContent>
-              <HeatmapTable
-                yearProductOutcome={snapshot?.yearProductOutcome || []}
-                activeYears={filters.years}
-                activeProducts={filters.products}
-                onToggleYear={toggleYear}
-                onToggleProduct={toggleProduct}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Product upheld-rate leaderboard</CardTitle>
-              <p className="text-sm text-slate-500">Products ranked by volume with upheld rate.</p>
-            </CardHeader>
-            <CardContent>
-              <ProductLeaderboard
-                yearProductOutcome={snapshot?.yearProductOutcome || []}
-                activeProducts={filters.products}
-                onToggleProduct={toggleProduct}
-              />
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Year x product upheld-rate heatmap" description="Click any cell to combine year and product filters.">
+            <HeatmapTable
+              yearProductOutcome={snapshot?.yearProductOutcome || []}
+              activeYears={filters.years}
+              activeProducts={filters.products}
+              onToggleYear={toggleYear}
+              onToggleProduct={toggleProduct}
+            />
+          </ExpandableCard>
+          <ExpandableCard title="Product upheld-rate leaderboard" description="Products ranked by volume with upheld rate.">
+            <ProductLeaderboard
+              yearProductOutcome={snapshot?.yearProductOutcome || []}
+              activeProducts={filters.products}
+              onToggleProduct={toggleProduct}
+            />
+          </ExpandableCard>
         </section>
 
         {/* ---- firm benchmark + precedent matrix ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.25fr_1fr] xl:items-start">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Firm benchmark: volume vs upheld rate</CardTitle>
-              <p className="text-sm text-slate-500">Compare firm scale against adjudication outcomes.</p>
-            </CardHeader>
-            <CardContent>
-              <FirmBenchmark
-                firmBenchmark={snapshot?.firmBenchmark || []}
-                activeFirms={filters.firms}
-                onToggleFirm={toggleFirm}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Precedent x root-cause matrix</CardTitle>
-              <p className="text-sm text-slate-500">Click chips to filter by precedent or root cause tags.</p>
-            </CardHeader>
-            <CardContent>
-              <PrecedentMatrix
-                matrix={snapshot?.precedentRootCauseMatrix || []}
-                activeTags={filters.tags}
-                onToggleTag={toggleTag}
-              />
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Firm benchmark: volume vs upheld rate" description="Compare firm scale against adjudication outcomes.">
+            <FirmBenchmark
+              firmBenchmark={snapshot?.firmBenchmark || []}
+              activeFirms={filters.firms}
+              onToggleFirm={toggleFirm}
+            />
+          </ExpandableCard>
+          <ExpandableCard title="Precedent x root-cause matrix" description="Click chips to filter by precedent or root cause tags.">
+            <PrecedentMatrix
+              matrix={snapshot?.precedentRootCauseMatrix || []}
+              activeTags={filters.tags}
+              onToggleTag={toggleTag}
+            />
+          </ExpandableCard>
         </section>
 
         {/* ---- categories by month + decisions heatmap ---- */}
         <section className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Product categories by month</CardTitle>
-              <p className="text-sm text-slate-500">Stacked breakdown of top product sectors by decision month.</p>
-            </CardHeader>
-            <CardContent>
-              <CategoriesByMonth monthlyProductBreakdown={snapshot?.monthlyProductBreakdown || []} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Decisions heatmap</CardTitle>
-              <p className="text-sm text-slate-500">Decision distribution by month and day of week.</p>
-            </CardHeader>
-            <CardContent>
-              <DecisionsHeatmap decisionDayMonthGrid={snapshot?.decisionDayMonthGrid || []} />
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Product categories by month" description="Stacked breakdown of top product sectors by decision month.">
+            <CategoriesByMonth monthlyProductBreakdown={snapshot?.monthlyProductBreakdown || []} />
+          </ExpandableCard>
+          <ExpandableCard title="Decisions heatmap" description="Decision distribution by month and day of week.">
+            <DecisionsHeatmap decisionDayMonthGrid={snapshot?.decisionDayMonthGrid || []} />
+          </ExpandableCard>
         </section>
 
         {/* ---- product tree + year narratives ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.15fr_1fr] xl:items-start">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Product to firm distribution</CardTitle>
-              <p className="text-sm text-slate-500">High-volume products with their top firms.</p>
-            </CardHeader>
-            <CardContent>
-              <ProductTree
-                productTree={snapshot?.productTree || []}
-                activeProducts={filters.products}
-                activeFirms={filters.firms}
-                onToggleProduct={toggleProduct}
-                onToggleFirm={toggleFirm}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Yearly analysis narratives</CardTitle>
-              <p className="text-sm text-slate-500">Auto-generated commentary from year-level volumes and rates.</p>
-            </CardHeader>
-            <CardContent>
-              <YearNarratives
-                yearNarratives={snapshot?.yearNarratives || []}
-                activeYears={filters.years}
-                onToggleYear={toggleYear}
-              />
-            </CardContent>
-          </Card>
+          <ExpandableCard title="Product to firm distribution" description="High-volume products with their top firms.">
+            <ProductTree
+              productTree={snapshot?.productTree || []}
+              activeProducts={filters.products}
+              activeFirms={filters.firms}
+              onToggleProduct={toggleProduct}
+              onToggleFirm={toggleFirm}
+            />
+          </ExpandableCard>
+          <ExpandableCard title="Yearly analysis narratives" description="Auto-generated commentary from year-level volumes and rates.">
+            <YearNarratives
+              yearNarratives={snapshot?.yearNarratives || []}
+              activeYears={filters.years}
+              onToggleYear={toggleYear}
+            />
+          </ExpandableCard>
         </section>
 
         {/* ---- empty state ---- */}

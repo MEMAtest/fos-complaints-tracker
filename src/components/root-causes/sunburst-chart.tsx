@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, type PieLabelRenderProps } from 'recharts';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatNumber } from '@/lib/utils';
 import type { FOSRootCauseHierarchy } from '@/lib/fos/types';
@@ -17,13 +17,77 @@ const CATEGORY_COLORS = [
 ];
 
 function getChildColor(parentColor: string, childIndex: number, totalChildren: number): string {
-  // Lighten the parent color for children based on position
   const opacity = 0.45 + (0.55 * (1 - childIndex / Math.max(totalChildren, 1)));
-  // Convert hex to rgba
   const r = parseInt(parentColor.slice(1, 3), 16);
   const g = parseInt(parentColor.slice(3, 5), 16);
   const b = parseInt(parentColor.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+/* Custom label renderer for the inner (category) ring */
+function InnerRingLabel(props: PieLabelRenderProps) {
+  const cx = Number(props.cx ?? 0);
+  const cy = Number(props.cy ?? 0);
+  const midAngle = Number(props.midAngle ?? 0);
+  const innerRadius = Number(props.innerRadius ?? 0);
+  const outerRadius = Number(props.outerRadius ?? 0);
+  const name = String(props.name ?? '');
+  const percent = Number(props.percent ?? 0);
+
+  if (percent < 0.04) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  const maxLen = percent > 0.08 ? 14 : 8;
+  const label = name.length > maxLen ? name.slice(0, maxLen - 1) + '\u2026' : name;
+
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fill="#fff"
+      fontSize={percent > 0.08 ? 10 : 9}
+      fontWeight={500}
+    >
+      {label}
+    </text>
+  );
+}
+
+/* Custom label renderer for the outer (cause) ring — positioned outside the ring */
+function OuterRingLabel(props: PieLabelRenderProps) {
+  const cx = Number(props.cx ?? 0);
+  const cy = Number(props.cy ?? 0);
+  const midAngle = Number(props.midAngle ?? 0);
+  const outerRadius = Number(props.outerRadius ?? 0);
+  const name = String(props.name ?? '');
+  const percent = Number(props.percent ?? 0);
+
+  if (percent < 0.03) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 14;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  const textAnchor = midAngle > 90 && midAngle < 270 ? 'end' : 'start';
+  const maxLen = 18;
+  const label = name.length > maxLen ? name.slice(0, maxLen - 1) + '\u2026' : name;
+
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={textAnchor}
+      dominantBaseline="central"
+      fill="#475569"
+      fontSize={9}
+      fontWeight={400}
+    >
+      {label}
+    </text>
+  );
 }
 
 export function SunburstChart({ hierarchy }: SunburstChartProps) {
@@ -73,6 +137,9 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
             innerRadius={65}
             paddingAngle={2}
             stroke="none"
+            label={InnerRingLabel}
+            labelLine={false}
+            isAnimationActive={false}
           >
             {innerData.map((entry, index) => (
               <Cell key={`inner-${index}`} fill={entry.color} />
@@ -90,6 +157,9 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
             outerRadius={185}
             paddingAngle={1}
             stroke="none"
+            label={OuterRingLabel}
+            labelLine={false}
+            isAnimationActive={false}
           >
             {outerData.map((entry, index) => (
               <Cell key={`outer-${index}`} fill={entry.color} />
