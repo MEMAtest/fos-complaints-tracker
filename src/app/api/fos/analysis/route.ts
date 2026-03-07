@@ -1,14 +1,16 @@
 import { NextRequest } from 'next/server';
-import { getAnalysisSnapshot, parseFilters } from '@/lib/fos/repository';
+import { getAnalysisSnapshot, hasActiveScopeFilters, parseFilters } from '@/lib/fos/repository';
 import { FOSAnalysisApiResponse } from '@/types/fos-dashboard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const CACHE_TTL_MS = 30_000;
+const FILTERED_CACHE_TTL_MS = 30_000;
+const UNFILTERED_CACHE_TTL_MS = 5 * 60_000;
 const MAX_CACHE_ENTRIES = 50;
 const cache = new Map<string, { expiresAt: number; payload: FOSAnalysisApiResponse }>();
-const RESPONSE_HEADERS = { 'Cache-Control': 's-maxage=300, stale-while-revalidate=900' };
+const FILTERED_HEADERS = { 'Cache-Control': 's-maxage=60, stale-while-revalidate=300' };
+const UNFILTERED_HEADERS = { 'Cache-Control': 's-maxage=300, stale-while-revalidate=900' };
 
 function pruneCache() {
   const now = Date.now();
@@ -26,6 +28,10 @@ export async function GET(request: NextRequest) {
 
   try {
     pruneCache();
+    const filters = parseFilters(request.nextUrl.searchParams);
+    const unfiltered = !hasActiveScopeFilters(filters);
+    const headers = unfiltered ? UNFILTERED_HEADERS : FILTERED_HEADERS;
+    const cacheTtlMs = unfiltered ? UNFILTERED_CACHE_TTL_MS : FILTERED_CACHE_TTL_MS;
     const cacheKey = request.nextUrl.searchParams.toString();
     const cached = cache.get(cacheKey);
 
@@ -40,11 +46,10 @@ export async function GET(request: NextRequest) {
             snapshotAt: cached.payload.meta?.snapshotAt || cached.payload.generatedAt,
           },
         } satisfies FOSAnalysisApiResponse,
-        { headers: RESPONSE_HEADERS }
+        { headers }
       );
     }
 
-    const filters = parseFilters(request.nextUrl.searchParams);
     const snapshot = await getAnalysisSnapshot(filters);
     const snapshotAt = new Date().toISOString();
 
@@ -61,11 +66,11 @@ export async function GET(request: NextRequest) {
     };
 
     cache.set(cacheKey, {
-      expiresAt: Date.now() + CACHE_TTL_MS,
+      expiresAt: Date.now() + cacheTtlMs,
       payload,
     });
 
-    return Response.json(payload, { headers: RESPONSE_HEADERS });
+    return Response.json(payload, { headers });
   } catch (error) {
     return Response.json(
       {

@@ -22,7 +22,8 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const TABLE_CHECK_TTL_MS = 60_000;
-const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60_000;
+const TAG_PRESENCE_CACHE_TTL_MS = 15 * 60_000;
+const FILTER_OPTIONS_CACHE_TTL_MS = 15 * 60_000;
 const SUPPORTED_OUTCOMES: FOSOutcome[] = [
   'upheld',
   'not_upheld',
@@ -91,31 +92,26 @@ export async function getDashboardSnapshot(
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
   const includeCases = options.includeCases ?? true;
+  const hasScopeFilters = hasActiveScopeFilters(filters);
 
-  const hasScopeFilters =
-    Boolean(filters.query) ||
-    filters.years.length > 0 ||
-    filters.outcomes.length > 0 ||
-    filters.products.length > 0 ||
-    filters.firms.length > 0 ||
-    filters.tags.length > 0;
+  const precedentsPromise = hasScopeFilters ? queryTagFrequency(filters, 'precedents', 12) : Promise.resolve([]);
+  const rootCausesPromise = hasScopeFilters ? queryTagFrequency(filters, 'root_cause_tags', 12) : Promise.resolve([]);
 
-  const [hasPrecedentValues, hasRootCauseValues] = await Promise.all([
-    hasTagValues('precedents'),
-    hasTagValues('root_cause_tags'),
-  ]);
-
-  const aggregateRow = await queryAggregateBundle(
-    filters,
-    hasPrecedentValues && hasScopeFilters,
-    hasRootCauseValues && hasScopeFilters
-  );
-  const totalCases = toInt(aggregateRow?.total_cases);
-
-  const [filterOptions, ingestion] = await Promise.all([
+  const [
+    aggregateRow,
+    precedentRows,
+    rootCauseRows,
+    filterOptions,
+    ingestion,
+  ] = await Promise.all([
+    queryDashboardAggregateBundle(filters),
+    precedentsPromise,
+    rootCausesPromise,
     queryFilterOptions(),
     queryIngestionStatus(),
   ]);
+
+  const totalCases = toInt(aggregateRow?.total_cases);
 
   const caseBundle = includeCases
     ? await queryCases(filters, totalCases)
@@ -136,8 +132,8 @@ export async function getDashboardSnapshot(
     partiallyUpheldCases: toInt(aggregateRow?.partially_upheld_cases),
     upheldRate: toNumber(aggregateRow?.upheld_rate),
     notUpheldRate: toNumber(aggregateRow?.not_upheld_rate),
-    topRootCause: nullableString(toObjectArray(aggregateRow?.root_causes)[0]?.label),
-    topPrecedent: nullableString(toObjectArray(aggregateRow?.precedents)[0]?.label),
+    topRootCause: rootCauseRows[0]?.label ? normalizeTagLabel(String(rootCauseRows[0].label)) : null,
+    topPrecedent: precedentRows[0]?.label ? normalizeTagLabel(String(precedentRows[0].label)) : null,
     earliestDecisionDate: toIsoDate(aggregateRow?.earliest_decision_date),
     latestDecisionDate: toIsoDate(aggregateRow?.latest_decision_date),
   };
@@ -169,12 +165,12 @@ export async function getDashboardSnapshot(
     notUpheldRate: toNumber(row.not_upheld_rate),
   }));
 
-  const precedents = toObjectArray(aggregateRow?.precedents).map((row) => ({
+  const precedents = precedentRows.map((row) => ({
     label: normalizeTagLabel(String(row.label || 'unknown')),
     count: toInt(row.count),
   }));
 
-  const rootCauses = toObjectArray(aggregateRow?.root_causes).map((row) => ({
+  const rootCauses = rootCauseRows.map((row) => ({
     label: normalizeTagLabel(String(row.label || 'unknown')),
     count: toInt(row.count),
   }));
@@ -210,17 +206,25 @@ export async function getAnalysisSnapshot(
   await ensureFosDecisionsTableExists();
 
   const includeTagMatrix = options.includeTagMatrix ?? true;
-
-  const [hasPrecedentValues, hasRootCauseValues] = await Promise.all([
-    hasTagValues('precedents'),
-    hasTagValues('root_cause_tags'),
+  const [
+    yearProductOutcomeRows,
+    firmBenchmarkRows,
+    precedentRootCauseRows,
+    productTree,
+    topFirmByYear,
+    monthlyProductBreakdown,
+    decisionDayMonthGrid,
+  ] = await Promise.all([
+    queryYearProductOutcome(filters),
+    queryFirmBenchmark(filters),
+    includeTagMatrix ? queryPrecedentRootCauseMatrix(filters) : Promise.resolve([]),
+    queryProductTree(filters),
+    queryTopFirmByYear(filters),
+    queryMonthlyProductBreakdown(filters),
+    queryDecisionDayMonthGrid(filters),
   ]);
-  const aggregateRow = await queryAnalysisBundle(
-    filters,
-    includeTagMatrix && hasPrecedentValues,
-    includeTagMatrix && hasRootCauseValues
-  );
-  const yearProductOutcome = toObjectArray(aggregateRow?.year_product_outcome).map((row) => ({
+
+  const yearProductOutcome = yearProductOutcomeRows.map((row) => ({
     year: toInt(row.year),
     product: normalizeLabel(row.product, 'Unspecified'),
     total: toInt(row.total),
@@ -231,7 +235,7 @@ export async function getAnalysisSnapshot(
     notUpheldRate: toNumber(row.not_upheld_rate),
   }));
 
-  const firmBenchmark = toObjectArray(aggregateRow?.firm_benchmark).map((row) => ({
+  const firmBenchmark = firmBenchmarkRows.map((row) => ({
     firm: normalizeLabel(row.firm, 'Unknown firm'),
     total: toInt(row.total),
     upheldRate: toNumber(row.upheld_rate),
@@ -240,33 +244,13 @@ export async function getAnalysisSnapshot(
     predominantProduct: nullableString(row.predominant_product),
   }));
 
-  const precedentRootCauseMatrix = toObjectArray(aggregateRow?.precedent_root_cause_matrix).map((row) => ({
+  const precedentRootCauseMatrix = precedentRootCauseRows.map((row) => ({
     precedent: normalizeTagLabel(String(row.precedent || 'unknown')),
     rootCause: normalizeTagLabel(String(row.root_cause || 'unknown')),
     count: toInt(row.count),
   }));
 
-  const productTree = toObjectArray(aggregateRow?.product_tree).map((row) => ({
-    product: normalizeLabel(row.product, 'Unspecified'),
-    total: toInt(row.total),
-    firms: toObjectArray(row.firms).map((firmRow) => ({
-      firm: normalizeLabel(firmRow.firm, 'Unknown firm'),
-      total: toInt(firmRow.total),
-      upheldRate: toNumber(firmRow.upheld_rate),
-    })),
-  }));
-
-  const topFirmByYear = toObjectArray(aggregateRow?.top_firm_by_year).map((row) => ({
-    year: toInt(row.year),
-    firm: normalizeLabel(row.firm, 'Unknown firm'),
-  }));
-
   const yearNarratives = buildYearNarratives(yearProductOutcome, topFirmByYear);
-
-  const [monthlyProductBreakdown, decisionDayMonthGrid] = await Promise.all([
-    queryMonthlyProductBreakdown(filters),
-    queryDecisionDayMonthGrid(filters),
-  ]);
 
   return {
     yearProductOutcome,
@@ -420,7 +404,7 @@ export async function getRootCauseSnapshot(
     return { rootCauses: [], hierarchy: [], frequency: [] };
   }
 
-  const filtered = buildFilteredCte(filters);
+  const filtered = buildFilteredTagCte(filters);
   const rows = await DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql},
@@ -785,14 +769,274 @@ async function queryAggregateBundle(
   return rows[0] || null;
 }
 
+async function queryDashboardAggregateBundle(filters: FOSDashboardFilters): Promise<Record<string, unknown> | null> {
+  if (!hasActiveScopeFilters(filters)) {
+    const rows = await DatabaseClient.query<Record<string, unknown>>(
+      `
+        WITH base AS MATERIALIZED (
+          SELECT
+            d.decision_date,
+            d.business_name,
+            d.product_sector,
+            d.ombudsman_reasoning_text,
+            ${outcomeExpression('d')} AS outcome_bucket
+          FROM fos_decisions d
+        )
+        SELECT
+          (SELECT COUNT(*)::INT FROM base) AS total_cases,
+          (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::INT FROM base) AS upheld_cases,
+          (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::INT FROM base) AS not_upheld_cases,
+          (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'partially_upheld')::INT FROM base) AS partially_upheld_cases,
+          (
+            SELECT ROUND(
+              COALESCE(
+                COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                / NULLIF(COUNT(*), 0) * 100,
+                0
+              ),
+              2
+            )
+            FROM base
+          ) AS upheld_rate,
+          (
+            SELECT ROUND(
+              COALESCE(
+                COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+                / NULLIF(COUNT(*), 0) * 100,
+                0
+              ),
+              2
+            )
+            FROM base
+          ) AS not_upheld_rate,
+          (SELECT MIN(decision_date) FROM base) AS earliest_decision_date,
+          (SELECT MAX(decision_date) FROM base) AS latest_decision_date,
+          (SELECT COUNT(*) FILTER (WHERE decision_date IS NULL)::INT FROM base) AS missing_decision_date,
+          (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'unknown')::INT FROM base) AS missing_outcome,
+          (
+            SELECT COUNT(*) FILTER (WHERE NULLIF(BTRIM(COALESCE(ombudsman_reasoning_text, '')), '') IS NOT NULL)::INT
+            FROM base
+          ) AS with_reasoning_text,
+          COALESCE(
+            (
+              SELECT jsonb_agg(row_to_json(t) ORDER BY t.year)
+              FROM (
+                SELECT
+                  EXTRACT(YEAR FROM decision_date)::INT AS year,
+                  COUNT(*)::INT AS total,
+                  COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::INT AS upheld,
+                  COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::INT AS not_upheld,
+                  COUNT(*) FILTER (WHERE outcome_bucket = 'partially_upheld')::INT AS partially_upheld,
+                  COUNT(*) FILTER (WHERE outcome_bucket = 'unknown')::INT AS unknown_count
+                FROM base
+                WHERE decision_date IS NOT NULL
+                GROUP BY EXTRACT(YEAR FROM decision_date)::INT
+              ) t
+            ),
+            '[]'::jsonb
+          ) AS trends,
+          COALESCE(
+            (
+              SELECT jsonb_agg(row_to_json(o) ORDER BY o.count DESC, o.outcome ASC)
+              FROM (
+                SELECT outcome_bucket AS outcome, COUNT(*)::INT AS count
+                FROM base
+                GROUP BY outcome_bucket
+              ) o
+            ),
+            '[]'::jsonb
+          ) AS outcomes,
+          COALESCE(
+            (
+              SELECT jsonb_agg(row_to_json(p) ORDER BY p.total DESC, p.product ASC)
+              FROM (
+                SELECT
+                  COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+                  COUNT(*)::INT AS total,
+                  ROUND(
+                    COALESCE(
+                      COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                      / NULLIF(COUNT(*), 0) * 100,
+                      0
+                    ),
+                    2
+                  ) AS upheld_rate
+                FROM base
+                GROUP BY COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+                ORDER BY total DESC, product ASC
+                LIMIT 12
+              ) p
+            ),
+            '[]'::jsonb
+          ) AS products,
+          COALESCE(
+            (
+              SELECT jsonb_agg(row_to_json(fm) ORDER BY fm.total DESC, fm.firm ASC)
+              FROM (
+                SELECT
+                  COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') AS firm,
+                  COUNT(*)::INT AS total,
+                  ROUND(
+                    COALESCE(
+                      COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                      / NULLIF(COUNT(*), 0) * 100,
+                      0
+                    ),
+                    2
+                  ) AS upheld_rate,
+                  ROUND(
+                    COALESCE(
+                      COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+                      / NULLIF(COUNT(*), 0) * 100,
+                      0
+                    ),
+                    2
+                  ) AS not_upheld_rate
+                FROM base
+                GROUP BY COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm')
+                ORDER BY total DESC, firm ASC
+                LIMIT 15
+              ) fm
+            ),
+            '[]'::jsonb
+          ) AS firms
+      `
+    );
+
+    return rows[0] || null;
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      ${filtered.cteSql}
+      SELECT
+        (SELECT COUNT(*)::INT FROM filtered) AS total_cases,
+        (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::INT FROM filtered) AS upheld_cases,
+        (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::INT FROM filtered) AS not_upheld_cases,
+        (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'partially_upheld')::INT FROM filtered) AS partially_upheld_cases,
+        (
+          SELECT ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          )
+          FROM filtered
+        ) AS upheld_rate,
+        (
+          SELECT ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          )
+          FROM filtered
+        ) AS not_upheld_rate,
+        (SELECT MIN(decision_date) FROM filtered) AS earliest_decision_date,
+        (SELECT MAX(decision_date) FROM filtered) AS latest_decision_date,
+        (SELECT COUNT(*) FILTER (WHERE decision_date IS NULL)::INT FROM filtered) AS missing_decision_date,
+        (SELECT COUNT(*) FILTER (WHERE outcome_bucket = 'unknown')::INT FROM filtered) AS missing_outcome,
+        (
+          SELECT COUNT(*) FILTER (WHERE NULLIF(BTRIM(COALESCE(ombudsman_reasoning_text, '')), '') IS NOT NULL)::INT
+          FROM filtered
+        ) AS with_reasoning_text,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(t) ORDER BY t.year)
+            FROM (
+              SELECT
+                EXTRACT(YEAR FROM decision_date)::INT AS year,
+                COUNT(*)::INT AS total,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::INT AS upheld,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::INT AS not_upheld,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'partially_upheld')::INT AS partially_upheld,
+                COUNT(*) FILTER (WHERE outcome_bucket = 'unknown')::INT AS unknown_count
+              FROM filtered
+              WHERE decision_date IS NOT NULL
+              GROUP BY EXTRACT(YEAR FROM decision_date)::INT
+            ) t
+          ),
+          '[]'::jsonb
+        ) AS trends,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(o) ORDER BY o.count DESC, o.outcome ASC)
+            FROM (
+              SELECT outcome_bucket AS outcome, COUNT(*)::INT AS count
+              FROM filtered
+              GROUP BY outcome_bucket
+            ) o
+          ),
+          '[]'::jsonb
+        ) AS outcomes,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(p) ORDER BY p.total DESC, p.product ASC)
+            FROM (
+              SELECT
+                COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+                COUNT(*)::INT AS total,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS upheld_rate
+              FROM filtered
+              GROUP BY COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+              ORDER BY total DESC, product ASC
+              LIMIT 12
+            ) p
+          ),
+          '[]'::jsonb
+        ) AS products,
+        COALESCE(
+          (
+            SELECT jsonb_agg(row_to_json(fm) ORDER BY fm.total DESC, fm.firm ASC)
+            FROM (
+              SELECT
+                COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') AS firm,
+                COUNT(*)::INT AS total,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS upheld_rate,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS not_upheld_rate
+              FROM filtered
+              GROUP BY COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm')
+              ORDER BY total DESC, firm ASC
+              LIMIT 15
+            ) fm
+          ),
+          '[]'::jsonb
+        ) AS firms
+    `,
+    filtered.params
+  );
+
+  return rows[0] || null;
+}
+
 async function queryOverviewAndQuality(filters: FOSDashboardFilters): Promise<Record<string, unknown> | null> {
-  const hasFilters =
-    Boolean(filters.query) ||
-    filters.years.length > 0 ||
-    filters.outcomes.length > 0 ||
-    filters.products.length > 0 ||
-    filters.firms.length > 0 ||
-    filters.tags.length > 0;
+  const hasFilters = hasActiveScopeFilters(filters);
 
   if (!hasFilters) {
     const rows = await DatabaseClient.query<Record<string, unknown>>(
@@ -837,7 +1081,7 @@ async function queryOverviewAndQuality(filters: FOSDashboardFilters): Promise<Re
     return rows[0] || null;
   }
 
-  const filtered = buildFilteredCte(filters);
+  const filtered = buildFilteredAggregateCte(filters);
   const rows = await DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql}
@@ -1055,25 +1299,432 @@ async function queryAnalysisBundle(
   return rows[0] || null;
 }
 
-async function queryMonthlyProductBreakdown(
-  filters: FOSDashboardFilters
-): Promise<{ month: string; product: string; count: number }[]> {
-  const filtered = buildFilteredCte(filters);
-  const rows = await DatabaseClient.query<Record<string, unknown>>(
+async function queryYearProductOutcome(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          EXTRACT(YEAR FROM d.decision_date)::INT AS year,
+          COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS product,
+          COUNT(*)::INT AS total,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::INT AS upheld,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::INT AS not_upheld,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'partially_upheld')::INT AS partially_upheld,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS upheld_rate,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS not_upheld_rate
+        FROM fos_decisions d
+        WHERE d.decision_date IS NOT NULL
+        GROUP BY EXTRACT(YEAR FROM d.decision_date)::INT, COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')
+        ORDER BY year ASC, total DESC, product ASC
+      `
+    );
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
+  return DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql}
       SELECT
-        TO_CHAR(decision_date, 'YYYY-MM') AS month,
+        EXTRACT(YEAR FROM decision_date)::INT AS year,
         COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
-        COUNT(*)::INT AS count
+        COUNT(*)::INT AS total,
+        COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::INT AS upheld,
+        COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::INT AS not_upheld,
+        COUNT(*) FILTER (WHERE outcome_bucket = 'partially_upheld')::INT AS partially_upheld,
+        ROUND(
+          COALESCE(
+            COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+            / NULLIF(COUNT(*), 0) * 100,
+            0
+          ),
+          2
+        ) AS upheld_rate,
+        ROUND(
+          COALESCE(
+            COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+            / NULLIF(COUNT(*), 0) * 100,
+            0
+          ),
+          2
+        ) AS not_upheld_rate
       FROM filtered
       WHERE decision_date IS NOT NULL
-      GROUP BY TO_CHAR(decision_date, 'YYYY-MM'),
-               COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
-      ORDER BY month ASC, count DESC
+      GROUP BY EXTRACT(YEAR FROM decision_date)::INT, COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+      ORDER BY year ASC, total DESC, product ASC
     `,
     filtered.params
   );
+}
+
+async function queryFirmBenchmark(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm,
+          COUNT(*)::INT AS total,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS upheld_rate,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS not_upheld_rate,
+          ROUND(AVG(EXTRACT(YEAR FROM d.decision_date)))::INT AS avg_decision_year,
+          MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')) AS predominant_product
+        FROM fos_decisions d
+        GROUP BY COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm')
+        ORDER BY total DESC, firm ASC
+        LIMIT 120
+      `
+    );
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
+  return DatabaseClient.query<Record<string, unknown>>(
+    `
+      ${filtered.cteSql}
+      SELECT
+        COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') AS firm,
+        COUNT(*)::INT AS total,
+        ROUND(
+          COALESCE(
+            COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+            / NULLIF(COUNT(*), 0) * 100,
+            0
+          ),
+          2
+        ) AS upheld_rate,
+        ROUND(
+          COALESCE(
+            COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld')::NUMERIC
+            / NULLIF(COUNT(*), 0) * 100,
+            0
+          ),
+          2
+        ) AS not_upheld_rate,
+        ROUND(AVG(EXTRACT(YEAR FROM decision_date)))::INT AS avg_decision_year,
+        MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')) AS predominant_product
+      FROM filtered
+      GROUP BY COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm')
+      ORDER BY total DESC, firm ASC
+      LIMIT 120
+    `,
+    filtered.params
+  );
+}
+
+async function queryPrecedentRootCauseMatrix(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
+  const [hasPrecedentValues, hasRootCauseValues] = await Promise.all([
+    hasTagValues('precedents'),
+    hasTagValues('root_cause_tags'),
+  ]);
+  if (!hasPrecedentValues || !hasRootCauseValues) return [];
+
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          LOWER(BTRIM(p.value)) AS precedent,
+          LOWER(BTRIM(rc.value)) AS root_cause,
+          COUNT(*)::INT AS count
+        FROM fos_decisions d
+        CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
+        CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rc(value)
+        WHERE BTRIM(p.value) <> '' AND BTRIM(rc.value) <> ''
+        GROUP BY LOWER(BTRIM(p.value)), LOWER(BTRIM(rc.value))
+        ORDER BY count DESC, precedent ASC, root_cause ASC
+        LIMIT 180
+      `
+    );
+  }
+
+  const filtered = buildFilteredTagCte(filters);
+  return DatabaseClient.query<Record<string, unknown>>(
+    `
+      ${filtered.cteSql}
+      SELECT
+        LOWER(BTRIM(p.value)) AS precedent,
+        LOWER(BTRIM(rc.value)) AS root_cause,
+        COUNT(*)::INT AS count
+      FROM filtered f
+      CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(f.precedents, '[]'::jsonb)) AS p(value)
+      CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(f.root_cause_tags, '[]'::jsonb)) AS rc(value)
+      WHERE BTRIM(p.value) <> '' AND BTRIM(rc.value) <> ''
+      GROUP BY LOWER(BTRIM(p.value)), LOWER(BTRIM(rc.value))
+      ORDER BY count DESC, precedent ASC, root_cause ASC
+      LIMIT 180
+    `,
+    filtered.params
+  );
+}
+
+async function queryProductTree(
+  filters: FOSDashboardFilters
+): Promise<Array<{ product: string; total: number; firms: Array<{ firm: string; total: number; upheldRate: number }> }>> {
+  const rows = !hasActiveScopeFilters(filters)
+    ? await DatabaseClient.query<Record<string, unknown>>(
+        `
+          WITH product_totals AS (
+            SELECT
+              COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS product,
+              COUNT(*)::INT AS product_total
+            FROM fos_decisions d
+            GROUP BY COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')
+          ),
+          ranked_products AS (
+            SELECT
+              product,
+              product_total,
+              ROW_NUMBER() OVER (ORDER BY product_total DESC, product ASC) AS product_rank
+            FROM product_totals
+          ),
+          firm_totals AS (
+            SELECT
+              COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS product,
+              COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm,
+              COUNT(*)::INT AS total,
+              ROUND(
+                COALESCE(
+                  COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
+                  / NULLIF(COUNT(*), 0) * 100,
+                  0
+                ),
+                2
+              ) AS upheld_rate
+            FROM fos_decisions d
+            GROUP BY
+              COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified'),
+              COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm')
+          ),
+          ranked_firms AS (
+            SELECT
+              product,
+              firm,
+              total,
+              upheld_rate,
+              ROW_NUMBER() OVER (PARTITION BY product ORDER BY total DESC, firm ASC) AS firm_rank
+            FROM firm_totals
+          )
+          SELECT
+            rp.product,
+            rp.product_total AS total,
+            rf.firm,
+            rf.total AS firm_total,
+            rf.upheld_rate,
+            rf.firm_rank
+          FROM ranked_products rp
+          LEFT JOIN ranked_firms rf
+            ON rf.product = rp.product
+           AND rf.firm_rank <= 10
+          WHERE rp.product_rank <= 16
+          ORDER BY rp.product_total DESC, rp.product ASC, rf.firm_rank ASC NULLS LAST, rf.firm ASC NULLS LAST
+        `
+      )
+    : await (async () => {
+        const filtered = buildFilteredAggregateCte(filters);
+        return DatabaseClient.query<Record<string, unknown>>(
+          `
+            ${filtered.cteSql}
+            ,
+            product_totals AS (
+              SELECT
+                COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+                COUNT(*)::INT AS product_total
+              FROM filtered
+              GROUP BY COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+            ),
+            ranked_products AS (
+              SELECT
+                product,
+                product_total,
+                ROW_NUMBER() OVER (ORDER BY product_total DESC, product ASC) AS product_rank
+              FROM product_totals
+            ),
+            firm_totals AS (
+              SELECT
+                COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+                COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') AS firm,
+                COUNT(*)::INT AS total,
+                ROUND(
+                  COALESCE(
+                    COUNT(*) FILTER (WHERE outcome_bucket = 'upheld')::NUMERIC
+                    / NULLIF(COUNT(*), 0) * 100,
+                    0
+                  ),
+                  2
+                ) AS upheld_rate
+              FROM filtered
+              GROUP BY
+                COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified'),
+                COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm')
+            ),
+            ranked_firms AS (
+              SELECT
+                product,
+                firm,
+                total,
+                upheld_rate,
+                ROW_NUMBER() OVER (PARTITION BY product ORDER BY total DESC, firm ASC) AS firm_rank
+              FROM firm_totals
+            )
+            SELECT
+              rp.product,
+              rp.product_total AS total,
+              rf.firm,
+              rf.total AS firm_total,
+              rf.upheld_rate,
+              rf.firm_rank
+            FROM ranked_products rp
+            LEFT JOIN ranked_firms rf
+              ON rf.product = rp.product
+             AND rf.firm_rank <= 10
+            WHERE rp.product_rank <= 16
+            ORDER BY rp.product_total DESC, rp.product ASC, rf.firm_rank ASC NULLS LAST, rf.firm ASC NULLS LAST
+          `,
+          filtered.params
+        );
+      })();
+
+  const productTree = new Map<string, { product: string; total: number; firms: Array<{ firm: string; total: number; upheldRate: number }> }>();
+  for (const row of rows) {
+    const product = normalizeLabel(row.product, 'Unspecified');
+    const node =
+      productTree.get(product) ||
+      {
+        product,
+        total: toInt(row.total),
+        firms: [],
+      };
+
+    if (nullableString(row.firm)) {
+      node.firms.push({
+        firm: normalizeLabel(row.firm, 'Unknown firm'),
+        total: toInt(row.firm_total),
+        upheldRate: toNumber(row.upheld_rate),
+      });
+    }
+
+    productTree.set(product, node);
+  }
+
+  return Array.from(productTree.values());
+}
+
+async function queryTopFirmByYear(filters: FOSDashboardFilters): Promise<Array<{ year: number; firm: string }>> {
+  const rows = !hasActiveScopeFilters(filters)
+    ? await DatabaseClient.query<Record<string, unknown>>(
+        `
+          WITH ranked AS (
+            SELECT
+              EXTRACT(YEAR FROM d.decision_date)::INT AS year,
+              COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm,
+              COUNT(*)::INT AS total,
+              ROW_NUMBER() OVER (
+                PARTITION BY EXTRACT(YEAR FROM d.decision_date)::INT
+                ORDER BY COUNT(*) DESC, COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') ASC
+              ) AS rank_in_year
+            FROM fos_decisions d
+            WHERE d.decision_date IS NOT NULL
+            GROUP BY EXTRACT(YEAR FROM d.decision_date)::INT, COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm')
+          )
+          SELECT year, firm
+          FROM ranked
+          WHERE rank_in_year = 1
+          ORDER BY year ASC
+        `
+      )
+    : await (async () => {
+        const filtered = buildFilteredAggregateCte(filters);
+        return DatabaseClient.query<Record<string, unknown>>(
+          `
+            ${filtered.cteSql}
+            ,
+            ranked AS (
+              SELECT
+                EXTRACT(YEAR FROM decision_date)::INT AS year,
+                COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') AS firm,
+                COUNT(*)::INT AS total,
+                ROW_NUMBER() OVER (
+                  PARTITION BY EXTRACT(YEAR FROM decision_date)::INT
+                  ORDER BY COUNT(*) DESC, COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm') ASC
+                ) AS rank_in_year
+              FROM filtered
+              WHERE decision_date IS NOT NULL
+              GROUP BY EXTRACT(YEAR FROM decision_date)::INT, COALESCE(NULLIF(BTRIM(business_name), ''), 'Unknown firm')
+            )
+            SELECT year, firm
+            FROM ranked
+            WHERE rank_in_year = 1
+            ORDER BY year ASC
+          `,
+          filtered.params
+        );
+      })();
+
+  return rows.map((row) => ({
+    year: toInt(row.year),
+    firm: normalizeLabel(row.firm, 'Unknown firm'),
+  }));
+}
+
+async function queryMonthlyProductBreakdown(
+  filters: FOSDashboardFilters
+): Promise<{ month: string; product: string; count: number }[]> {
+  const hasFilters = hasActiveScopeFilters(filters);
+  const filtered = hasFilters ? buildFilteredAggregateCte(filters) : null;
+  const rows = hasFilters
+    ? await DatabaseClient.query<Record<string, unknown>>(
+        `
+          ${filtered!.cteSql}
+          SELECT
+            TO_CHAR(decision_date, 'YYYY-MM') AS month,
+            COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') AS product,
+            COUNT(*)::INT AS count
+          FROM filtered
+          WHERE decision_date IS NOT NULL
+          GROUP BY TO_CHAR(decision_date, 'YYYY-MM'),
+                   COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified')
+          ORDER BY month ASC, count DESC
+        `,
+        filtered!.params
+      )
+    : await DatabaseClient.query<Record<string, unknown>>(
+        `
+          SELECT
+            TO_CHAR(d.decision_date, 'YYYY-MM') AS month,
+            COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS product,
+            COUNT(*)::INT AS count
+          FROM fos_decisions d
+          WHERE d.decision_date IS NOT NULL
+          GROUP BY TO_CHAR(d.decision_date, 'YYYY-MM'),
+                   COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')
+          ORDER BY month ASC, count DESC
+        `
+      );
   return rows.map((row) => ({
     month: String(row.month),
     product: String(row.product),
@@ -1084,22 +1735,37 @@ async function queryMonthlyProductBreakdown(
 async function queryDecisionDayMonthGrid(
   filters: FOSDashboardFilters
 ): Promise<{ month: number; dayOfWeek: number; count: number }[]> {
-  const filtered = buildFilteredCte(filters);
-  const rows = await DatabaseClient.query<Record<string, unknown>>(
-    `
-      ${filtered.cteSql}
-      SELECT
-        EXTRACT(MONTH FROM decision_date)::INT AS month,
-        EXTRACT(DOW FROM decision_date)::INT AS day_of_week,
-        COUNT(*)::INT AS count
-      FROM filtered
-      WHERE decision_date IS NOT NULL
-      GROUP BY EXTRACT(MONTH FROM decision_date)::INT,
-               EXTRACT(DOW FROM decision_date)::INT
-      ORDER BY month ASC, day_of_week ASC
-    `,
-    filtered.params
-  );
+  const hasFilters = hasActiveScopeFilters(filters);
+  const filtered = hasFilters ? buildFilteredAggregateCte(filters) : null;
+  const rows = hasFilters
+    ? await DatabaseClient.query<Record<string, unknown>>(
+        `
+          ${filtered!.cteSql}
+          SELECT
+            EXTRACT(MONTH FROM decision_date)::INT AS month,
+            EXTRACT(DOW FROM decision_date)::INT AS day_of_week,
+            COUNT(*)::INT AS count
+          FROM filtered
+          WHERE decision_date IS NOT NULL
+          GROUP BY EXTRACT(MONTH FROM decision_date)::INT,
+                   EXTRACT(DOW FROM decision_date)::INT
+          ORDER BY month ASC, day_of_week ASC
+        `,
+        filtered!.params
+      )
+    : await DatabaseClient.query<Record<string, unknown>>(
+        `
+          SELECT
+            EXTRACT(MONTH FROM d.decision_date)::INT AS month,
+            EXTRACT(DOW FROM d.decision_date)::INT AS day_of_week,
+            COUNT(*)::INT AS count
+          FROM fos_decisions d
+          WHERE d.decision_date IS NOT NULL
+          GROUP BY EXTRACT(MONTH FROM d.decision_date)::INT,
+                   EXTRACT(DOW FROM d.decision_date)::INT
+          ORDER BY month ASC, day_of_week ASC
+        `
+      );
   return rows.map((row) => ({
     month: toInt(row.month),
     dayOfWeek: toInt(row.day_of_week),
@@ -1161,7 +1827,25 @@ async function queryDataQuality(filters: FOSDashboardFilters): Promise<Record<st
 }
 
 async function queryTrends(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
-  const filtered = buildFilteredCte(filters);
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          EXTRACT(YEAR FROM d.decision_date)::INT AS year,
+          COUNT(*)::INT AS total,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::INT AS upheld,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::INT AS not_upheld,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'partially_upheld')::INT AS partially_upheld,
+          COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'unknown')::INT AS unknown_count
+        FROM fos_decisions d
+        WHERE d.decision_date IS NOT NULL
+        GROUP BY EXTRACT(YEAR FROM d.decision_date)::INT
+        ORDER BY year ASC
+      `
+    );
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
   return DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql}
@@ -1182,7 +1866,20 @@ async function queryTrends(filters: FOSDashboardFilters): Promise<Record<string,
 }
 
 async function queryOutcomeDistribution(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
-  const filtered = buildFilteredCte(filters);
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          ${outcomeExpression('d')} AS outcome,
+          COUNT(*)::INT AS count
+        FROM fos_decisions d
+        GROUP BY ${outcomeExpression('d')}
+        ORDER BY count DESC, outcome ASC
+      `
+    );
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
   return DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql}
@@ -1198,7 +1895,29 @@ async function queryOutcomeDistribution(filters: FOSDashboardFilters): Promise<R
 }
 
 async function queryProducts(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
-  const filtered = buildFilteredCte(filters);
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS product,
+          COUNT(*)::INT AS total,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS upheld_rate
+        FROM fos_decisions d
+        GROUP BY COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')
+        ORDER BY total DESC, product ASC
+        LIMIT 12
+      `
+    );
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
   return DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql}
@@ -1223,7 +1942,37 @@ async function queryProducts(filters: FOSDashboardFilters): Promise<Record<strin
 }
 
 async function queryFirms(filters: FOSDashboardFilters): Promise<Record<string, unknown>[]> {
-  const filtered = buildFilteredCte(filters);
+  if (!hasActiveScopeFilters(filters)) {
+    return DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm,
+          COUNT(*)::INT AS total,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS upheld_rate,
+          ROUND(
+            COALESCE(
+              COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::NUMERIC
+              / NULLIF(COUNT(*), 0) * 100,
+              0
+            ),
+            2
+          ) AS not_upheld_rate
+        FROM fos_decisions d
+        GROUP BY COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm')
+        ORDER BY total DESC, firm ASC
+        LIMIT 15
+      `
+    );
+  }
+
+  const filtered = buildFilteredAggregateCte(filters);
   return DatabaseClient.query<Record<string, unknown>>(
     `
       ${filtered.cteSql}
@@ -1263,7 +2012,7 @@ async function queryTagFrequency(
   const hasTags = await hasTagValues(column);
   if (!hasTags) return [];
 
-  const filtered = buildFilteredCte(filters);
+  const filtered = buildFilteredTagCte(filters);
   const limitIndex = filtered.nextIndex;
 
   return DatabaseClient.query<Record<string, unknown>>(
@@ -1287,13 +2036,7 @@ async function queryCases(filters: FOSDashboardFilters, totalOverride?: number):
   items: FOSCaseListItem[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }> {
-  const hasFilters =
-    Boolean(filters.query) ||
-    filters.years.length > 0 ||
-    filters.outcomes.length > 0 ||
-    filters.products.length > 0 ||
-    filters.firms.length > 0 ||
-    filters.tags.length > 0;
+  const hasFilters = hasActiveScopeFilters(filters);
 
   const total = totalOverride != null ? Math.max(0, totalOverride) : null;
   if (total === 0) {
@@ -1572,7 +2315,7 @@ function buildYearNarratives(
 
 async function hasTagValues(column: 'precedents' | 'root_cause_tags'): Promise<boolean> {
   const now = Date.now();
-  if (tagPresenceCache && now - tagPresenceCache.checkedAt < TABLE_CHECK_TTL_MS) {
+  if (tagPresenceCache && now - tagPresenceCache.checkedAt < TAG_PRESENCE_CACHE_TTL_MS) {
     return column === 'precedents' ? tagPresenceCache.precedents : tagPresenceCache.rootCauseTags;
   }
 
@@ -1734,28 +2477,30 @@ function ensureDatabaseConfigured(): void {
   }
 }
 
-function buildFilteredCte(filters: FOSDashboardFilters): CteBuildResult {
+export function hasActiveScopeFilters(filters: FOSDashboardFilters): boolean {
+  return (
+    Boolean(filters.query) ||
+    filters.years.length > 0 ||
+    filters.outcomes.length > 0 ||
+    filters.products.length > 0 ||
+    filters.firms.length > 0 ||
+    filters.tags.length > 0
+  );
+}
+
+function buildFilteredSelectCte(
+  filters: FOSDashboardFilters,
+  selectColumns: string[],
+  options: { materialized?: boolean } = {}
+): CteBuildResult {
   const where = buildWhereClause(filters, 'd', 1);
+  const materializedClause = options.materialized ? ' MATERIALIZED' : '';
+
   return {
     cteSql: `
-      WITH filtered AS MATERIALIZED (
+      WITH filtered AS${materializedClause} (
         SELECT
-          d.decision_reference,
-          d.pdf_sha256,
-          d.decision_date,
-          d.business_name,
-          d.product_sector,
-          d.outcome,
-          d.ombudsman_name,
-          d.decision_summary,
-          d.decision_logic,
-          d.precedents,
-          d.root_cause_tags,
-          d.vulnerability_flags,
-          d.pdf_url,
-          d.source_url,
-          d.ombudsman_reasoning_text,
-          ${outcomeExpression('d')} AS outcome_bucket
+          ${selectColumns.join(',\n          ')}
         FROM fos_decisions d
         ${where.whereSql}
       )
@@ -1763,6 +2508,49 @@ function buildFilteredCte(filters: FOSDashboardFilters): CteBuildResult {
     params: where.params,
     nextIndex: where.nextIndex,
   };
+}
+
+function buildFilteredAggregateCte(filters: FOSDashboardFilters): CteBuildResult {
+  return buildFilteredSelectCte(filters, [
+    'd.decision_date',
+    'd.business_name',
+    'd.product_sector',
+    'd.ombudsman_reasoning_text',
+    `${outcomeExpression('d')} AS outcome_bucket`,
+  ]);
+}
+
+function buildFilteredTagCte(filters: FOSDashboardFilters): CteBuildResult {
+  return buildFilteredSelectCte(filters, [
+    'd.decision_date',
+    'd.precedents',
+    'd.root_cause_tags',
+  ]);
+}
+
+function buildFilteredCte(filters: FOSDashboardFilters): CteBuildResult {
+  return buildFilteredSelectCte(
+    filters,
+    [
+      'd.decision_reference',
+      'd.pdf_sha256',
+      'd.decision_date',
+      'd.business_name',
+      'd.product_sector',
+      'd.outcome',
+      'd.ombudsman_name',
+      'd.decision_summary',
+      'd.decision_logic',
+      'd.precedents',
+      'd.root_cause_tags',
+      'd.vulnerability_flags',
+      'd.pdf_url',
+      'd.source_url',
+      'd.ombudsman_reasoning_text',
+      `${outcomeExpression('d')} AS outcome_bucket`,
+    ],
+    { materialized: true }
+  );
 }
 
 function buildWhereClause(filters: FOSDashboardFilters, alias: string, startIndex: number): WhereBuildResult {
