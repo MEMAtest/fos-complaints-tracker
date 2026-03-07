@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 
 import process from 'node:process';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { connectWithRetry, createPoolConfig, loadLocalEnv } from './lib/db-runtime.mjs';
 
 const { Pool } = pg;
 
-const TABLES = [
-  'fos_decisions',
-  'fos_ingestion_runs',
+const REQUIRED_TABLES = ['fos_decisions', 'fos_ingestion_runs'];
+const LEGACY_OPTIONAL_TABLES = [
   'complaint_metrics_staging',
   'consumer_credit_metrics',
   'dashboard_kpis',
@@ -18,40 +17,24 @@ const TABLES = [
   'reporting_periods',
   'firms',
 ];
+const TABLES = [...REQUIRED_TABLES, ...LEGACY_OPTIONAL_TABLES];
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-async function loadLocalEnv() {
-  if (process.env.DATABASE_URL) return;
-  const envPath = path.join(SCRIPT_DIR, '..', '.env.local');
-  try {
-    const raw = await fs.readFile(envPath, 'utf8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const idx = trimmed.indexOf('=');
-      if (idx <= 0) continue;
-      const key = trimmed.slice(0, idx).trim();
-      const value = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
-      if (!process.env[key]) process.env[key] = value;
-    }
-  } catch {
-    // No local env file; keep process env as-is.
-  }
-}
-
 async function main() {
-  await loadLocalEnv();
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
+  await loadLocalEnv(SCRIPT_DIR);
+  if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required.');
   }
 
-  const pool = new Pool({
-    connectionString: databaseUrl,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  });
-  const client = await pool.connect();
+  const pool = new Pool(
+    createPoolConfig({
+      connectionString: process.env.DATABASE_URL,
+      max: 4,
+      connectionTimeoutMillis: 8_000,
+    })
+  );
+  const client = await connectWithRetry(pool, { label: 'db:check connect' });
 
   try {
     const report = [];
@@ -80,12 +63,23 @@ async function main() {
 
     console.log('Database table status:');
     report.forEach((item) => {
+      const required = REQUIRED_TABLES.includes(item.tableName);
       if (!item.exists) {
-        console.log(`- ${item.tableName}: missing`);
+        const label = required ? 'missing (required)' : 'missing (legacy optional)';
+        console.log(`- ${item.tableName}: ${label}`);
       } else {
-        console.log(`- ${item.tableName}: ${item.count.toLocaleString()} rows`);
+        const suffix = required ? ' (required)' : ' (legacy optional)';
+        console.log(`- ${item.tableName}: ${item.count.toLocaleString()} rows${suffix}`);
       }
     });
+
+    const missingRequired = report
+      .filter((item) => REQUIRED_TABLES.includes(item.tableName) && !item.exists)
+      .map((item) => item.tableName);
+
+    if (missingRequired.length > 0) {
+      throw new Error(`Missing required tables: ${missingRequired.join(', ')}`);
+    }
   } finally {
     client.release();
     await pool.end();

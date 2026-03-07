@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "db:verify-targets": "node scripts/verify-db-targets.mjs",
+    "db:probe-connectivity": "node scripts/probe-db-connectivity.mjs",
     "db:check": "node scripts/check-fos-ready.mjs",
     "db:cutover-fos": "node scripts/cutover-fos.mjs",
     "db:import-fos-parsed": "node scripts/import-fos-parsed.mjs",

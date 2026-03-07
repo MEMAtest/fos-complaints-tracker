@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { connectWithRetry, createPoolConfig, loadLocalEnv } from './lib/db-runtime.mjs';
 
 const { Pool } = pg;
 
@@ -46,25 +47,6 @@ const DEFAULT_SOURCE_DIR = path.join(
 );
 const DEFAULT_STATE_FILE = path.join(SCRIPT_DIR, '..', 'tmp', 'fos-import-state.json');
 const BATCH_SIZE_DEFAULT = 200;
-
-async function loadLocalEnv() {
-  if (process.env.DATABASE_URL) return;
-  const envPath = path.join(SCRIPT_DIR, '..', '.env.local');
-  try {
-    const raw = await fs.readFile(envPath, 'utf8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const idx = trimmed.indexOf('=');
-      if (idx <= 0) continue;
-      const key = trimmed.slice(0, idx).trim();
-      const value = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
-      if (!process.env[key]) process.env[key] = value;
-    }
-  } catch {
-    // No local env file; keep process env as-is.
-  }
-}
 
 function parseArgs(argv) {
   const args = {};
@@ -249,7 +231,7 @@ async function updateRun(client, runId, payload) {
 }
 
 async function main() {
-  await loadLocalEnv();
+  await loadLocalEnv(SCRIPT_DIR);
   const args = parseArgs(process.argv.slice(2));
   const sourceDir = args['source-dir'] ? path.resolve(args['source-dir']) : DEFAULT_SOURCE_DIR;
   const stateFile = args['state-file'] ? path.resolve(args['state-file']) : DEFAULT_STATE_FILE;
@@ -283,11 +265,13 @@ async function main() {
     return;
   }
 
-  const pool = new Pool({
-    connectionString: databaseUrl,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  });
-  const client = await pool.connect();
+  const pool = new Pool(
+    createPoolConfig({
+      connectionString: databaseUrl,
+      connectionTimeoutMillis: 8_000,
+    })
+  );
+  const client = await connectWithRetry(pool, { label: 'db:import-fos-parsed connect' });
 
   let runId = null;
   let inserted = 0;

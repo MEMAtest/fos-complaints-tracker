@@ -1,27 +1,111 @@
 // src/lib/database.ts
 import { Pool } from 'pg';
+import type { PoolClient } from 'pg';
+
+type SslMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
+
+function parseIntEnv(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeSslMode(rawMode: string | null | undefined): SslMode | null {
+  if (!rawMode) return null;
+  const mode = rawMode.trim().toLowerCase();
+  if (['disable', 'disabled', 'false', 'no', 'off'].includes(mode)) return 'disable';
+  if (['allow', 'prefer', 'require', 'true', 'on'].includes(mode)) return 'require';
+  if (['verify-ca', 'verifyca'].includes(mode)) return 'verify-ca';
+  if (['verify-full', 'verifyfull'].includes(mode)) return 'verify-full';
+  return null;
+}
+
+function sslModeFromDatabaseUrl(connectionString: string | undefined): SslMode | null {
+  if (!connectionString) return null;
+  try {
+    const url = new URL(connectionString);
+    return normalizeSslMode(url.searchParams.get('sslmode'));
+  } catch {
+    return null;
+  }
+}
+
+function resolveSslOptions(connectionString: string | undefined) {
+  const explicitMode = normalizeSslMode(process.env.DB_SSL_MODE);
+  const detectedMode = explicitMode || sslModeFromDatabaseUrl(connectionString);
+  const mode = detectedMode || (process.env.NODE_ENV === 'production' ? 'require' : 'disable');
+
+  if (mode === 'disable') return false;
+  if (mode === 'verify-ca' || mode === 'verify-full') {
+    return { rejectUnauthorized: true };
+  }
+  return { rejectUnauthorized: false };
+}
+
+function isTransientDbError(error: unknown): boolean {
+  const err = error as { code?: string; message?: string };
+  const code = String(err?.code || '').toUpperCase();
+  if (['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'EPIPE', 'EPERM'].includes(code)) {
+    return true;
+  }
+
+  const message = String(err?.message || '').toLowerCase();
+  return (
+    message.includes('connection terminated unexpectedly') ||
+    message.includes('connection timeout') ||
+    message.includes('server closed the connection') ||
+    message.includes('could not connect')
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const DATABASE_URL = process.env.DATABASE_URL;
+const DB_POOL_MAX = parseIntEnv(process.env.DB_POOL_MAX, 20, 1, 200);
+const DB_IDLE_TIMEOUT_MS = parseIntEnv(process.env.DB_IDLE_TIMEOUT_MS, 30_000, 1_000, 300_000);
+const DB_CONNECT_TIMEOUT_MS = parseIntEnv(process.env.DB_CONNECT_TIMEOUT_MS, 5_000, 500, 120_000);
+const DB_CONNECT_RETRIES = parseIntEnv(process.env.DB_CONNECT_RETRIES, 2, 0, 10);
+const DB_RETRY_BASE_MS = parseIntEnv(process.env.DB_RETRY_BASE_MS, 200, 50, 10_000);
+const DB_RETRY_MAX_MS = parseIntEnv(process.env.DB_RETRY_MAX_MS, 2_000, 100, 120_000);
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL!,
-  ssl: process.env.DATABASE_URL?.includes('sslmode=require')
-    ? { rejectUnauthorized: false }
-    : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionString: DATABASE_URL,
+  ssl: resolveSslOptions(DATABASE_URL),
+  max: DB_POOL_MAX,
+  idleTimeoutMillis: DB_IDLE_TIMEOUT_MS,
+  connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
 });
 
 export { pool };
 
 export class DatabaseClient {
   static async query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
-    const client = await pool.connect();
-    try {
-      const result = await client.query(text, params);
-      return result.rows;
-    } finally {
-      client.release();
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= DB_CONNECT_RETRIES + 1; attempt += 1) {
+      let client: PoolClient | null = null;
+      try {
+        client = await pool.connect();
+        const result = await client.query(text, params);
+        return result.rows;
+      } catch (error) {
+        lastError = error;
+        if (attempt > DB_CONNECT_RETRIES || !isTransientDbError(error)) {
+          throw error;
+        }
+        const delayMs = Math.min(DB_RETRY_MAX_MS, Math.round(DB_RETRY_BASE_MS * 2 ** (attempt - 1)));
+        if (process.env.NODE_ENV !== 'test') {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`[db-retry] query attempt ${attempt}/${DB_CONNECT_RETRIES + 1} failed: ${message}. Retrying in ${delayMs}ms.`);
+        }
+        await delay(delayMs);
+      } finally {
+        client?.release();
+      }
     }
+
+    throw lastError instanceof Error ? lastError : new Error('Database query failed.');
   }
 
   static async queryOne<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T | null> {

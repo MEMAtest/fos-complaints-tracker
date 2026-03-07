@@ -4,7 +4,38 @@ import { DatabaseClient } from '@/lib/database';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+function authorizeDebugRequest(request: Request): Response | null {
+  const debugSecret = process.env.DEBUG_API_SECRET;
+  if (!debugSecret) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'DEBUG_API_SECRET is not configured.',
+      },
+      { status: 503 }
+    );
+  }
+
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader !== `Bearer ${debugSecret}`) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Unauthorized.',
+      },
+      { status: 401 }
+    );
+  }
+
+  return null;
+}
+
+export async function GET(request: Request) {
+  const authFailure = authorizeDebugRequest(request);
+  if (authFailure) {
+    return authFailure;
+  }
+
   try {
     const tableRows = await DatabaseClient.query<{
       table_name: string;
