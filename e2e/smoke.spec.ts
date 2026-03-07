@@ -1,54 +1,56 @@
 import { test, expect } from '@playwright/test';
 
+test.describe.configure({ mode: 'serial' });
+
 test.describe('Smoke tests - pages load', () => {
   test('Dashboard page loads with KPI cards', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1')).toContainText('FOS Complaints Intelligence');
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('FOS Complaints Intelligence');
     // KPI section should render (either skeleton or real cards)
     await expect(page.locator('section').first()).toBeVisible();
   });
 
   test('Analysis page loads', async ({ page }) => {
     await page.goto('/analysis');
-    await expect(page.locator('h1')).toContainText('Analysis');
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Deep Analysis Workspace');
   });
 
   test('Root Causes page loads', async ({ page }) => {
     await page.goto('/root-causes');
-    await expect(page.locator('h1')).toContainText('Root Cause Analysis');
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Root Cause Analysis');
   });
 
   test('Comparison page loads with firm selectors', async ({ page }) => {
     await page.goto('/comparison');
-    await expect(page.locator('h1')).toContainText('Firm Comparison');
-    // Should show the prompt to select firms
-    await expect(page.getByText('Select two firms')).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Firm Comparison');
+    await expect(page.getByText(/Select two firms above to compare/i)).toBeVisible();
   });
 });
 
 test.describe('Smoke tests - sidebar navigation', () => {
   test('Navigate between all pages via sidebar', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1')).toContainText('FOS Complaints Intelligence');
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('FOS Complaints Intelligence');
+    const nav = page.locator('aside').getByRole('navigation');
 
     // Navigate to Analysis
-    await page.getByRole('link', { name: /analysis/i }).click();
-    await expect(page).toHaveURL('/analysis');
-    await expect(page.locator('h1')).toContainText('Analysis');
+    await nav.getByRole('link', { name: /^Analysis$/i }).click();
+    await expect(page).toHaveURL(/\/analysis(\?.*)?$/);
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Deep Analysis Workspace');
 
     // Navigate to Root Causes
-    await page.getByRole('link', { name: /root cause/i }).click();
-    await expect(page).toHaveURL('/root-causes');
-    await expect(page.locator('h1')).toContainText('Root Cause Analysis');
+    await nav.getByRole('link', { name: /root causes/i }).click();
+    await expect(page).toHaveURL(/\/root-causes(\?.*)?$/);
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Root Cause Analysis');
 
     // Navigate to Comparison
-    await page.getByRole('link', { name: /comparison/i }).click();
-    await expect(page).toHaveURL('/comparison');
-    await expect(page.locator('h1')).toContainText('Firm Comparison');
+    await nav.getByRole('link', { name: /^Firm Comparison$/i }).click();
+    await expect(page).toHaveURL(/\/comparison(\?.*)?$/);
+    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Firm Comparison');
 
     // Navigate back to Dashboard
-    await page.getByRole('link', { name: /dashboard/i }).click();
-    await expect(page).toHaveURL('/');
+    await nav.getByRole('link', { name: /^Dashboard$/i }).click();
+    await expect(page).toHaveURL(/\/(\?.*)?$/);
   });
 });
 
@@ -118,13 +120,6 @@ test.describe('Smoke tests - dashboard interactions', () => {
 
   test('Dashboard loads data and shows case count', async ({ page }) => {
     await page.goto('/');
-    // Wait for loading to complete (either skeleton disappears or data shows)
-    await page.waitForFunction(() => {
-      const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-      return skeletons.length === 0;
-    }, { timeout: 30_000 });
-    // At least one KPI card should have a numeric value
-    const body = await page.textContent('body');
-    expect(body).toBeTruthy();
+    await expect(page.getByText(/Showing .* decisions/i)).toBeVisible({ timeout: 30_000 });
   });
 });
