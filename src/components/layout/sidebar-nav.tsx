@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BarChart3, Network, GitCompare } from 'lucide-react';
+import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, LogOut } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
@@ -13,12 +13,18 @@ const NAV_ITEMS = [
   { href: '/comparison', label: 'Firm Comparison', icon: GitCompare },
 ] as const;
 
+const BOTTOM_ITEMS = [
+  { label: 'Settings', icon: Settings },
+  { label: 'Help', icon: HelpCircle },
+  { label: 'Log out', icon: LogOut },
+] as const;
+
 export function SidebarNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex h-full w-16 flex-col items-center border-r border-slate-200 bg-white py-4">
-      <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500">
+    <nav className="flex h-full w-16 flex-col items-center bg-[#0f1f4f] py-4">
+      <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
         <span className="text-sm font-bold text-white">FI</span>
       </div>
 
@@ -36,12 +42,33 @@ export function SidebarNav() {
                   className={cn(
                     'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
                     isActive
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/60 hover:bg-white/10 hover:text-white'
                   )}
                 >
                   <Icon className="h-5 w-5" />
                 </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>{item.label}</p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+
+      <div className="mt-auto flex flex-col items-center gap-1">
+        {BOTTOM_ITEMS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Tooltip key={item.label}>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label={item.label}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <Icon className="h-5 w-5" />
+                </button>
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p>{item.label}</p>

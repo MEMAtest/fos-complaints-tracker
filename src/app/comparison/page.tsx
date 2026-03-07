@@ -146,7 +146,7 @@ export default function ComparisonPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Firm Comparison
+            {bothSelected ? `Firm Comparison: ${firmA} vs. ${firmB}` : 'Firm Comparison'}
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             Compare two firms side-by-side across outcomes, product distributions, and key metrics.
@@ -214,44 +214,25 @@ export default function ComparisonPage() {
       {/* Comparison results */}
       {snapshot && bothSelected && (
         <>
-          {/* Outcome comparison bar chart */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Outcome Comparison</CardTitle>
-              <p className="text-sm text-slate-500">
-                Upheld and not-upheld rates side-by-side.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <OutcomeComparison firmA={snapshot.firmA} firmB={snapshot.firmB} />
-            </CardContent>
-          </Card>
+          {/* Outcome comparison — split panels */}
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Outcome Comparison</h2>
+            <p className="mb-4 text-sm text-slate-500">Upheld and not-upheld rates side-by-side.</p>
+            <OutcomeComparison firmA={snapshot.firmA} firmB={snapshot.firmB} split />
+          </section>
 
-          {/* Radar chart + comparison table */}
-          <section className="grid gap-4 xl:grid-cols-2 xl:items-start">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Product Upheld-Rate Radar</CardTitle>
-                <p className="text-sm text-slate-500">
-                  Overlapping product category upheld rates.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ThemeRadar firmA={snapshot.firmA} firmB={snapshot.firmB} />
-              </CardContent>
-            </Card>
+          {/* Radar chart — split panels */}
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Product Upheld-Rate Radar</h2>
+            <p className="mb-4 text-sm text-slate-500">Product category upheld rates per firm.</p>
+            <ThemeRadar firmA={snapshot.firmA} firmB={snapshot.firmB} split />
+          </section>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Key Metrics</CardTitle>
-                <p className="text-sm text-slate-500">
-                  Side-by-side metric comparison. Better values highlighted in green.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ComparisonTable firmA={snapshot.firmA} firmB={snapshot.firmB} />
-              </CardContent>
-            </Card>
+          {/* Key metrics — split panels */}
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Key Metrics</h2>
+            <p className="mb-4 text-sm text-slate-500">Side-by-side metric comparison.</p>
+            <ComparisonTable firmA={snapshot.firmA} firmB={snapshot.firmB} split />
           </section>
         </>
       )}

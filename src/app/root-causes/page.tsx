@@ -254,7 +254,7 @@ export default function RootCausesPage() {
         </section>
 
         {/* ---- sunburst chart + top causes table ---- */}
-        <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr] xl:items-start">
+        <section className="grid gap-4 xl:grid-cols-[1.6fr_1fr] xl:items-start">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Root cause hierarchy</CardTitle>
@@ -264,7 +264,7 @@ export default function RootCausesPage() {
               {snapshot ? (
                 <SunburstChart hierarchy={snapshot.hierarchy} />
               ) : (
-                <div className="h-[380px] animate-pulse rounded-xl bg-slate-100" />
+                <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
               )}
             </CardContent>
           </Card>
@@ -278,7 +278,7 @@ export default function RootCausesPage() {
               {snapshot ? (
                 <TopCausesTable rootCauses={snapshot.rootCauses} />
               ) : (
-                <div className="h-[380px] animate-pulse rounded-xl bg-slate-100" />
+                <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
               )}
             </CardContent>
           </Card>
@@ -295,7 +295,7 @@ export default function RootCausesPage() {
               {snapshot ? (
                 <CauseTreemap frequency={snapshot.frequency} />
               ) : (
-                <div className="h-[320px] animate-pulse rounded-xl bg-slate-100" />
+                <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
               )}
             </CardContent>
           </Card>

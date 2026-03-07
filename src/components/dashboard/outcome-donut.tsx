@@ -34,8 +34,8 @@ export function OutcomeDonut({ outcomes, activeOutcome, onToggleOutcome }: Outco
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={90}
+              innerRadius={50}
+              outerRadius={75}
               paddingAngle={2}
               dataKey="value"
               onClick={(_d, index) => {
@@ -70,18 +70,21 @@ export function OutcomeDonut({ outcomes, activeOutcome, onToggleOutcome }: Outco
       </div>
 
       <div className="flex flex-wrap justify-center gap-2">
-        {data.map((entry) => (
-          <button
-            key={entry.outcome}
-            onClick={() => onToggleOutcome(entry.outcome)}
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition ${
-              activeOutcome === entry.outcome ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-200'
-            }`}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.fill }} />
-            {entry.name}
-          </button>
-        ))}
+        {data.map((entry) => {
+          const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
+          return (
+            <button
+              key={entry.outcome}
+              onClick={() => onToggleOutcome(entry.outcome)}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition ${
+                activeOutcome === entry.outcome ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-200'
+              }`}
+            >
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.fill }} />
+              {entry.name} ({pct}%)
+            </button>
+          );
+        })}
       </div>
     </div>
   );

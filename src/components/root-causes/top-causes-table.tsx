@@ -24,7 +24,7 @@ export function TopCausesTable({ rootCauses }: TopCausesTableProps) {
       <TableHeader>
         <TableRow>
           <TableHead className="w-[40%]">Cause</TableHead>
-          <TableHead className="text-right">Count</TableHead>
+          <TableHead className="text-right">Root Causes</TableHead>
           <TableHead className="w-[80px] text-right">Trend</TableHead>
         </TableRow>
       </TableHeader>

@@ -60,7 +60,7 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
 
   return (
     <div className="relative">
-      <ResponsiveContainer width="100%" height={380}>
+      <ResponsiveContainer width="100%" height={480}>
         <PieChart>
           {/* Inner ring: broad categories */}
           <Pie
@@ -69,8 +69,8 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
             nameKey="name"
             cx="50%"
             cy="50%"
-            outerRadius={90}
-            innerRadius={50}
+            outerRadius={115}
+            innerRadius={65}
             paddingAngle={2}
             stroke="none"
           >
@@ -86,8 +86,8 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={95}
-            outerRadius={145}
+            innerRadius={120}
+            outerRadius={185}
             paddingAngle={1}
             stroke="none"
           >
@@ -111,7 +111,7 @@ export function SunburstChart({ hierarchy }: SunburstChartProps) {
       {/* Center label */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-2xl font-semibold text-slate-900">{formatNumber(totalRootCauses)}</p>
+          <p className="text-3xl font-semibold text-slate-900">{formatNumber(totalRootCauses)}</p>
           <p className="text-xs text-slate-500">Total Root Causes</p>
         </div>
       </div>

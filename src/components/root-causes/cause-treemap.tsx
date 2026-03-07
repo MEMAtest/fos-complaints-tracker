@@ -11,9 +11,9 @@ interface CauseTreemapProps {
 }
 
 const TREEMAP_COLORS = [
-  '#1e40af', '#7c3aed', '#0d9488', '#2563eb', '#9333ea',
-  '#0891b2', '#1d4ed8', '#6d28d9', '#0f766e', '#3b82f6',
-  '#8b5cf6', '#14b8a6', '#4f46e5', '#a855f7', '#06b6d4',
+  '#0d9488', '#0891b2', '#14b8a6', '#06b6d4', '#0f766e',
+  '#1e40af', '#7c3aed', '#2563eb', '#9333ea', '#3b82f6',
+  '#8b5cf6', '#4f46e5', '#a855f7', '#1d4ed8', '#6d28d9',
   '#1e3a8a', '#5b21b6', '#115e59', '#1e40af', '#7c3aed',
 ];
 
@@ -79,7 +79,7 @@ export function CauseTreemap({ frequency }: CauseTreemapProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height={380}>
       <Treemap
         data={treemapData}
         dataKey="size"

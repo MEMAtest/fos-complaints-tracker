@@ -26,7 +26,7 @@ export function TrendChart({ trends, activeYears, onToggleYear }: TrendChartProp
 
   return (
     <div className="space-y-4">
-      <div className="h-[260px]">
+      <div className="h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>

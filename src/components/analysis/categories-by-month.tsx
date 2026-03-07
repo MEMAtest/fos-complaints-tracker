@@ -19,12 +19,12 @@ interface CategoriesByMonthProps {
 }
 
 const STACK_COLORS = [
+  '#7c3aed', // violet-600
+  '#f97316', // orange-500
+  '#3b82f6', // blue-500
   '#06b6d4', // cyan-500
-  '#8b5cf6', // violet-500
-  '#f59e0b', // amber-500
   '#10b981', // emerald-500
   '#f43f5e', // rose-500
-  '#3b82f6', // blue-500
 ];
 
 export function CategoriesByMonth({ monthlyProductBreakdown }: CategoriesByMonthProps) {

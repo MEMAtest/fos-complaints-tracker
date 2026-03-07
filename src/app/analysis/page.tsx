@@ -180,15 +180,18 @@ export default function AnalysisPage() {
           )}
         </section>
 
-        {/* ---- upheld gauge + bubble chart ---- */}
+        {/* ---- dual upheld gauges + bubble chart ---- */}
         <section className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Upheld rate gauge</CardTitle>
-              <p className="text-sm text-slate-500">Overall upheld rate vs 50% baseline threshold.</p>
+              <CardTitle className="text-lg">Upheld vs Not Upheld rates</CardTitle>
+              <p className="text-sm text-slate-500">Overall rates vs 50% baseline threshold.</p>
             </CardHeader>
             <CardContent>
-              <UpheldRateGauge upheldRate={upheldRate} />
+              <div className="grid grid-cols-2 gap-4">
+                <UpheldRateGauge upheldRate={upheldRate} label="Upheld rate" color="#06b6d4" />
+                <UpheldRateGauge upheldRate={totalCases ? (notUpheldCases / totalCases) * 100 : 0} label="Not upheld rate" color="#f43f5e" />
+              </div>
             </CardContent>
           </Card>
           <Card>

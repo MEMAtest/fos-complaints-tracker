@@ -75,7 +75,7 @@ export function DecisionsHeatmap({ decisionDayMonthGrid }: DecisionsHeatmapProps
                   )}
                   style={
                     count > 0
-                      ? { backgroundColor: `rgba(6,182,212,${intensity})` }
+                      ? { backgroundColor: `rgba(220,38,38,${intensity})` }
                       : undefined
                   }
                   title={`${DAY_LABELS[dayIndex]}, ${MONTH_LABELS[monthIndex]}: ${formatNumber(count)} decisions`}
@@ -95,7 +95,7 @@ export function DecisionsHeatmap({ decisionDayMonthGrid }: DecisionsHeatmapProps
           <div
             key={`legend-${level}`}
             className="h-3 w-3 rounded-sm"
-            style={{ backgroundColor: `rgba(6,182,212,${level})` }}
+            style={{ backgroundColor: `rgba(220,38,38,${level})` }}
           />
         ))}
         <span className="text-[10px] text-slate-500">More</span>

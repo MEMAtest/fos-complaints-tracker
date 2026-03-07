@@ -43,13 +43,13 @@ export function ExportButton({ onExportCsv, onExportPdf }: ExportButtonProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2" disabled={loading !== null}>
+        <Button size="sm" className="gap-2 bg-blue-600 text-white hover:bg-blue-700 border-0" disabled={loading !== null}>
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Download className="h-4 w-4" />
           )}
-          Export
+          Export Report
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

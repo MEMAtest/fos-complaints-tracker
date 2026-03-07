@@ -2,6 +2,7 @@
 
 import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ExportButton } from '@/components/shared/export-button';
 
 interface AppHeaderProps {
   onToggleSidebar?: () => void;
@@ -24,7 +25,8 @@ export function AppHeader({ onToggleSidebar }: AppHeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-xs font-bold text-white">
+        <ExportButton />
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
           MC
         </div>
       </div>

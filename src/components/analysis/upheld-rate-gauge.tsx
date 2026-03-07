@@ -6,9 +6,11 @@ import { formatPercent } from '@/lib/utils';
 interface UpheldRateGaugeProps {
   upheldRate: number;
   target?: number;
+  label?: string;
+  color?: string;
 }
 
-export function UpheldRateGauge({ upheldRate, target = 50 }: UpheldRateGaugeProps) {
+export function UpheldRateGauge({ upheldRate, target = 50, label = 'Upheld rate', color }: UpheldRateGaugeProps) {
   const clamped = Math.min(Math.max(upheldRate, 0), 100);
   const remaining = 100 - clamped;
 
@@ -19,7 +21,7 @@ export function UpheldRateGauge({ upheldRate, target = 50 }: UpheldRateGaugeProp
 
   /* ---- determine color based on target proximity ---- */
   const isAboveTarget = clamped >= target;
-  const fillColor = isAboveTarget ? '#06b6d4' : '#f59e0b'; // cyan or amber
+  const fillColor = color || (isAboveTarget ? '#06b6d4' : '#f59e0b');
 
   return (
     <div className="relative h-[200px] w-full">
@@ -50,7 +52,7 @@ export function UpheldRateGauge({ upheldRate, target = 50 }: UpheldRateGaugeProp
             {formatPercent(clamped)}
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Upheld rate {target !== 50 ? `(target ${formatPercent(target)})` : ''}
+            {label} {target !== 50 ? `(target ${formatPercent(target)})` : ''}
           </p>
         </div>
       </div>
