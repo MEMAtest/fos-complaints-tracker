@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Maximize2 } from 'lucide-react';
+import { Maximize2, MousePointer2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -14,10 +14,12 @@ import {
 interface ExpandableCardProps {
   title: string;
   description?: string;
+  interactionHint?: string;
+  legend?: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function ExpandableCard({ title, description, children }: ExpandableCardProps) {
+export function ExpandableCard({ title, description, interactionHint, legend, children }: ExpandableCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -28,6 +30,12 @@ export function ExpandableCard({ title, description, children }: ExpandableCardP
             <div>
               <CardTitle className="text-lg">{title}</CardTitle>
               {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+              {interactionHint && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-blue-600">
+                  <MousePointer2 className="h-3 w-3 shrink-0" />
+                  {interactionHint}
+                </p>
+              )}
             </div>
             <button
               onClick={() => setExpanded(true)}
@@ -38,7 +46,10 @@ export function ExpandableCard({ title, description, children }: ExpandableCardP
             </button>
           </div>
         </CardHeader>
-        <CardContent>{children}</CardContent>
+        <CardContent>
+          {children}
+          {legend && <div className="mt-3">{legend}</div>}
+        </CardContent>
       </Card>
 
       <Dialog open={expanded} onOpenChange={setExpanded}>
@@ -47,7 +58,10 @@ export function ExpandableCard({ title, description, children }: ExpandableCardP
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
-          <div className="mt-4 min-h-[60vh]">{children}</div>
+          <div className="mt-4 min-h-[60vh]">
+            {children}
+            {legend && <div className="mt-3">{legend}</div>}
+          </div>
         </DialogContent>
       </Dialog>
     </>

@@ -15,9 +15,10 @@ import { FOSFirmComparisonData } from '@/lib/fos/types';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatPercent } from '@/lib/utils';
 
+const FIRM_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#f43f5e'];
+
 interface OutcomeComparisonProps {
-  firmA: FOSFirmComparisonData;
-  firmB: FOSFirmComparisonData;
+  firms: FOSFirmComparisonData[];
   split?: boolean;
 }
 
@@ -47,30 +48,24 @@ function SingleOutcomeChart({ firm, color }: { firm: FOSFirmComparisonData; colo
   );
 }
 
-export function OutcomeComparison({ firmA, firmB, split }: OutcomeComparisonProps) {
-  if (firmA.totalCases === 0 && firmB.totalCases === 0) {
-    return <EmptyState label="No case data available for either firm." />;
+export function OutcomeComparison({ firms, split }: OutcomeComparisonProps) {
+  if (firms.every((f) => f.totalCases === 0)) {
+    return <EmptyState label="No case data available for selected firms." />;
   }
 
   if (split) {
     return (
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{firmA.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SingleOutcomeChart firm={firmA} color="#3b82f6" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{firmB.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SingleOutcomeChart firm={firmB} color="#8b5cf6" />
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {firms.map((firm, i) => (
+          <Card key={firm.name}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{firm.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SingleOutcomeChart firm={firm} color={FIRM_COLORS[i % FIRM_COLORS.length]} />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
@@ -78,13 +73,11 @@ export function OutcomeComparison({ firmA, firmB, split }: OutcomeComparisonProp
   const data = [
     {
       metric: 'Upheld %',
-      [firmA.name]: firmA.upheldRate,
-      [firmB.name]: firmB.upheldRate,
+      ...Object.fromEntries(firms.map((f) => [f.name, f.upheldRate])),
     },
     {
       metric: 'Not Upheld %',
-      [firmA.name]: firmA.notUpheldRate,
-      [firmB.name]: firmB.notUpheldRate,
+      ...Object.fromEntries(firms.map((f) => [f.name, f.notUpheldRate])),
     },
   ];
 
@@ -107,18 +100,15 @@ export function OutcomeComparison({ firmA, firmB, split }: OutcomeComparisonProp
           }}
         />
         <Legend wrapperStyle={{ fontSize: '12px' }} />
-        <Bar
-          dataKey={firmA.name}
-          fill="#3b82f6"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={60}
-        />
-        <Bar
-          dataKey={firmB.name}
-          fill="#8b5cf6"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={60}
-        />
+        {firms.map((firm, i) => (
+          <Bar
+            key={firm.name}
+            dataKey={firm.name}
+            fill={FIRM_COLORS[i % FIRM_COLORS.length]}
+            radius={[4, 4, 0, 0]}
+            maxBarSize={60}
+          />
+        ))}
       </BarChart>
     </ResponsiveContainer>
   );

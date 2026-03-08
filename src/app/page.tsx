@@ -15,6 +15,7 @@ import { FirmConcentration } from '@/components/dashboard/firm-concentration';
 import { CaseExplorer } from '@/components/dashboard/case-explorer';
 import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
 import { SkeletonCard } from '@/components/shared/skeleton-card';
+import { YearFilterBar } from '@/components/shared/year-filter-bar';
 import { formatNumber, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 
 export default function FOSComplaintsDashboardPage() {
@@ -29,6 +30,7 @@ export default function FOSComplaintsDashboardPage() {
     toggleProduct,
     toggleFirm,
     setTagFilter,
+    setYears,
     setPage,
     applySearchQuery,
     clearFilters,
@@ -64,6 +66,11 @@ export default function FOSComplaintsDashboardPage() {
     if (!responseMeta) return null;
     return `${responseMeta.cached ? 'cache hit' : 'fresh query'} · ${responseMeta.queryMs}ms`;
   }, [responseMeta]);
+
+  const availableYears = useMemo(() => {
+    if (!snapshot?.trends) return [];
+    return snapshot.trends.map((t) => t.year).sort((a, b) => a - b);
+  }, [snapshot?.trends]);
 
   const sparklineData = useMemo(() => {
     if (!snapshot?.trends) return undefined;
@@ -114,6 +121,20 @@ export default function FOSComplaintsDashboardPage() {
             metaLine={metaLine}
           />
         </section>
+
+        {/* Year filter bar */}
+        {availableYears.length > 0 && (
+          <section>
+            <YearFilterBar
+              availableYears={availableYears}
+              activeYears={filters.years}
+              onToggleYear={toggleYear}
+              onSelectAll={setYears}
+              onClearYears={() => setYears([])}
+              accentColor="blue"
+            />
+          </section>
+        )}
 
         {/* Error banner */}
         {error && (
@@ -186,7 +207,7 @@ export default function FOSComplaintsDashboardPage() {
 
         {/* Trend chart (~65%) + Outcome donut (~35%) */}
         <section className="grid gap-4 xl:grid-cols-[1.85fr_1fr] xl:items-start">
-          <ExpandableCard title="Year trend and drill-down" description="Click a year to filter. Multi-select enabled.">
+          <ExpandableCard title="Year trend and drill-down" description="Click a year to filter. Multi-select enabled." interactionHint="Click a dot or year pill to filter all panels by that year.">
             {snapshot ? (
               <TrendChart trends={snapshot.trends} activeYears={filters.years} onToggleYear={toggleYear} />
             ) : (
@@ -194,7 +215,7 @@ export default function FOSComplaintsDashboardPage() {
             )}
           </ExpandableCard>
 
-          <ExpandableCard title="Outcome split" description="Click an outcome to filter every panel.">
+          <ExpandableCard title="Outcome split" description="Click an outcome to filter every panel." interactionHint="Click a segment or label to filter by outcome type.">
             <OutcomeDonut
               outcomes={snapshot?.outcomes || []}
               activeOutcome={activeOutcome}
@@ -205,7 +226,7 @@ export default function FOSComplaintsDashboardPage() {
 
         {/* Case explorer (full width) */}
         <section>
-          <ExpandableCard title="Case Explorer" description="Browse individual case decisions.">
+          <ExpandableCard title="Case Explorer" description="Browse individual case decisions." interactionHint="Click a row to view full case details.">
             <div className="mb-2 flex justify-end">
               <Link
                 href="/analysis"
@@ -229,7 +250,7 @@ export default function FOSComplaintsDashboardPage() {
 
         {/* Product mix (compact) */}
         <section>
-          <ExpandableCard title="Product mix" description="Click a bar to filter by product.">
+          <ExpandableCard title="Product mix" description="Click a bar to filter by product." interactionHint="Click a bar to filter by that product category.">
             <ProductBarChart
               products={snapshot?.products || []}
               activeProduct={activeProduct}

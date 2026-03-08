@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  Cell,
 } from 'recharts';
 import { EmptyState } from '@/components/shared/empty-state';
 import type { FOSYearProductOutcomeCell } from '@/lib/fos/types';
@@ -17,6 +18,8 @@ import { formatNumber, formatPercent } from '@/lib/utils';
 
 interface ProductBubbleChartProps {
   yearProductOutcome: FOSYearProductOutcomeCell[];
+  onToggleProduct?: (product: string) => void;
+  activeProduct?: string | null;
 }
 
 interface BubblePoint {
@@ -37,7 +40,7 @@ const BUBBLE_COLORS = [
   '#14b8a6', // teal-500
 ];
 
-export function ProductBubbleChart({ yearProductOutcome }: ProductBubbleChartProps) {
+export function ProductBubbleChart({ yearProductOutcome, onToggleProduct, activeProduct }: ProductBubbleChartProps) {
   const data = useMemo<BubblePoint[]>(() => {
     const grouped = new Map<string, { total: number; upheld: number }>();
     for (const row of yearProductOutcome) {
@@ -58,16 +61,15 @@ export function ProductBubbleChart({ yearProductOutcome }: ProductBubbleChartPro
   }, [yearProductOutcome]);
 
   const zRange = useMemo<[number, number]>(() => {
-    if (data.length === 0) return [40, 400];
     return [40, 400];
-  }, [data]);
+  }, []);
 
   if (data.length === 0) {
     return <EmptyState label="No product data available for bubble chart." />;
   }
 
   return (
-    <div className="h-[380px]">
+    <div className="h-[320px]">
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 16, right: 16, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -77,7 +79,7 @@ export function ProductBubbleChart({ yearProductOutcome }: ProductBubbleChartPro
             name="Total cases"
             tick={{ fontSize: 11 }}
             stroke="#94a3b8"
-            tickFormatter={(v: any) => formatNumber(Number(v))}
+            tickFormatter={(v: number) => formatNumber(v)}
             label={{
               value: 'Total cases',
               position: 'insideBottom',
@@ -91,7 +93,7 @@ export function ProductBubbleChart({ yearProductOutcome }: ProductBubbleChartPro
             name="Upheld rate"
             tick={{ fontSize: 11 }}
             stroke="#94a3b8"
-            tickFormatter={(v: any) => `${Number(v).toFixed(0)}%`}
+            tickFormatter={(v: number) => `${v.toFixed(0)}%`}
             domain={[0, 100]}
             label={{
               value: 'Upheld rate %',
@@ -127,9 +129,17 @@ export function ProductBubbleChart({ yearProductOutcome }: ProductBubbleChartPro
           <Scatter
             data={data}
             fill="#06b6d4"
+            onClick={onToggleProduct ? (data: { payload?: BubblePoint }) => { if (data.payload) onToggleProduct(data.payload.product); } : undefined}
+            style={onToggleProduct ? { cursor: 'pointer' } : undefined}
           >
-            {/* No Cell-level onClick needed since Scatter does not support it cleanly.
-                Tooltip provides the information. */}
+            {data.map((entry, i) => (
+              <Cell
+                key={entry.product}
+                fill={BUBBLE_COLORS[i % BUBBLE_COLORS.length]}
+                opacity={activeProduct && activeProduct !== entry.product ? 0.3 : 0.85}
+                style={onToggleProduct ? { cursor: 'pointer' } : undefined}
+              />
+            ))}
           </Scatter>
         </ScatterChart>
       </ResponsiveContainer>

@@ -120,6 +120,10 @@ export function useFosFilters() {
     }));
   }, []);
 
+  const setYears = useCallback((years: number[]) => {
+    setFilters((prev) => ({ ...prev, years, page: 1 }));
+  }, []);
+
   const setPage = useCallback((page: number) => {
     setFilters((prev) => ({ ...prev, page }));
   }, []);
@@ -147,6 +151,7 @@ export function useFosFilters() {
     toggleFirm,
     setTagFilter,
     toggleTag,
+    setYears,
     setPage,
     applySearchQuery,
     clearFilters,

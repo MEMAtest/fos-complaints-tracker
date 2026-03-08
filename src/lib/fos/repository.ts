@@ -531,19 +531,17 @@ export async function getRootCauseSnapshot(
 }
 
 export async function getComparisonSnapshot(
-  firmA: string,
-  firmB: string,
+  firmNames: string[],
   filters: FOSDashboardFilters
 ): Promise<FOSComparisonSnapshot> {
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
 
-  const [dataA, dataB] = await Promise.all([
-    queryFirmComparisonData(firmA, filters),
-    queryFirmComparisonData(firmB, filters),
-  ]);
+  const firms = await Promise.all(
+    firmNames.map((name) => queryFirmComparisonData(name, filters))
+  );
 
-  return { firmA: dataA, firmB: dataB };
+  return { firms };
 }
 
 async function queryFirmComparisonData(

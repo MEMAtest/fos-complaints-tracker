@@ -17,6 +17,8 @@ interface ComparisonApiResponse {
 const CACHE_TTL_MS = 30_000;
 const MAX_CACHE_ENTRIES = 50;
 const MAX_FIRM_NAME_LENGTH = 200;
+const MIN_FIRMS = 2;
+const MAX_FIRMS = 5;
 const cache = new Map<string, { expiresAt: number; payload: ComparisonApiResponse }>();
 const RESPONSE_HEADERS = { 'Cache-Control': 's-maxage=300, stale-while-revalidate=900' };
 
@@ -35,20 +37,38 @@ export async function GET(request: NextRequest) {
   const startedAt = Date.now();
 
   try {
+    // Support both old ?firmA=&firmB= and new ?firm=X&firm=Y&firm=Z formats
+    const firmParams = request.nextUrl.searchParams.getAll('firm');
     const firmA = request.nextUrl.searchParams.get('firmA');
     const firmB = request.nextUrl.searchParams.get('firmB');
 
-    if (!firmA || !firmB) {
+    let firmNames: string[];
+
+    if (firmParams.length >= 2) {
+      firmNames = firmParams.filter(Boolean);
+    } else if (firmA && firmB) {
+      firmNames = [firmA, firmB];
+    } else {
       return Response.json(
         {
           success: false,
-          error: 'Both firmA and firmB query parameters are required.',
+          error: 'At least 2 firms are required. Use ?firm=X&firm=Y or ?firmA=X&firmB=Y.',
         } satisfies ComparisonApiResponse,
         { status: 400 }
       );
     }
 
-    if (firmA.length > MAX_FIRM_NAME_LENGTH || firmB.length > MAX_FIRM_NAME_LENGTH) {
+    if (firmNames.length < MIN_FIRMS || firmNames.length > MAX_FIRMS) {
+      return Response.json(
+        {
+          success: false,
+          error: `Between ${MIN_FIRMS} and ${MAX_FIRMS} firms are required. Got ${firmNames.length}.`,
+        } satisfies ComparisonApiResponse,
+        { status: 400 }
+      );
+    }
+
+    if (firmNames.some((f) => f.length > MAX_FIRM_NAME_LENGTH)) {
       return Response.json(
         {
           success: false,
@@ -59,7 +79,13 @@ export async function GET(request: NextRequest) {
     }
 
     pruneCache();
-    const cacheKey = request.nextUrl.searchParams.toString();
+    // Normalize cache key by sorting firm names to avoid order-sensitive misses
+    const normalizedParams = new URLSearchParams(request.nextUrl.searchParams);
+    normalizedParams.delete('firm');
+    normalizedParams.delete('firmA');
+    normalizedParams.delete('firmB');
+    [...firmNames].sort().forEach((f) => normalizedParams.append('firm', f));
+    const cacheKey = normalizedParams.toString();
     const cached = cache.get(cacheKey);
 
     if (cached && cached.expiresAt > Date.now()) {
@@ -78,7 +104,7 @@ export async function GET(request: NextRequest) {
     }
 
     const filters = parseFilters(request.nextUrl.searchParams);
-    const snapshot = await getComparisonSnapshot(firmA, firmB, filters);
+    const snapshot = await getComparisonSnapshot(firmNames, filters);
     const snapshotAt = new Date().toISOString();
 
     const payload: ComparisonApiResponse = {

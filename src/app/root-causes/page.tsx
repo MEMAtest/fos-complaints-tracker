@@ -12,6 +12,7 @@ import { SkeletonCard } from '@/components/shared/skeleton-card';
 import { SunburstChart } from '@/components/root-causes/sunburst-chart';
 import { TopCausesTable } from '@/components/root-causes/top-causes-table';
 import { CauseTreemap } from '@/components/root-causes/cause-treemap';
+import { YearFilterBar } from '@/components/shared/year-filter-bar';
 import { formatNumber, formatDateTime } from '@/lib/utils';
 import type { FOSRootCauseSnapshot, FOSDashboardFilters } from '@/lib/fos/types';
 
@@ -42,6 +43,7 @@ export default function RootCausesPage() {
     toggleProduct,
     toggleFirm,
     toggleTag,
+    setYears,
     applySearchQuery,
     clearFilters,
     setFilters,
@@ -186,22 +188,15 @@ export default function RootCausesPage() {
           metaLine={metaLine}
         />
 
-        {/* ---- year filter pills ---- */}
-        <div className="flex flex-wrap gap-2">
-          {availableYears.map((year) => (
-            <button
-              key={year}
-              onClick={() => toggleYear(year)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                filters.years.includes(year)
-                  ? 'border-purple-300 bg-purple-100 text-purple-800'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-purple-200'
-              }`}
-            >
-              {year}
-            </button>
-          ))}
-        </div>
+        {/* ---- year filter bar ---- */}
+        <YearFilterBar
+          availableYears={availableYears}
+          activeYears={filters.years}
+          onToggleYear={toggleYear}
+          onSelectAll={setYears}
+          onClearYears={() => setYears([])}
+          accentColor="purple"
+        />
 
         {/* ---- active filter pills ---- */}
         {hasActiveFilters && (
@@ -256,28 +251,30 @@ export default function RootCausesPage() {
 
         {/* ---- sunburst chart + top causes table ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.6fr_1fr] xl:items-start">
-          <ExpandableCard title="Root cause hierarchy" description="Inner ring: broad categories. Outer ring: specific causes.">
+          <ExpandableCard title="Root cause hierarchy" description="Inner ring: broad categories. Outer ring: specific causes." interactionHint="Click a ring segment to filter by that root cause category or tag.">
             {snapshot ? (
-              <SunburstChart hierarchy={snapshot.hierarchy} />
+              <SunburstChart hierarchy={snapshot.hierarchy} onToggleTag={toggleTag} />
             ) : (
-              <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
+              <div className="h-[420px] animate-pulse rounded-xl bg-slate-100" />
             )}
           </ExpandableCard>
 
-          <ExpandableCard title="Top root causes" description="Most frequent causes with year-over-year trend sparklines.">
+          <ExpandableCard title="Top root causes" description="Most frequent causes with year-over-year trend sparklines." interactionHint="Click a row to filter by that root cause.">
             {snapshot ? (
-              <TopCausesTable rootCauses={snapshot.rootCauses} />
+              <div className="max-h-[420px] overflow-y-auto">
+                <TopCausesTable rootCauses={snapshot.rootCauses} onToggleTag={toggleTag} activeTags={filters.tags} />
+              </div>
             ) : (
-              <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
+              <div className="h-[420px] animate-pulse rounded-xl bg-slate-100" />
             )}
           </ExpandableCard>
         </section>
 
         {/* ---- treemap (full width) ---- */}
         <section>
-          <ExpandableCard title="Root cause frequency treemap" description="Block size proportional to occurrence count. Hover for details.">
+          <ExpandableCard title="Root cause frequency treemap" description="Block size proportional to occurrence count. Hover for details." interactionHint="Click a block to filter by that root cause tag.">
             {snapshot ? (
-              <CauseTreemap frequency={snapshot.frequency} />
+              <CauseTreemap frequency={snapshot.frequency} onToggleTag={toggleTag} />
             ) : (
               <div className="h-[480px] animate-pulse rounded-xl bg-slate-100" />
             )}

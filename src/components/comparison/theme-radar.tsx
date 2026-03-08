@@ -15,9 +15,10 @@ import { FOSFirmComparisonData } from '@/lib/fos/types';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatPercent } from '@/lib/utils';
 
+const FIRM_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#f43f5e'];
+
 interface ThemeRadarProps {
-  firmA: FOSFirmComparisonData;
-  firmB: FOSFirmComparisonData;
+  firms: FOSFirmComparisonData[];
   split?: boolean;
 }
 
@@ -49,10 +50,11 @@ function SingleRadar({ firm, color, products }: { firm: FOSFirmComparisonData; c
   );
 }
 
-export function ThemeRadar({ firmA, firmB, split }: ThemeRadarProps) {
+export function ThemeRadar({ firms, split }: ThemeRadarProps) {
   const productSet = new Set<string>();
-  for (const p of firmA.topProducts) productSet.add(p.product);
-  for (const p of firmB.topProducts) productSet.add(p.product);
+  for (const firm of firms) {
+    for (const p of firm.topProducts) productSet.add(p.product);
+  }
 
   if (productSet.size < 3) {
     return <EmptyState label="Fewer than 3 shared product categories. Radar chart requires at least 3 axes." />;
@@ -62,35 +64,30 @@ export function ThemeRadar({ firmA, firmB, split }: ThemeRadarProps) {
 
   if (split) {
     return (
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{firmA.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SingleRadar firm={firmA} color="#3b82f6" products={products} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{firmB.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SingleRadar firm={firmB} color="#8b5cf6" products={products} />
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {firms.map((firm, i) => (
+          <Card key={firm.name}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{firm.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SingleRadar firm={firm} color={FIRM_COLORS[i % FIRM_COLORS.length]} products={products} />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
 
-  const firmAMap = new Map(firmA.topProducts.map((p) => [p.product, p.upheldRate]));
-  const firmBMap = new Map(firmB.topProducts.map((p) => [p.product, p.upheldRate]));
+  const firmMaps = firms.map((firm) => new Map(firm.topProducts.map((p) => [p.product, p.upheldRate])));
 
-  const data = products.map((product) => ({
-    product,
-    [firmA.name]: firmAMap.get(product) ?? 0,
-    [firmB.name]: firmBMap.get(product) ?? 0,
-  }));
+  const data = products.map((product) => {
+    const row: Record<string, string | number> = { product };
+    firms.forEach((firm, i) => {
+      row[firm.name] = firmMaps[i].get(product) ?? 0;
+    });
+    return row;
+  });
 
   return (
     <ResponsiveContainer width="100%" height={360}>
@@ -115,20 +112,16 @@ export function ThemeRadar({ firmA, firmB, split }: ThemeRadarProps) {
           }}
         />
         <Legend wrapperStyle={{ fontSize: '12px' }} />
-        <Radar
-          name={firmA.name}
-          dataKey={firmA.name}
-          stroke="#3b82f6"
-          fill="#3b82f6"
-          fillOpacity={0.4}
-        />
-        <Radar
-          name={firmB.name}
-          dataKey={firmB.name}
-          stroke="#8b5cf6"
-          fill="#8b5cf6"
-          fillOpacity={0.4}
-        />
+        {firms.map((firm, i) => (
+          <Radar
+            key={firm.name}
+            name={firm.name}
+            dataKey={firm.name}
+            stroke={FIRM_COLORS[i % FIRM_COLORS.length]}
+            fill={FIRM_COLORS[i % FIRM_COLORS.length]}
+            fillOpacity={0.25}
+          />
+        ))}
       </RadarChart>
     </ResponsiveContainer>
   );

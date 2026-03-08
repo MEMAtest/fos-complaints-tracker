@@ -261,6 +261,5 @@ export interface FOSFirmComparisonData {
 }
 
 export interface FOSComparisonSnapshot {
-  firmA: FOSFirmComparisonData;
-  firmB: FOSFirmComparisonData;
+  firms: FOSFirmComparisonData[];
 }

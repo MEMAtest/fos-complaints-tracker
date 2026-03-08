@@ -8,6 +8,7 @@ import type { FOSTagCount } from '@/lib/fos/types';
 
 interface CauseTreemapProps {
   frequency: FOSTagCount[];
+  onToggleTag?: (tag: string) => void;
 }
 
 const TREEMAP_COLORS = [
@@ -24,9 +25,10 @@ interface TreemapContentProps {
   height?: number;
   name?: string;
   index?: number;
+  onToggleTag?: (tag: string) => void;
 }
 
-function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', index = 0 }: TreemapContentProps) {
+function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', index = 0, onToggleTag }: TreemapContentProps) {
   const fill = TREEMAP_COLORS[index % TREEMAP_COLORS.length];
   const showLabel = width > 50 && height > 30;
   const fontSize = width > 120 ? 12 : 10;
@@ -45,7 +47,8 @@ function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', index =
         fill={fill}
         stroke="#fff"
         strokeWidth={2}
-        style={{ opacity: 0.85 }}
+        style={{ opacity: 0.85, cursor: onToggleTag ? 'pointer' : 'default' }}
+        onClick={() => onToggleTag?.(name)}
       />
       {showLabel && (
         <text
@@ -56,6 +59,7 @@ function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', index =
           fill="#fff"
           fontSize={fontSize}
           fontWeight={500}
+          style={{ pointerEvents: 'none' }}
         >
           {truncatedName}
         </text>
@@ -64,7 +68,7 @@ function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', index =
   );
 }
 
-export function CauseTreemap({ frequency }: CauseTreemapProps) {
+export function CauseTreemap({ frequency, onToggleTag }: CauseTreemapProps) {
   const treemapData = useMemo(() => {
     if (!frequency.length) return [];
 
@@ -85,7 +89,7 @@ export function CauseTreemap({ frequency }: CauseTreemapProps) {
         dataKey="size"
         nameKey="name"
         stroke="#fff"
-        content={<CustomContent />}
+        content={<CustomContent onToggleTag={onToggleTag} />}
       >
         <Tooltip
           formatter={(value: unknown) => [formatNumber(Number(value)), 'Count']}

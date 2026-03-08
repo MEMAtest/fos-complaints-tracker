@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFosFilters, buildQueryParams } from '@/hooks/use-fos-filters';
 import { useLoadingProgress } from '@/hooks/use-loading-progress';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { SkeletonCard } from '@/components/shared/skeleton-card';
-import { FirmSelector } from '@/components/comparison/firm-selector';
+import { YearFilterBar } from '@/components/shared/year-filter-bar';
+import { MultiFirmSelector } from '@/components/comparison/multi-firm-selector';
 import { OutcomeComparison } from '@/components/comparison/outcome-comparison';
 import { ThemeRadar } from '@/components/comparison/theme-radar';
 import { ComparisonTable } from '@/components/comparison/comparison-table';
@@ -14,15 +15,17 @@ import { FOSComparisonSnapshot, FOSFirmBenchmarkPoint } from '@/lib/fos/types';
 const COMPARISON_TIMEOUT_MS = 60_000;
 
 export default function ComparisonPage() {
-  const { filters, initialized } = useFosFilters();
+  const { filters, initialized, toggleYear, setYears } = useFosFilters();
 
   // Firm list state - fetched from analysis API
   const [firms, setFirms] = useState<string[]>([]);
   const [firmsLoading, setFirmsLoading] = useState(true);
 
-  // Selection state
-  const [firmA, setFirmA] = useState('');
-  const [firmB, setFirmB] = useState('');
+  // Selection state - up to 5 firms
+  const [selectedFirms, setSelectedFirms] = useState<string[]>([]);
+
+  // Available years from comparison data
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
 
   // Comparison data state
   const [snapshot, setSnapshot] = useState<FOSComparisonSnapshot | null>(null);
@@ -54,9 +57,18 @@ export default function ComparisonPage() {
             .sort((a, b) => a.localeCompare(b));
           if (!controller.signal.aborted) setFirms(firmNames);
         }
+        // Extract available years
+        if (payload.success && payload.data?.yearProductOutcome) {
+          const yearSet = new Set<number>();
+          for (const row of payload.data.yearProductOutcome as { year: number }[]) {
+            yearSet.add(row.year);
+          }
+          if (!controller.signal.aborted) {
+            setAvailableYears(Array.from(yearSet).sort((a, b) => a - b));
+          }
+        }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        // Silently fail - firms list will be empty
       } finally {
         if (!controller.signal.aborted) setFirmsLoading(false);
       }
@@ -66,9 +78,9 @@ export default function ComparisonPage() {
     return () => { controller.abort(); };
   }, [filters, initialized]);
 
-  // Fetch comparison data when both firms are selected
-  const fetchComparison = useCallback(async (selectedFirmA: string, selectedFirmB: string) => {
-    if (!selectedFirmA || !selectedFirmB) return;
+  // Fetch comparison data when 2+ firms selected
+  const fetchComparison = useCallback(async (firmNames: string[]) => {
+    if (firmNames.length < 2) return;
 
     requestRef.current?.abort();
     const controller = new AbortController();
@@ -83,8 +95,9 @@ export default function ComparisonPage() {
 
     try {
       const params = buildQueryParams(filters);
-      params.set('firmA', selectedFirmA);
-      params.set('firmB', selectedFirmB);
+      for (const name of firmNames) {
+        params.append('firm', name);
+      }
 
       const response = await fetch(`/api/fos/comparison?${params.toString()}`, {
         signal: controller.signal,
@@ -116,22 +129,28 @@ export default function ComparisonPage() {
     }
   }, [filters]);
 
-  // Trigger comparison fetch when both firms are selected
+  // Trigger comparison fetch when 2+ firms selected
   useEffect(() => {
-    if (!initialized || !firmA || !firmB) {
+    if (!initialized || selectedFirms.length < 2) {
       setSnapshot(null);
       return;
     }
-    void fetchComparison(firmA, firmB);
-  }, [firmA, firmB, initialized, fetchComparison]);
+    void fetchComparison(selectedFirms);
+  }, [selectedFirms, initialized, fetchComparison]);
 
   // Cleanup on unmount
   useEffect(() => () => { requestRef.current?.abort(); }, []);
 
-  const bothSelected = firmA !== '' && firmB !== '';
+  const hasEnoughFirms = selectedFirms.length >= 2;
   const metaLine = meta
     ? `${meta.cached ? 'cache hit' : 'fresh query'} \u00b7 ${meta.queryMs}ms`
     : null;
+
+  const title = useMemo(() => {
+    if (!hasEnoughFirms) return 'Firm Comparison';
+    if (selectedFirms.length === 2) return `Comparing ${selectedFirms[0]} vs. ${selectedFirms[1]}`;
+    return `Comparing ${selectedFirms.length} firms`;
+  }, [hasEnoughFirms, selectedFirms]);
 
   return (
     <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-5 px-4 py-5 md:px-8">
@@ -145,11 +164,9 @@ export default function ComparisonPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            {bothSelected ? `Firm Comparison: ${firmA} vs. ${firmB}` : 'Firm Comparison'}
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Compare two firms side-by-side across outcomes, product distributions, and key metrics.
+            Compare up to 5 firms across outcomes, product distributions, and key metrics.
           </p>
         </div>
         <p className="text-xs text-slate-500">
@@ -159,23 +176,27 @@ export default function ComparisonPage() {
         </p>
       </div>
 
-      {/* Firm selectors */}
+      {/* Year filter bar */}
+      {availableYears.length > 0 && (
+        <YearFilterBar
+          availableYears={availableYears}
+          activeYears={filters.years}
+          onToggleYear={toggleYear}
+          onSelectAll={setYears}
+          onClearYears={() => setYears([])}
+          accentColor="blue"
+        />
+      )}
+
+      {/* Firm selector */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <FirmSelector
-              label="Firm A"
-              value={firmA}
-              firms={firms.filter((f) => f !== firmB)}
-              onSelect={setFirmA}
-            />
-            <FirmSelector
-              label="Firm B"
-              value={firmB}
-              firms={firms.filter((f) => f !== firmA)}
-              onSelect={setFirmB}
-            />
-          </div>
+          <MultiFirmSelector
+            firms={firms}
+            selectedFirms={selectedFirms}
+            onSelectedFirmsChange={setSelectedFirms}
+            loading={firmsLoading}
+          />
         </CardContent>
       </Card>
 
@@ -184,7 +205,7 @@ export default function ComparisonPage() {
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           <span>{error}</span>
           <button
-            onClick={() => void fetchComparison(firmA, firmB)}
+            onClick={() => void fetchComparison(selectedFirms)}
             className="rounded-full border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:border-rose-400"
           >
             Retry now
@@ -192,17 +213,17 @@ export default function ComparisonPage() {
         </section>
       )}
 
-      {/* Prompt when not both selected */}
-      {!bothSelected && !loading && (
+      {/* Prompt when not enough firms selected */}
+      {!hasEnoughFirms && !loading && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
           <p className="text-sm text-slate-500">
-            Select two firms above to compare their FOS complaint outcomes, product distributions, and key metrics.
+            Select at least two firms above to compare their FOS complaint outcomes, product distributions, and key metrics.
           </p>
         </div>
       )}
 
       {/* Loading skeleton */}
-      {loading && !snapshot && bothSelected && (
+      {loading && !snapshot && hasEnoughFirms && (
         <div className="grid gap-4 md:grid-cols-2">
           <SkeletonCard />
           <SkeletonCard />
@@ -212,27 +233,27 @@ export default function ComparisonPage() {
       )}
 
       {/* Comparison results */}
-      {snapshot && bothSelected && (
+      {snapshot && hasEnoughFirms && (
         <>
-          {/* Outcome comparison — split panels */}
+          {/* Outcome comparison */}
           <section>
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Outcome Comparison</h2>
-            <p className="mb-4 text-sm text-slate-500">Upheld and not-upheld rates side-by-side.</p>
-            <OutcomeComparison firmA={snapshot.firmA} firmB={snapshot.firmB} split />
+            <p className="mb-4 text-sm text-slate-500">Upheld and not-upheld rates across selected firms.</p>
+            <OutcomeComparison firms={snapshot.firms} split />
           </section>
 
-          {/* Radar chart — split panels */}
+          {/* Radar chart */}
           <section>
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Product Upheld-Rate Radar</h2>
             <p className="mb-4 text-sm text-slate-500">Product category upheld rates per firm.</p>
-            <ThemeRadar firmA={snapshot.firmA} firmB={snapshot.firmB} split />
+            <ThemeRadar firms={snapshot.firms} split />
           </section>
 
-          {/* Key metrics — split panels */}
+          {/* Key metrics */}
           <section>
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Key Metrics</h2>
-            <p className="mb-4 text-sm text-slate-500">Side-by-side metric comparison.</p>
-            <ComparisonTable firmA={snapshot.firmA} firmB={snapshot.firmB} split />
+            <p className="mb-4 text-sm text-slate-500">Side-by-side metric comparison with explainers.</p>
+            <ComparisonTable firms={snapshot.firms} />
           </section>
         </>
       )}

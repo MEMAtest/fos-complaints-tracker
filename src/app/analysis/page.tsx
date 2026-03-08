@@ -19,6 +19,7 @@ import { UpheldRateGauge } from '@/components/analysis/upheld-rate-gauge';
 import { ProductBubbleChart } from '@/components/analysis/product-bubble-chart';
 import { CategoriesByMonth } from '@/components/analysis/categories-by-month';
 import { DecisionsHeatmap } from '@/components/analysis/decisions-heatmap';
+import { YearFilterBar } from '@/components/shared/year-filter-bar';
 import { formatNumber, formatPercent, formatDateTime } from '@/lib/utils';
 
 export default function AnalysisPage() {
@@ -32,6 +33,7 @@ export default function AnalysisPage() {
     toggleProduct,
     toggleFirm,
     toggleTag,
+    setYears,
     applySearchQuery,
     clearFilters,
     setFilters,
@@ -113,22 +115,15 @@ export default function AnalysisPage() {
           metaLine={metaLine}
         />
 
-        {/* ---- year filter pills ---- */}
-        <div className="flex flex-wrap gap-2">
-          {availableYears.map((year) => (
-            <button
-              key={year}
-              onClick={() => toggleYear(year)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                filters.years.includes(year)
-                  ? 'border-teal-300 bg-teal-100 text-teal-800'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-teal-200'
-              }`}
-            >
-              {year}
-            </button>
-          ))}
-        </div>
+        {/* ---- year filter bar ---- */}
+        <YearFilterBar
+          availableYears={availableYears}
+          activeYears={filters.years}
+          onToggleYear={toggleYear}
+          onSelectAll={setYears}
+          onClearYears={() => setYears([])}
+          accentColor="teal"
+        />
 
         {/* ---- active filter pills ---- */}
         {hasActiveFilters && (
@@ -183,20 +178,20 @@ export default function AnalysisPage() {
 
         {/* ---- dual upheld gauges + bubble chart ---- */}
         <section className="grid gap-4 md:grid-cols-2">
-          <ExpandableCard title="Upheld vs Not Upheld rates" description="Overall rates vs 50% baseline threshold.">
-            <div className="grid grid-cols-2 gap-4">
+          <ExpandableCard title="Upheld vs Not Upheld rates" description="Overall upheld vs not-upheld rates against a 50% baseline. Lower upheld rate is better for firms.">
+            <div className="grid h-[320px] grid-cols-2 items-center gap-4">
               <UpheldRateGauge upheldRate={upheldRate} label="Upheld rate" color="#06b6d4" />
               <UpheldRateGauge upheldRate={totalCases ? (notUpheldCases / totalCases) * 100 : 0} label="Not upheld rate" color="#f43f5e" />
             </div>
           </ExpandableCard>
-          <ExpandableCard title="Product performance" description="Products by total cases, upheld rate, and volume.">
-            <ProductBubbleChart yearProductOutcome={snapshot?.yearProductOutcome || []} />
+          <ExpandableCard title="Product performance" description="Products by total cases, upheld rate, and volume." interactionHint="Click a bubble to filter by that product.">
+            <ProductBubbleChart yearProductOutcome={snapshot?.yearProductOutcome || []} onToggleProduct={toggleProduct} activeProduct={filters.products[0] || null} />
           </ExpandableCard>
         </section>
 
         {/* ---- heatmap + product leaderboard ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr] xl:items-start">
-          <ExpandableCard title="Year x product upheld-rate heatmap" description="Click any cell to combine year and product filters.">
+          <ExpandableCard title="Year x product upheld-rate heatmap" description="Click any cell to combine year and product filters." interactionHint="Click any cell to combine year and product filters.">
             <HeatmapTable
               yearProductOutcome={snapshot?.yearProductOutcome || []}
               activeYears={filters.years}
@@ -205,7 +200,7 @@ export default function AnalysisPage() {
               onToggleProduct={toggleProduct}
             />
           </ExpandableCard>
-          <ExpandableCard title="Product upheld-rate leaderboard" description="Products ranked by volume with upheld rate.">
+          <ExpandableCard title="Product upheld-rate leaderboard" description="Products ranked by volume with upheld rate." interactionHint="Click a bar to filter by that product.">
             <ProductLeaderboard
               yearProductOutcome={snapshot?.yearProductOutcome || []}
               activeProducts={filters.products}
@@ -216,14 +211,14 @@ export default function AnalysisPage() {
 
         {/* ---- firm benchmark + precedent matrix ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.25fr_1fr] xl:items-start">
-          <ExpandableCard title="Firm benchmark: volume vs upheld rate" description="Compare firm scale against adjudication outcomes.">
+          <ExpandableCard title="Firm benchmark: volume vs upheld rate" description="Compare firm scale against adjudication outcomes." interactionHint="Click a bar to filter by that firm.">
             <FirmBenchmark
               firmBenchmark={snapshot?.firmBenchmark || []}
               activeFirms={filters.firms}
               onToggleFirm={toggleFirm}
             />
           </ExpandableCard>
-          <ExpandableCard title="Precedent x root-cause matrix" description="Click chips to filter by precedent or root cause tags.">
+          <ExpandableCard title="Precedent x root-cause matrix" description="Click chips to filter by precedent or root cause tags." interactionHint="Click chips or cells to filter by precedent or root cause tags.">
             <PrecedentMatrix
               matrix={snapshot?.precedentRootCauseMatrix || []}
               activeTags={filters.tags}
@@ -234,17 +229,17 @@ export default function AnalysisPage() {
 
         {/* ---- categories by month + decisions heatmap ---- */}
         <section className="grid gap-4 md:grid-cols-2">
-          <ExpandableCard title="Product categories by month" description="Stacked breakdown of top product sectors by decision month.">
-            <CategoriesByMonth monthlyProductBreakdown={snapshot?.monthlyProductBreakdown || []} />
+          <ExpandableCard title="Product categories by month" description="Stacked breakdown of top product sectors by decision month." interactionHint="Click a bar segment to filter by that product.">
+            <CategoriesByMonth monthlyProductBreakdown={snapshot?.monthlyProductBreakdown || []} onToggleProduct={toggleProduct} activeProducts={filters.products} />
           </ExpandableCard>
-          <ExpandableCard title="Decisions heatmap" description="Decision distribution by month and day of week.">
+          <ExpandableCard title="Decisions heatmap" description="Heat intensity shows decision volume by day of week and month. Darker = more decisions.">
             <DecisionsHeatmap decisionDayMonthGrid={snapshot?.decisionDayMonthGrid || []} />
           </ExpandableCard>
         </section>
 
         {/* ---- product tree + year narratives ---- */}
         <section className="grid gap-4 xl:grid-cols-[1.15fr_1fr] xl:items-start">
-          <ExpandableCard title="Product to firm distribution" description="High-volume products with their top firms.">
+          <ExpandableCard title="Product to firm distribution" description="High-volume products with their top firms." interactionHint="Click a product badge or firm card to filter.">
             <ProductTree
               productTree={snapshot?.productTree || []}
               activeProducts={filters.products}
@@ -253,7 +248,7 @@ export default function AnalysisPage() {
               onToggleFirm={toggleFirm}
             />
           </ExpandableCard>
-          <ExpandableCard title="Yearly analysis narratives" description="Auto-generated commentary from year-level volumes and rates.">
+          <ExpandableCard title="Yearly analysis narratives" description="Auto-generated commentary from year-level volumes and rates." interactionHint="Click a year badge to filter by that year.">
             <YearNarratives
               yearNarratives={snapshot?.yearNarratives || []}
               activeYears={filters.years}

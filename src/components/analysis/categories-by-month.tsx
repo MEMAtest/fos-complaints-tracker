@@ -16,6 +16,8 @@ import { formatNumber } from '@/lib/utils';
 
 interface CategoriesByMonthProps {
   monthlyProductBreakdown: { month: string; product: string; count: number }[];
+  onToggleProduct?: (product: string) => void;
+  activeProducts?: string[];
 }
 
 const STACK_COLORS = [
@@ -27,7 +29,7 @@ const STACK_COLORS = [
   '#f43f5e', // rose-500
 ];
 
-export function CategoriesByMonth({ monthlyProductBreakdown }: CategoriesByMonthProps) {
+export function CategoriesByMonth({ monthlyProductBreakdown, onToggleProduct, activeProducts = [] }: CategoriesByMonthProps) {
   /* ---- determine distinct products (top 6 by total volume) ---- */
   const topProducts = useMemo(() => {
     const totals = new Map<string, number>();
@@ -62,8 +64,10 @@ export function CategoriesByMonth({ monthlyProductBreakdown }: CategoriesByMonth
     return <EmptyState label="No monthly product breakdown data available." />;
   }
 
+  const hasActive = activeProducts.length > 0;
+
   return (
-    <div className="h-[360px]">
+    <div className="h-[340px]">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={chartData}
@@ -79,11 +83,11 @@ export function CategoriesByMonth({ monthlyProductBreakdown }: CategoriesByMonth
           <YAxis
             tick={{ fontSize: 11 }}
             stroke="#94a3b8"
-            tickFormatter={(v: any) => formatNumber(Number(v))}
+            tickFormatter={(v: number) => formatNumber(v)}
           />
           <Tooltip
-            formatter={(value: any, name: any) => [formatNumber(Number(value)), String(name)]}
-            labelFormatter={(label: any) => `Month: ${String(label)}`}
+            formatter={(value: unknown, name: unknown) => [formatNumber(Number(value)), String(name)]}
+            labelFormatter={(label: unknown) => `Month: ${String(label)}`}
             contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
           />
           <Legend
@@ -98,6 +102,9 @@ export function CategoriesByMonth({ monthlyProductBreakdown }: CategoriesByMonth
               stackId="products"
               fill={STACK_COLORS[i % STACK_COLORS.length]}
               radius={i === topProducts.length - 1 ? [2, 2, 0, 0] : [0, 0, 0, 0]}
+              opacity={hasActive && !activeProducts.includes(product) ? 0.3 : 1}
+              onClick={onToggleProduct ? () => onToggleProduct(product) : undefined}
+              style={onToggleProduct ? { cursor: 'pointer' } : undefined}
             />
           ))}
         </BarChart>
