@@ -179,7 +179,7 @@ export default function AnalysisPage() {
         {/* ---- dual upheld gauges + bubble chart ---- */}
         <section className="grid gap-4 md:grid-cols-2">
           <ExpandableCard title="Upheld vs Not Upheld rates" description="Overall upheld vs not-upheld rates against a 50% baseline. Lower upheld rate is better for firms.">
-            <div className="grid h-[320px] grid-cols-2 items-center gap-4">
+            <div className="grid grid-cols-2 items-start gap-4 py-4">
               <UpheldRateGauge upheldRate={upheldRate} label="Upheld rate" color="#06b6d4" />
               <UpheldRateGauge upheldRate={totalCases ? (notUpheldCases / totalCases) * 100 : 0} label="Not upheld rate" color="#f43f5e" />
             </div>

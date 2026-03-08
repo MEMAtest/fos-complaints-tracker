@@ -24,13 +24,13 @@ export function UpheldRateGauge({ upheldRate, target = 50, label = 'Upheld rate'
   const fillColor = color || (isAboveTarget ? '#06b6d4' : '#f59e0b');
 
   return (
-    <div className="relative h-[200px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="relative h-[150px] w-full overflow-hidden">
+      <ResponsiveContainer width="100%" height={240}>
         <PieChart>
           <Pie
             data={data}
             cx="50%"
-            cy="85%"
+            cy="70%"
             startAngle={180}
             endAngle={0}
             innerRadius={70}
@@ -46,7 +46,7 @@ export function UpheldRateGauge({ upheldRate, target = 50, label = 'Upheld rate'
       </ResponsiveContainer>
 
       {/* ---- center label ---- */}
-      <div className="absolute inset-0 flex items-center justify-center" style={{ top: '-10%' }}>
+      <div className="absolute inset-x-0 top-[52%] flex justify-center">
         <div className="text-center">
           <p className="text-3xl font-semibold tracking-tight text-slate-900">
             {formatPercent(clamped)}
@@ -60,7 +60,7 @@ export function UpheldRateGauge({ upheldRate, target = 50, label = 'Upheld rate'
       {/* ---- target marker tick ---- */}
       {target > 0 && target < 100 && (
         <div
-          className="absolute bottom-[15%] left-1/2 h-[4px] w-[2px] -translate-x-1/2 bg-slate-900"
+          className="absolute left-1/2 top-[38%] h-[4px] w-[2px] -translate-x-1/2 bg-slate-900"
           style={{
             transform: `rotate(${180 - (target / 100) * 180}deg)`,
             transformOrigin: 'center 0',
