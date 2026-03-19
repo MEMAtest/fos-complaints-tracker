@@ -3,6 +3,7 @@ export type ComplaintPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type ComplaintEvidenceCategory = 'email' | 'statement' | 'screenshot' | 'call_recording' | 'policy_document' | 'letter' | 'other';
 export type ComplaintLetterTemplateKey = 'acknowledgement' | 'holding_response' | 'final_response' | 'fos_referral' | 'custom';
 export type ComplaintLetterStatus = 'draft' | 'generated' | 'sent';
+export type ComplaintLateReferralPosition = 'review_required' | 'consent' | 'do_not_consent' | 'custom';
 export type ComplaintActivityType =
   | 'complaint_created'
   | 'status_change'
@@ -89,6 +90,18 @@ export interface ComplaintLetter {
   updatedAt: string;
 }
 
+export interface ComplaintWorkspaceSettings {
+  organizationName: string;
+  complaintsTeamName: string;
+  complaintsEmail: string | null;
+  complaintsPhone: string | null;
+  complaintsAddress: string | null;
+  boardPackSubtitle: string | null;
+  lateReferralPosition: ComplaintLateReferralPosition;
+  lateReferralCustomText: string | null;
+  updatedAt: string;
+}
+
 export interface ComplaintFilters {
   query: string;
   status: ComplaintStatus | 'all';
@@ -163,6 +176,8 @@ export interface ComplaintImportRun {
   createdAt: string;
   warnings: string[];
 }
+
+export type ComplaintWorkspaceSettingsInput = Partial<Omit<ComplaintWorkspaceSettings, 'updatedAt'>>;
 
 export type ComplaintMutationInput = Partial<Omit<ComplaintRecord, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>> & {
   complaintReference?: string;

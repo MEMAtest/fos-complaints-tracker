@@ -5,6 +5,7 @@ import { Download, FileText, Loader2, Mail, Save, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/ComplaintWorkspaceSettingsPanel';
 import { COMPLAINT_LETTER_TEMPLATES, type ComplaintLetter, type ComplaintRecord } from '@/lib/complaints/types';
 import { formatDateTime } from '@/lib/utils';
 
@@ -154,6 +155,8 @@ export function ComplaintLettersPanel({
         </CardContent>
       </Card>
 
+      <ComplaintWorkspaceSettingsPanel title="Correspondence profile" compact />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Custom draft</CardTitle>
@@ -250,8 +253,16 @@ export function ComplaintLettersPanel({
                     <span>Updated: {formatDateTime(selectedLetter.updatedAt)}</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => window.open(`/api/complaints/letters/${selectedLetter.id}?format=pdf`, '_blank', 'noopener,noreferrer')}
+                    >
+                      <Download className="h-3.5 w-3.5" /> PDF
+                    </Button>
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => downloadDraft({ ...selectedLetter, subject: editorSubject, recipientName: editorRecipientName || null, recipientEmail: editorRecipientEmail || null, bodyText: editorBody })}>
-                      <Download className="h-3.5 w-3.5" /> Download
+                      <Download className="h-3.5 w-3.5" /> TXT
                     </Button>
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => void saveLetter(selectedLetter.status)} disabled={saving}>
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}

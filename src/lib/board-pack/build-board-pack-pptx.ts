@@ -32,9 +32,9 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
   drawSlideBase(cover);
   cover.addShape('rect', { x: 0, y: 0, w: 13.333, h: 2.25, fill: { color: palette.navy }, line: { color: palette.navy, pt: 0 } });
   cover.addShape('rect', { x: 10.6, y: 0.35, w: 2.4, h: 1.25, fill: { color: palette.blue, transparency: 78 }, line: { color: palette.blue, transparency: 100, pt: 0 } });
-  cover.addText('MEMA Consultants', { x: 0.7, y: 0.4, w: 3, h: 0.2, fontSize: 10, color: palette.white, bold: true });
+  cover.addText(data.branding.organizationName, { x: 0.7, y: 0.4, w: 4.4, h: 0.2, fontSize: 10, color: palette.white, bold: true });
   cover.addText(data.title, { x: 0.7, y: 0.82, w: 8.2, h: 0.45, fontSize: 24, bold: true, color: palette.white });
-  cover.addText('Board-ready complaints and ombudsman intelligence pack', { x: 0.7, y: 1.28, w: 6.2, h: 0.24, fontSize: 12, color: 'E2E8F0' });
+  cover.addText(data.branding.subtitle || 'Board-ready complaints and ombudsman intelligence pack', { x: 0.7, y: 1.28, w: 7.8, h: 0.24, fontSize: 12, color: 'E2E8F0' });
   addPanel(cover, 0.7, 2.05, 11.9, 1.15, 'Scope and reporting frame', palette.white, palette.border);
   cover.addText(`Period: ${data.periodLabel}`, { x: 0.95, y: 2.33, w: 3.8, h: 0.18, fontSize: 10, color: palette.slate });
   cover.addText(`Generated: ${new Date(data.generatedAt).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' })}`, { x: 0.95, y: 2.55, w: 4.5, h: 0.18, fontSize: 10, color: palette.slate });
@@ -52,7 +52,7 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
   addMetricCard(cover, 3.83, 3.55, 2.95, 1.05, 'Upheld rate', `${data.summary.upheldRate.toFixed(1)}%`, palette.blue);
   addMetricCard(cover, 6.96, 3.55, 2.95, 1.05, 'Open complaints', formatNumber(data.summary.openComplaints), palette.teal);
   addMetricCard(cover, 10.09, 3.55, 2.23, 1.05, 'Overdue', formatNumber(data.summary.overdueComplaints), palette.red);
-  addFooter(cover, 'Cover');
+  addFooter(cover, 'Cover', data.branding.organizationName);
 
   const summary = pptx.addSlide();
   drawSlideBase(summary);
@@ -107,7 +107,7 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
     fontSize: 11,
     color: palette.slate,
   });
-  addFooter(summary, 'Executive Summary');
+  addFooter(summary, 'Executive Summary', data.branding.organizationName);
 
   const trends = pptx.addSlide();
   drawSlideBase(trends);
@@ -152,7 +152,7 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
     fontSize: 10,
     color: palette.slate,
   });
-  addFooter(trends, 'Outcome and Trend Overview');
+  addFooter(trends, 'Outcome and Trend Overview', data.branding.organizationName);
 
   const concentration = pptx.addSlide();
   drawSlideBase(concentration);
@@ -172,40 +172,83 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
       : 'No root-cause tags are currently available for this scope.',
     { x: 0.95, y: 4.89, w: 11.35, h: 0.24, fontSize: 10.5, color: palette.slate }
   );
-  addFooter(concentration, 'Concentration and Root-Cause View');
+  addFooter(concentration, 'Concentration and Root-Cause View', data.branding.organizationName);
 
-  const appendix = pptx.addSlide();
-  drawSlideBase(appendix);
-  addTitle(appendix, 'Appendix and Methodology', 'Scope notes, supporting trends, and presentation guidance.');
-  addPanel(appendix, 0.7, 1.25, 11.9, 1.1, 'Included sections', palette.panel, palette.border);
-  appendix.addText(data.sections.filter((section) => section.status === 'included').map((section) => section.title).join(' • '), {
-    x: 0.95,
-    y: 1.65,
-    w: 11.35,
-    h: 0.3,
-    fontSize: 10.5,
-    color: palette.slate,
-  });
-  addPanel(appendix, 0.7, 2.55, 11.9, 1.1, 'Trend support', palette.panel, palette.border);
-  appendix.addText(data.trends.map((trend) => `${trend.year}: ${formatNumber(trend.total)} total, ${formatNumber(trend.upheld)} upheld, ${formatNumber(trend.notUpheld)} not upheld`).join(' | '), {
-    x: 0.95,
-    y: 2.95,
-    w: 11.35,
-    h: 0.36,
-    fontSize: 10,
-    color: palette.slate,
-    fit: 'shrink',
-  });
-  addPanel(appendix, 0.7, 3.85, 11.9, 1.0, 'Presentation note', palette.warm, palette.border);
-  appendix.addText('Use the board pack alongside the complaint register, remediation actions, and supporting complaint correspondence. Management commentary should explain any material data gaps before circulation.', {
-    x: 0.95,
-    y: 4.23,
-    w: 11.35,
-    h: 0.3,
-    fontSize: 10.5,
-    color: palette.slate,
-  });
-  addFooter(appendix, 'Appendix and Methodology');
+  if (data.sections.some((section) => section.key === 'appendix' && section.status === 'included')) {
+    const appendix = pptx.addSlide();
+    drawSlideBase(appendix);
+    addTitle(appendix, 'Appendix and Methodology', 'Scope notes, supporting trends, and presentation guidance.');
+    addPanel(appendix, 0.7, 1.25, 11.9, 1.1, 'Included sections', palette.panel, palette.border);
+    appendix.addText(data.sections.filter((section) => section.status === 'included').map((section) => section.title).join(' • '), {
+      x: 0.95,
+      y: 1.65,
+      w: 11.35,
+      h: 0.3,
+      fontSize: 10.5,
+      color: palette.slate,
+    });
+    addPanel(appendix, 0.7, 2.55, 11.9, 1.1, 'Trend support', palette.panel, palette.border);
+    appendix.addText(data.trends.map((trend) => `${trend.year}: ${formatNumber(trend.total)} total, ${formatNumber(trend.upheld)} upheld, ${formatNumber(trend.notUpheld)} not upheld`).join(' | '), {
+      x: 0.95,
+      y: 2.95,
+      w: 11.35,
+      h: 0.36,
+      fontSize: 10,
+      color: palette.slate,
+      fit: 'shrink',
+    });
+    addPanel(appendix, 0.7, 3.85, 5.75, 1.0, 'Recent complaint letters', palette.warm, palette.border);
+    appendix.addText(
+      data.appendix.recentLetters.length > 0
+        ? data.appendix.recentLetters.slice(0, 3).map((item) => `${item.complaintReference} · ${item.subject} · ${item.status}`).join('\n')
+        : 'No complaint letters are currently available for the selected reporting scope.',
+      {
+        x: 0.95,
+        y: 4.2,
+        w: 5.25,
+        h: 0.52,
+        fontSize: 9.5,
+        color: palette.slate,
+        breakLine: false,
+        fit: 'shrink',
+      }
+    );
+    addPanel(appendix, 6.85, 3.85, 5.75, 1.0, 'Recent complaint evidence', palette.panel, palette.border);
+    appendix.addText(
+      data.appendix.recentEvidence.length > 0
+        ? data.appendix.recentEvidence.slice(0, 3).map((item) => `${item.complaintReference} · ${item.fileName} · ${item.category}`).join('\n')
+        : 'No complaint evidence entries are currently available for the selected reporting scope.',
+      {
+        x: 7.1,
+        y: 4.2,
+        w: 5.25,
+        h: 0.52,
+        fontSize: 9.5,
+        color: palette.slate,
+        breakLine: false,
+        fit: 'shrink',
+      }
+    );
+    addPanel(appendix, 0.7, 5.1, 11.9, 0.92, 'Presentation and policy note', palette.warm, palette.border);
+    appendix.addText('Use the board pack alongside the complaint register, remediation actions, and supporting complaint correspondence. Management commentary should explain any material data gaps before circulation.', {
+      x: 0.95,
+      y: 5.42,
+      w: 11.35,
+      h: 0.22,
+      fontSize: 10,
+      color: palette.slate,
+    });
+    appendix.addText(data.appendix.lateReferralText, {
+      x: 0.95,
+      y: 5.69,
+      w: 11.35,
+      h: 0.18,
+      fontSize: 9,
+      color: palette.muted,
+      fit: 'shrink',
+    });
+    addFooter(appendix, 'Appendix and Methodology', data.branding.organizationName);
+  }
 
   return pptx.write({ outputType: 'nodebuffer' }) as Promise<Buffer>;
 }
@@ -239,9 +282,9 @@ function addListItem(slide: PptxGenJS.Slide, x: number, y: number, w: number, ti
   slide.addText(meta, { x: x + w * 0.58, y: y + 0.07, w: w * 0.34, h: 0.12, fontSize: 8.5, color: palette.muted, align: 'right', fit: 'shrink' });
 }
 
-function addFooter(slide: PptxGenJS.Slide, sectionTitle: string) {
+function addFooter(slide: PptxGenJS.Slide, sectionTitle: string, organizationName: string) {
   slide.addShape('line', { x: 0.7, y: 7.18, w: 11.9, h: 0, line: { color: palette.border, pt: 1 } });
-  slide.addText('MEMA Consultants · FOS Complaints Intelligence', { x: 0.7, y: 7.02, w: 4.8, h: 0.12, fontSize: 8, color: palette.muted });
+  slide.addText(`${organizationName} · FOS Complaints Intelligence`, { x: 0.7, y: 7.02, w: 5.8, h: 0.12, fontSize: 8, color: palette.muted });
   slide.addText(sectionTitle, { x: 10.2, y: 7.02, w: 2.4, h: 0.12, fontSize: 8, color: palette.muted, align: 'right' });
 }
 

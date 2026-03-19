@@ -1,8 +1,9 @@
-import type { ComplaintLetterTemplateKey, ComplaintRecord } from './types';
+import type { ComplaintLetterTemplateKey, ComplaintRecord, ComplaintWorkspaceSettings } from './types';
 
 export function buildComplaintLetterDraft(
   complaint: ComplaintRecord,
   templateKey: ComplaintLetterTemplateKey,
+  settings: ComplaintWorkspaceSettings,
   overrides?: {
     subject?: string | null;
     bodyText?: string | null;
@@ -18,7 +19,7 @@ export function buildComplaintLetterDraft(
   const recipientName = sanitize(overrides?.recipientName) || complaint.complainantName;
   const recipientEmail = sanitize(overrides?.recipientEmail) || complaint.complainantEmail;
   const defaultSubject = subjectForTemplate(complaint, templateKey);
-  const defaultBody = bodyForTemplate(complaint, templateKey, recipientName || 'Customer');
+  const defaultBody = bodyForTemplate(complaint, templateKey, settings, recipientName || 'Customer');
 
   return {
     subject: sanitize(overrides?.subject) || defaultSubject,
@@ -44,7 +45,12 @@ function subjectForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLe
   }
 }
 
-function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLetterTemplateKey, recipientName: string): string {
+function bodyForTemplate(
+  complaint: ComplaintRecord,
+  templateKey: ComplaintLetterTemplateKey,
+  settings: ComplaintWorkspaceSettings,
+  recipientName: string
+): string {
   const received = formatDate(complaint.receivedDate);
   const fourWeek = formatDate(complaint.fourWeekDueDate);
   const eightWeek = formatDate(complaint.eightWeekDueDate);
@@ -71,12 +77,11 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         matterSummary,
         '',
         'What happens next',
-        `We are reviewing the information currently available, including our internal records and any supporting evidence you have provided.`,
+        'We are reviewing the information currently available, including our internal records and any supporting evidence you have provided.',
         `We aim to provide a further progress update by ${fourWeek} and a final response by ${eightWeek}. If we are not in a position to issue a final response within eight weeks, we will explain why and set out your right to refer the complaint to the Financial Ombudsman Service.`,
         'If there is any further information you would like us to consider, please send it to us as soon as possible so it can be included in our review.',
         '',
-        'Yours sincerely,',
-        'Complaints Team',
+        ...signoffLines(settings),
       ].join('\n');
     case 'holding_response':
       return [
@@ -97,11 +102,10 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         'Your right to refer to the Financial Ombudsman Service',
         `Because eight weeks have now passed since we received your complaint on ${received}, you may now refer the complaint to the Financial Ombudsman Service free of charge if you do not want to wait for our final response.`,
         fosRightsParagraph('delay_response'),
-        lateReferralPositionParagraph(),
+        lateReferralPositionParagraph(settings),
         'Enclosure when issued: Financial Ombudsman Service standard explanatory leaflet.',
         '',
-        'Yours sincerely,',
-        'Complaints Team',
+        ...signoffLines(settings),
       ].join('\n');
     case 'final_response':
       return [
@@ -116,7 +120,7 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         matterSummary,
         '',
         'Our review',
-        `We have considered the information recorded on the complaint file, the chronology of events, the relevant correspondence, and any evidence supplied to us.`,
+        'We have considered the information recorded on the complaint file, the chronology of events, the relevant correspondence, and any evidence supplied to us.',
         '',
         'Our decision and reasons',
         resolution,
@@ -127,11 +131,10 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         'If you remain dissatisfied',
         'The Financial Ombudsman Service is a free and independent service. If you remain unhappy with our final response, you may be able to ask them to review your complaint.',
         fosRightsParagraph('final_response'),
-        lateReferralPositionParagraph(),
+        lateReferralPositionParagraph(settings),
         'Enclosure when issued: Financial Ombudsman Service standard explanatory leaflet.',
         '',
-        'Yours sincerely,',
-        'Complaints Team',
+        ...signoffLines(settings),
       ].join('\n');
     case 'fos_referral':
       return [
@@ -149,11 +152,10 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         '',
         'Financial Ombudsman Service details',
         fosRightsParagraph('fos_referral'),
-        lateReferralPositionParagraph(),
+        lateReferralPositionParagraph(settings),
         'Enclosure when issued: Financial Ombudsman Service standard explanatory leaflet.',
         '',
-        'Yours sincerely,',
-        'Complaints Team',
+        ...signoffLines(settings),
       ].join('\n');
     case 'custom':
     default:
@@ -164,8 +166,7 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         '',
         'Please replace this draft with the required correspondence.',
         '',
-        'Yours sincerely,',
-        'Complaints Team',
+        ...signoffLines(settings),
       ].join('\n');
   }
 }
@@ -189,8 +190,43 @@ function fosRightsParagraph(context: 'delay_response' | 'final_response' | 'fos_
   ].join(' ');
 }
 
-function lateReferralPositionParagraph(): string {
+function lateReferralPositionParagraph(settings: ComplaintWorkspaceSettings): string {
+  if (settings.lateReferralPosition === 'consent') {
+    return 'If the Financial Ombudsman Service receives your complaint outside the applicable time limit, our organisation consents to the Ombudsman considering the complaint.';
+  }
+
+  if (settings.lateReferralPosition === 'do_not_consent') {
+    return 'If the Financial Ombudsman Service receives your complaint outside the applicable time limit, our organisation will not usually consent to the Ombudsman considering the complaint unless we decide otherwise in the circumstances of the individual case.';
+  }
+
+  if (settings.lateReferralPosition === 'custom' && sanitize(settings.lateReferralCustomText)) {
+    return sanitize(settings.lateReferralCustomText);
+  }
+
+  if (settings.lateReferralPosition === 'review_required' && sanitize(settings.lateReferralCustomText)) {
+    return sanitize(settings.lateReferralCustomText);
+  }
+
   return 'Template completion note before issue: confirm whether your organisation will or will not consent to the Financial Ombudsman Service considering a complaint referred outside the applicable time limit, and update this paragraph to match the wording required by DISP 1 Annex 3R.';
+}
+
+function signoffLines(settings: ComplaintWorkspaceSettings): string[] {
+  return [
+    'Yours sincerely,',
+    settings.complaintsTeamName || 'Complaints Team',
+    settings.organizationName || 'MEMA Consultants',
+    ...contactLines(settings),
+  ];
+}
+
+function contactLines(settings: ComplaintWorkspaceSettings): string[] {
+  const lines = [
+    sanitize(settings.complaintsEmail),
+    sanitize(settings.complaintsPhone),
+    sanitize(settings.complaintsAddress),
+  ].filter(Boolean);
+
+  return lines.length > 0 ? ['', ...lines] : [];
 }
 
 function sanitize(value: string | null | undefined): string {

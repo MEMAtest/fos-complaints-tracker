@@ -1,17 +1,19 @@
 import { INITIAL_FILTERS } from '@/lib/fos/constants';
 import type { FOSDashboardFilters } from '@/lib/fos/types';
 import { getDashboardSnapshot, getAnalysisSnapshot, getRootCauseSnapshot } from '@/lib/fos/repository';
-import { getComplaintOperationsSummary, listBoardPackRuns } from '@/lib/complaints/repository';
+import { getComplaintOperationsSummary, getComplaintWorkspaceSettings, listBoardPackRuns, listComplaintAppendixArtifacts } from '@/lib/complaints/repository';
 import type { BoardPackData, BoardPackPreview, BoardPackRequest, BoardPackSection } from './types';
 
 export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Promise<BoardPackPreview> {
   const filters = filtersFromBoardPackInput(input);
   const sections = buildBoardPackSections(input);
 
-  const [dashboard, complaintSummary, recentRuns] = await Promise.all([
+  const [dashboard, complaintSummary, recentRuns, settings, appendix] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null),
     listBoardPackRuns(8),
+    getComplaintWorkspaceSettings(),
+    listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null),
   ]);
 
   return {
@@ -23,6 +25,12 @@ export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Pro
       complaintsOpen: complaintSummary.open,
       overdueComplaints: complaintSummary.overdue,
       fosReferredCount: complaintSummary.referredToFos,
+      appendixLetters: appendix.recentLetters.length,
+      appendixEvidence: appendix.recentEvidence.length,
+    },
+    branding: {
+      organizationName: settings.organizationName,
+      subtitle: settings.boardPackSubtitle,
     },
     recentRuns,
   };
@@ -32,11 +40,13 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
   const filters = filtersFromBoardPackInput(input);
   const sections = buildBoardPackSections(input);
 
-  const [dashboard, analysis, rootCauseSnapshot, complaintSummary] = await Promise.all([
+  const [dashboard, analysis, rootCauseSnapshot, complaintSummary, settings, appendix] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getAnalysisSnapshot(filters),
     getRootCauseSnapshot(filters),
     getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null),
+    getComplaintWorkspaceSettings(),
+    listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null),
   ]);
 
   const topFirms = dashboard.firms.slice(0, 8).map((firm) => ({
@@ -69,6 +79,14 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
     title: input.title || 'FOS Complaints Board Pack',
     generatedAt: new Date().toISOString(),
     periodLabel,
+    branding: {
+      organizationName: settings.organizationName,
+      subtitle: settings.boardPackSubtitle,
+      complaintsTeamName: settings.complaintsTeamName,
+      complaintsEmail: settings.complaintsEmail,
+      complaintsPhone: settings.complaintsPhone,
+      complaintsAddress: settings.complaintsAddress,
+    },
     summary: {
       totalCases: dashboard.overview.totalCases,
       upheldRate: dashboard.overview.upheldRate,
@@ -88,6 +106,11 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
       executiveSummaryNote: sanitizeText(input.executiveSummaryNote),
       boardFocusNote: sanitizeText(input.boardFocusNote),
       actionSummaryNote: sanitizeText(input.actionSummaryNote),
+    },
+    appendix: {
+      recentLetters: appendix.recentLetters,
+      recentEvidence: appendix.recentEvidence,
+      lateReferralText: lateReferralPolicyText(settings),
     },
     sections,
   };
@@ -151,4 +174,18 @@ function buildPeriodLabel(dateFrom?: string | null, dateTo?: string | null, year
 function sanitizeText(value?: string | null): string | null {
   const text = typeof value === 'string' ? value.trim() : '';
   return text ? text : null;
+}
+
+function lateReferralPolicyText(settings: Awaited<ReturnType<typeof getComplaintWorkspaceSettings>>): string {
+  switch (settings.lateReferralPosition) {
+    case 'consent':
+      return 'Configured policy: the organisation consents to the Ombudsman considering complaints referred outside the normal time limit.';
+    case 'do_not_consent':
+      return 'Configured policy: the organisation does not usually consent to the Ombudsman considering complaints referred outside the normal time limit unless an individual-case decision is made.';
+    case 'custom':
+      return settings.lateReferralCustomText || 'Configured policy: custom late-referral wording has been set for complaint correspondence.';
+    case 'review_required':
+    default:
+      return settings.lateReferralCustomText || 'Configured policy: late-referral wording remains subject to manual review before issue.';
+  }
 }

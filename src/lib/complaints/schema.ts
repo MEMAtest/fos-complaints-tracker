@@ -168,6 +168,39 @@ CREATE INDEX IF NOT EXISTS idx_complaint_letters_complaint_created_at ON complai
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_status ON complaint_letters (status);
 `;
 
+const COMPLAINTS_WORKSPACE_SETTINGS_SQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS complaints_workspace_settings (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton = TRUE),
+  organization_name TEXT NOT NULL DEFAULT 'MEMA Consultants',
+  complaints_team_name TEXT NOT NULL DEFAULT 'Complaints Team',
+  complaints_email TEXT,
+  complaints_phone TEXT,
+  complaints_address TEXT,
+  board_pack_subtitle TEXT,
+  late_referral_position TEXT NOT NULL DEFAULT 'review_required',
+  late_referral_custom_text TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT complaints_workspace_settings_late_referral_check CHECK (late_referral_position IN ('review_required', 'consent', 'do_not_consent', 'custom'))
+);
+
+INSERT INTO complaints_workspace_settings (
+  singleton,
+  organization_name,
+  complaints_team_name,
+  board_pack_subtitle,
+  late_referral_position
+) VALUES (
+  TRUE,
+  'MEMA Consultants',
+  'Complaints Team',
+  'Board-ready complaints and ombudsman intelligence pack',
+  'review_required'
+)
+ON CONFLICT (singleton) DO NOTHING;
+`;
+
 let schemaPromise: Promise<void> | null = null;
 let schemaReady = false;
 
@@ -184,6 +217,10 @@ const EXTENSION_TABLES = [
   'complaint_letters',
 ];
 
+const SETTINGS_TABLES = [
+  'complaints_workspace_settings',
+];
+
 export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
   if (schemaReady) return;
   const hasBaseTables = await hasComplaintsWorkspaceTables(BASE_TABLES);
@@ -196,7 +233,16 @@ export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
     await ensureSchemaSql(COMPLAINTS_WORKSPACE_EXTENSION_SQL, EXTENSION_TABLES);
   }
 
-  if (await hasComplaintsWorkspaceTables(BASE_TABLES) && await hasComplaintsWorkspaceTables(EXTENSION_TABLES)) {
+  const hasSettingsTables = await hasComplaintsWorkspaceTables(SETTINGS_TABLES);
+  if (!hasSettingsTables) {
+    await ensureSchemaSql(COMPLAINTS_WORKSPACE_SETTINGS_SQL, SETTINGS_TABLES);
+  }
+
+  if (
+    await hasComplaintsWorkspaceTables(BASE_TABLES)
+    && await hasComplaintsWorkspaceTables(EXTENSION_TABLES)
+    && await hasComplaintsWorkspaceTables(SETTINGS_TABLES)
+  ) {
     schemaReady = true;
     return;
   }

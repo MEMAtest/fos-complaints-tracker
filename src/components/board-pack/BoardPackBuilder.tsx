@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, FileText, Loader2, Presentation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/ComplaintWorkspaceSettingsPanel';
 import type { BoardPackPreview } from '@/lib/board-pack/types';
 import { formatDateTime, formatNumber } from '@/lib/utils';
 
@@ -135,6 +136,8 @@ export function BoardPackBuilder() {
         </Card>
 
         <div className="space-y-5">
+          <ComplaintWorkspaceSettingsPanel />
+
           <Card>
             <CardHeader><CardTitle className="text-base">Preview</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -142,11 +145,17 @@ export function BoardPackBuilder() {
                 <div className="flex items-center justify-center py-14 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
               ) : preview ? (
                 <>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-900">{preview.branding.organizationName}</p>
+                    <p className="mt-1">{preview.branding.subtitle || 'Board-ready complaints and ombudsman intelligence pack'}</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <SummaryCard label="FOS cases" value={formatNumber(preview.metrics.totalCases)} />
                     <SummaryCard label="Upheld rate" value={`${preview.metrics.upheldRate.toFixed(1)}%`} />
                     <SummaryCard label="Open complaints" value={formatNumber(preview.metrics.complaintsOpen)} />
                     <SummaryCard label="Overdue complaints" value={formatNumber(preview.metrics.overdueComplaints)} />
+                    <SummaryCard label="Appendix letters" value={formatNumber(preview.metrics.appendixLetters)} />
+                    <SummaryCard label="Appendix evidence" value={formatNumber(preview.metrics.appendixEvidence)} />
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Included sections</p>

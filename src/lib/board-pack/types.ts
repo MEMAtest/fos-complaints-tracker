@@ -30,6 +30,12 @@ export interface BoardPackPreview {
     complaintsOpen: number;
     overdueComplaints: number;
     fosReferredCount: number;
+    appendixLetters: number;
+    appendixEvidence: number;
+  };
+  branding: {
+    organizationName: string;
+    subtitle: string | null;
   };
   recentRuns: Array<{
     id: string;
@@ -45,6 +51,14 @@ export interface BoardPackData {
   title: string;
   generatedAt: string;
   periodLabel: string;
+  branding: {
+    organizationName: string;
+    subtitle: string | null;
+    complaintsTeamName: string;
+    complaintsEmail: string | null;
+    complaintsPhone: string | null;
+    complaintsAddress: string | null;
+  };
   summary: {
     totalCases: number;
     upheldRate: number;
@@ -62,6 +76,23 @@ export interface BoardPackData {
     executiveSummaryNote: string | null;
     boardFocusNote: string | null;
     actionSummaryNote: string | null;
+  };
+  appendix: {
+    recentLetters: Array<{
+      complaintReference: string;
+      subject: string;
+      status: 'draft' | 'generated' | 'sent';
+      recipientName: string | null;
+      createdAt: string;
+    }>;
+    recentEvidence: Array<{
+      complaintReference: string;
+      fileName: string;
+      category: string;
+      summary: string | null;
+      createdAt: string;
+    }>;
+    lateReferralText: string;
   };
   sections: BoardPackSection[];
 }

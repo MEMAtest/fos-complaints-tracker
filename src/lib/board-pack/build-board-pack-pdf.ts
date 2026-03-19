@@ -44,7 +44,7 @@ export async function buildBoardPackPdf(data: BoardPackData): Promise<Uint8Array
     drawAppendixPage(appendix, data, regular, bold);
   }
 
-  pages.forEach((page, index) => drawFooter(page, regular, index + 1, pages.length));
+  pages.forEach((page, index) => drawFooter(page, regular, data.branding.organizationName, index + 1, pages.length));
   return pdfDoc.save();
 }
 
@@ -54,9 +54,9 @@ function drawCoverPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bol
   page.drawRectangle({ x: PAGE_WIDTH - 160, y: PAGE_HEIGHT - 190, width: 220, height: 120, color: theme.blue, opacity: 0.18 });
   page.drawRectangle({ x: PAGE_WIDTH - 250, y: PAGE_HEIGHT - 240, width: 120, height: 160, color: theme.teal, opacity: 0.12 });
 
-  page.drawText('MEMA Consultants', { x: MARGIN, y: PAGE_HEIGHT - 48, size: 10, font: regular, color: theme.white });
+  page.drawText(data.branding.organizationName, { x: MARGIN, y: PAGE_HEIGHT - 48, size: 10, font: regular, color: theme.white });
   page.drawText(data.title, { x: MARGIN, y: PAGE_HEIGHT - 96, size: 28, font: bold, color: theme.white });
-  page.drawText('Board-ready complaints and ombudsman intelligence pack', { x: MARGIN, y: PAGE_HEIGHT - 126, size: 13, font: regular, color: theme.white });
+  page.drawText(data.branding.subtitle || 'Board-ready complaints and ombudsman intelligence pack', { x: MARGIN, y: PAGE_HEIGHT - 126, size: 13, font: regular, color: theme.white });
 
   drawRoundedPanel(page, MARGIN, PAGE_HEIGHT - 340, PAGE_WIDTH - MARGIN * 2, 112, theme.white, theme.border);
   page.drawText('Scope and reporting frame', { x: MARGIN + 18, y: PAGE_HEIGHT - 366, size: 12, font: bold, color: theme.ink });
@@ -162,17 +162,45 @@ function drawAppendixPage(page: PDFPage, data: BoardPackData, regular: PDFFont, 
   page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: theme.white });
   drawPageTitle(page, 'Appendix and Methodology', 'Scope notes, included sections, and supporting observations.', regular, bold);
 
-  drawRoundedPanel(page, MARGIN, 308, PAGE_WIDTH - MARGIN * 2, 194, theme.panel, theme.border);
+  drawRoundedPanel(page, MARGIN, 362, PAGE_WIDTH - MARGIN * 2, 140, theme.panel, theme.border);
   page.drawText('Included sections', { x: MARGIN + 18, y: 474, size: 12, font: bold, color: theme.ink });
   const included = data.sections.filter((section) => section.status === 'included').map((section) => section.title);
   drawWrappedText(page, included.join(' • '), MARGIN + 18, 448, PAGE_WIDTH - MARGIN * 2 - 36, 10.5, regular, theme.slate, 14);
   page.drawText('Trend support', { x: MARGIN + 18, y: 396, size: 11, font: bold, color: theme.ink });
   drawWrappedText(page, data.trends.map((trend) => `${trend.year}: ${formatNumber(trend.total)} total, ${formatNumber(trend.upheld)} upheld, ${formatNumber(trend.notUpheld)} not upheld`).join(' | '), MARGIN + 18, 372, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.slate, 13);
 
-  drawRoundedPanel(page, MARGIN, 132, PAGE_WIDTH - MARGIN * 2, 144, theme.panelWarm, theme.border);
-  page.drawText('Presentation note', { x: MARGIN + 18, y: 248, size: 12, font: bold, color: theme.ink });
-  drawWrappedText(page, 'This board pack is designed to support oversight discussions. It should be read alongside the underlying complaint register, remediation plans, and any complaint correspondence referenced in committee papers.', MARGIN + 18, 222, PAGE_WIDTH - MARGIN * 2 - 36, 10.5, regular, theme.slate, 14);
-  drawWrappedText(page, 'Where complaint operations data is incomplete, management commentary should explain the data gap, ownership, and timeline for correction before circulation.', MARGIN + 18, 176, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.muted, 13);
+  drawRoundedPanel(page, MARGIN, 172, 360, 164, theme.panelWarm, theme.border);
+  page.drawText('Recent complaint letters', { x: MARGIN + 18, y: 308, size: 12, font: bold, color: theme.ink });
+  if (data.appendix.recentLetters.length === 0) {
+    drawWrappedText(page, 'No complaint letters are currently available for the selected reporting scope.', MARGIN + 18, 284, 324, 10, regular, theme.muted, 14);
+  } else {
+    let y = 286;
+    data.appendix.recentLetters.slice(0, 4).forEach((item) => {
+      drawWrappedText(page, `${item.complaintReference} · ${item.subject}`, MARGIN + 18, y, 324, 9.5, bold, theme.ink, 12);
+      y -= 14;
+      drawWrappedText(page, `${item.status.toUpperCase()} · ${item.recipientName || 'No named recipient'} · ${new Date(item.createdAt).toLocaleString('en-GB', { dateStyle: 'medium' })}`, MARGIN + 18, y, 324, 9, regular, theme.slate, 12);
+      y -= 20;
+    });
+  }
+
+  drawRoundedPanel(page, 548, 172, 252, 164, theme.panel, theme.border);
+  page.drawText('Recent complaint evidence', { x: 566, y: 308, size: 12, font: bold, color: theme.ink });
+  if (data.appendix.recentEvidence.length === 0) {
+    drawWrappedText(page, 'No complaint evidence entries are currently available for the selected reporting scope.', 566, 284, 216, 10, regular, theme.muted, 14);
+  } else {
+    let y = 286;
+    data.appendix.recentEvidence.slice(0, 4).forEach((item) => {
+      drawWrappedText(page, `${item.complaintReference} · ${item.fileName}`, 566, y, 216, 9.5, bold, theme.ink, 12);
+      y -= 14;
+      drawWrappedText(page, `${item.category} · ${item.summary || 'No summary recorded'}`, 566, y, 216, 9, regular, theme.slate, 12);
+      y -= 20;
+    });
+  }
+
+  drawRoundedPanel(page, MARGIN, 54, PAGE_WIDTH - MARGIN * 2, 96, theme.panelWarm, theme.border);
+  page.drawText('Presentation and policy note', { x: MARGIN + 18, y: 126, size: 12, font: bold, color: theme.ink });
+  drawWrappedText(page, 'This board pack is designed to support oversight discussions. It should be read alongside the underlying complaint register, remediation plans, and any complaint correspondence referenced in committee papers.', MARGIN + 18, 100, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.slate, 13);
+  drawWrappedText(page, data.appendix.lateReferralText, MARGIN + 18, 74, PAGE_WIDTH - MARGIN * 2 - 36, 9.5, regular, theme.muted, 12);
 }
 
 function drawPageTitle(page: PDFPage, title: string, subtitle: string, regular: PDFFont, bold: PDFFont) {
@@ -224,9 +252,9 @@ function wrapText(text: string, width: number, size: number, font: PDFFont): str
   return lines;
 }
 
-function drawFooter(page: PDFPage, regular: PDFFont, pageNumber: number, totalPages: number) {
+function drawFooter(page: PDFPage, regular: PDFFont, organizationName: string, pageNumber: number, totalPages: number) {
   page.drawLine({ start: { x: MARGIN, y: 28 }, end: { x: PAGE_WIDTH - MARGIN, y: 28 }, thickness: 0.75, color: theme.border });
-  page.drawText('MEMA Consultants · FOS Complaints Intelligence', { x: MARGIN, y: 14, size: 8, font: regular, color: theme.muted });
+  page.drawText(`${organizationName} · FOS Complaints Intelligence`, { x: MARGIN, y: 14, size: 8, font: regular, color: theme.muted });
   const text = `Page ${pageNumber} of ${totalPages}`;
   page.drawText(text, { x: PAGE_WIDTH - MARGIN - regular.widthOfTextAtSize(text, 8), y: 14, size: 8, font: regular, color: theme.muted });
 }

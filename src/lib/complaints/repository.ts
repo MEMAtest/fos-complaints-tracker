@@ -9,6 +9,7 @@ import {
   ComplaintFilters,
   ComplaintImportPreviewRow,
   ComplaintImportRun,
+  ComplaintLateReferralPosition,
   ComplaintLetter,
   ComplaintLetterStatus,
   ComplaintLetterTemplateKey,
@@ -18,6 +19,8 @@ import {
   ComplaintRecord,
   ComplaintStatus,
   ComplaintStats,
+  ComplaintWorkspaceSettings,
+  ComplaintWorkspaceSettingsInput,
   COMPLAINT_EVIDENCE_CATEGORIES,
 } from './types';
 import { buildComplaintLetterDraft } from './letter-templates';
@@ -31,6 +34,7 @@ const VALID_PRIORITIES: ComplaintPriority[] = ['low', 'medium', 'high', 'urgent'
 const VALID_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [...COMPLAINT_EVIDENCE_CATEGORIES];
 const VALID_LETTER_TEMPLATE_KEYS: ComplaintLetterTemplateKey[] = ['acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom'];
 const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'sent'];
+const VALID_LATE_REFERRAL_POSITIONS: ComplaintLateReferralPosition[] = ['review_required', 'consent', 'do_not_consent', 'custom'];
 const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'complaint_created',
   'status_change',
@@ -43,6 +47,18 @@ const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'resolved',
   'closed',
 ];
+
+const DEFAULT_COMPLAINT_WORKSPACE_SETTINGS: ComplaintWorkspaceSettings = {
+  organizationName: 'MEMA Consultants',
+  complaintsTeamName: 'Complaints Team',
+  complaintsEmail: null,
+  complaintsPhone: null,
+  complaintsAddress: null,
+  boardPackSubtitle: 'Board-ready complaints and ombudsman intelligence pack',
+  lateReferralPosition: 'review_required',
+  lateReferralCustomText: null,
+  updatedAt: new Date(0).toISOString(),
+};
 
 export function parseComplaintFilters(searchParams: URLSearchParams): ComplaintFilters {
   const statusRaw = (searchParams.get('status') || 'all').trim();
@@ -60,6 +76,63 @@ export function parseComplaintFilters(searchParams: URLSearchParams): ComplaintF
     page: clamp(parsePositiveInt(searchParams.get('page'), DEFAULT_PAGE), 1, 10_000),
     pageSize: clamp(parsePositiveInt(searchParams.get('pageSize'), DEFAULT_PAGE_SIZE), 5, MAX_PAGE_SIZE),
   };
+}
+
+export async function getComplaintWorkspaceSettings(): Promise<ComplaintWorkspaceSettings> {
+  await ensureComplaintsWorkspaceSchema();
+  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `SELECT * FROM complaints_workspace_settings WHERE singleton = TRUE`
+  );
+
+  return row ? mapComplaintWorkspaceSettings(row) : { ...DEFAULT_COMPLAINT_WORKSPACE_SETTINGS };
+}
+
+export async function updateComplaintWorkspaceSettings(input: ComplaintWorkspaceSettingsInput): Promise<ComplaintWorkspaceSettings> {
+  await ensureComplaintsWorkspaceSchema();
+  const current = await getComplaintWorkspaceSettings();
+  const payload = normalizeComplaintWorkspaceSettingsInput(input, current);
+  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `
+      INSERT INTO complaints_workspace_settings (
+        singleton,
+        organization_name,
+        complaints_team_name,
+        complaints_email,
+        complaints_phone,
+        complaints_address,
+        board_pack_subtitle,
+        late_referral_position,
+        late_referral_custom_text,
+        updated_at
+      ) VALUES (
+        TRUE, $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+      )
+      ON CONFLICT (singleton)
+      DO UPDATE SET
+        organization_name = EXCLUDED.organization_name,
+        complaints_team_name = EXCLUDED.complaints_team_name,
+        complaints_email = EXCLUDED.complaints_email,
+        complaints_phone = EXCLUDED.complaints_phone,
+        complaints_address = EXCLUDED.complaints_address,
+        board_pack_subtitle = EXCLUDED.board_pack_subtitle,
+        late_referral_position = EXCLUDED.late_referral_position,
+        late_referral_custom_text = EXCLUDED.late_referral_custom_text,
+        updated_at = NOW()
+      RETURNING *
+    `,
+    [
+      payload.organizationName,
+      payload.complaintsTeamName,
+      payload.complaintsEmail,
+      payload.complaintsPhone,
+      payload.complaintsAddress,
+      payload.boardPackSubtitle,
+      payload.lateReferralPosition,
+      payload.lateReferralCustomText,
+    ]
+  );
+
+  return mapComplaintWorkspaceSettings(row || {});
 }
 
 export async function listComplaints(filters: ComplaintFilters): Promise<ComplaintListResult> {
@@ -271,6 +344,102 @@ export async function listComplaintLetters(complaintId: string): Promise<Complai
   return rows.map(mapComplaintLetter);
 }
 
+export async function getComplaintLetterContext(letterId: string): Promise<{
+  complaint: ComplaintRecord;
+  letter: ComplaintLetter;
+  settings: ComplaintWorkspaceSettings;
+} | null> {
+  await ensureComplaintsWorkspaceSchema();
+  const [row, settings] = await Promise.all([
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `
+        SELECT
+          l.*,
+          c.id AS complaint_id_value,
+          c.complaint_reference,
+          c.linked_fos_case_id,
+          c.complainant_name,
+          c.complainant_email,
+          c.complainant_phone,
+          c.complainant_address,
+          c.firm_name,
+          c.product,
+          c.complaint_type,
+          c.complaint_category,
+          c.description,
+          c.received_date,
+          c.acknowledged_date,
+          c.four_week_due_date,
+          c.eight_week_due_date,
+          c.final_response_date,
+          c.resolved_date,
+          c.root_cause,
+          c.remedial_action,
+          c.resolution,
+          c.compensation_amount,
+          c.fos_referred,
+          c.fos_outcome,
+          c.status AS complaint_status,
+          c.priority AS complaint_priority,
+          c.assigned_to,
+          c.notes,
+          c.created_by,
+          c.updated_by,
+          c.created_at AS complaint_created_at,
+          c.updated_at AS complaint_updated_at
+        FROM complaint_letters l
+        INNER JOIN complaints_records c ON c.id = l.complaint_id
+        WHERE l.id = $1
+      `,
+      [letterId]
+    ),
+    getComplaintWorkspaceSettings(),
+  ]);
+
+  if (!row) return null;
+
+  const complaint = mapComplaintRecord({
+    id: row.complaint_id_value,
+    complaint_reference: row.complaint_reference,
+    linked_fos_case_id: row.linked_fos_case_id,
+    complainant_name: row.complainant_name,
+    complainant_email: row.complainant_email,
+    complainant_phone: row.complainant_phone,
+    complainant_address: row.complainant_address,
+    firm_name: row.firm_name,
+    product: row.product,
+    complaint_type: row.complaint_type,
+    complaint_category: row.complaint_category,
+    description: row.description,
+    received_date: row.received_date,
+    acknowledged_date: row.acknowledged_date,
+    four_week_due_date: row.four_week_due_date,
+    eight_week_due_date: row.eight_week_due_date,
+    final_response_date: row.final_response_date,
+    resolved_date: row.resolved_date,
+    root_cause: row.root_cause,
+    remedial_action: row.remedial_action,
+    resolution: row.resolution,
+    compensation_amount: row.compensation_amount,
+    fos_referred: row.fos_referred,
+    fos_outcome: row.fos_outcome,
+    status: row.complaint_status,
+    priority: row.complaint_priority,
+    assigned_to: row.assigned_to,
+    notes: row.notes,
+    created_by: row.created_by,
+    updated_by: row.updated_by,
+    created_at: row.complaint_created_at,
+    updated_at: row.complaint_updated_at,
+  });
+
+  return {
+    complaint,
+    letter: mapComplaintLetter(row),
+    settings,
+  };
+}
+
 export async function createComplaintLetter(input: {
   complaintId: string;
   templateKey: ComplaintLetterTemplateKey;
@@ -281,13 +450,16 @@ export async function createComplaintLetter(input: {
   generatedBy?: string | null;
 }): Promise<ComplaintLetter> {
   await ensureComplaintsWorkspaceSchema();
-  const complaint = await getComplaintById(input.complaintId);
+  const [complaint, settings] = await Promise.all([
+    getComplaintById(input.complaintId),
+    getComplaintWorkspaceSettings(),
+  ]);
   if (!complaint) {
     throw new Error('Complaint not found.');
   }
 
   const templateKey = normalizeLetterTemplateKey(input.templateKey);
-  const draft = buildComplaintLetterDraft(complaint, templateKey, {
+  const draft = buildComplaintLetterDraft(complaint, templateKey, settings, {
     subject: input.subject,
     bodyText: input.bodyText,
     recipientName: input.recipientName,
@@ -896,6 +1068,84 @@ export async function listBoardPackRuns(limit = 10): Promise<Array<{
   }));
 }
 
+export async function listComplaintAppendixArtifacts(dateFrom?: string | null, dateTo?: string | null): Promise<{
+  recentLetters: Array<{
+    id: string;
+    complaintReference: string;
+    subject: string;
+    status: ComplaintLetterStatus;
+    recipientName: string | null;
+    createdAt: string;
+  }>;
+  recentEvidence: Array<{
+    id: string;
+    complaintReference: string;
+    fileName: string;
+    category: ComplaintEvidenceCategory;
+    summary: string | null;
+    createdAt: string;
+  }>;
+}> {
+  await ensureComplaintsWorkspaceSchema();
+  const { whereSql, params } = buildComplaintDateRangeClause(dateFrom, dateTo, 'c', 1);
+
+  const [letterRows, evidenceRows] = await Promise.all([
+    DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          l.id,
+          c.complaint_reference,
+          l.subject,
+          l.status,
+          l.recipient_name,
+          l.created_at
+        FROM complaint_letters l
+        INNER JOIN complaints_records c ON c.id = l.complaint_id
+        ${whereSql}
+        ORDER BY l.created_at DESC
+        LIMIT 6
+      `,
+      params
+    ),
+    DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          e.id,
+          c.complaint_reference,
+          e.file_name,
+          e.category,
+          e.summary,
+          e.created_at
+        FROM complaint_evidence e
+        INNER JOIN complaints_records c ON c.id = e.complaint_id
+        ${whereSql}
+        ORDER BY e.created_at DESC
+        LIMIT 6
+      `,
+      params
+    ),
+  ]);
+
+  return {
+    recentLetters: letterRows.map((row) => ({
+      id: String(row.id || ''),
+      complaintReference: String(row.complaint_reference || ''),
+      subject: String(row.subject || 'Complaint correspondence'),
+      status: normalizeLetterStatus(row.status),
+      recipientName: sanitizeNullable(row.recipient_name),
+      createdAt: toIsoDateTime(row.created_at),
+    })),
+    recentEvidence: evidenceRows.map((row) => ({
+      id: String(row.id || ''),
+      complaintReference: String(row.complaint_reference || ''),
+      fileName: String(row.file_name || 'evidence.bin'),
+      category: normalizeEvidenceCategory(row.category),
+      summary: sanitizeNullable(row.summary),
+      createdAt: toIsoDateTime(row.created_at),
+    })),
+  };
+}
+
 export async function recordBoardPackRun(params: {
   format: 'pdf' | 'pptx';
   status: 'success' | 'failed';
@@ -1027,6 +1277,34 @@ function buildComplaintWhereClause(filters: ComplaintFilters, startIndex: number
     whereSql: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
     params,
     nextIndex,
+  };
+}
+
+function buildComplaintDateRangeClause(
+  dateFrom: string | null | undefined,
+  dateTo: string | null | undefined,
+  alias: string,
+  startIndex: number
+) {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let nextIndex = startIndex;
+
+  if (dateFrom) {
+    params.push(dateFrom);
+    conditions.push(`${alias}.received_date >= $${nextIndex}::date`);
+    nextIndex += 1;
+  }
+
+  if (dateTo) {
+    params.push(dateTo);
+    conditions.push(`${alias}.received_date <= $${nextIndex}::date`);
+    nextIndex += 1;
+  }
+
+  return {
+    whereSql: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
   };
 }
 
@@ -1260,6 +1538,20 @@ function mapComplaintLetter(row: Record<string, unknown>): ComplaintLetter {
   };
 }
 
+function mapComplaintWorkspaceSettings(row: Record<string, unknown>): ComplaintWorkspaceSettings {
+  return {
+    organizationName: sanitizeText(row.organization_name) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.organizationName,
+    complaintsTeamName: sanitizeText(row.complaints_team_name) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.complaintsTeamName,
+    complaintsEmail: sanitizeNullable(row.complaints_email),
+    complaintsPhone: sanitizeNullable(row.complaints_phone),
+    complaintsAddress: sanitizeNullable(row.complaints_address),
+    boardPackSubtitle: sanitizeNullable(row.board_pack_subtitle) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.boardPackSubtitle,
+    lateReferralPosition: normalizeLateReferralPosition(row.late_referral_position),
+    lateReferralCustomText: sanitizeNullable(row.late_referral_custom_text),
+    updatedAt: row.updated_at ? toIsoDateTime(row.updated_at) : DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.updatedAt,
+  };
+}
+
 function mapComplaintImportRun(row: Record<string, unknown>): ComplaintImportRun {
   return {
     id: String(row.id || ''),
@@ -1315,6 +1607,35 @@ function normalizeLetterStatus(value: unknown): ComplaintLetterStatus {
   return VALID_LETTER_STATUSES.includes(String(value) as ComplaintLetterStatus)
     ? (String(value) as ComplaintLetterStatus)
     : 'draft';
+}
+
+function normalizeLateReferralPosition(value: unknown): ComplaintLateReferralPosition {
+  return VALID_LATE_REFERRAL_POSITIONS.includes(String(value) as ComplaintLateReferralPosition)
+    ? (String(value) as ComplaintLateReferralPosition)
+    : 'review_required';
+}
+
+function normalizeComplaintWorkspaceSettingsInput(
+  input: ComplaintWorkspaceSettingsInput,
+  fallback: ComplaintWorkspaceSettings
+): ComplaintWorkspaceSettings {
+  const organizationName = sanitizeText(input.organizationName ?? fallback.organizationName) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.organizationName;
+  const complaintsTeamName = sanitizeText(input.complaintsTeamName ?? fallback.complaintsTeamName) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.complaintsTeamName;
+  const lateReferralPosition = normalizeLateReferralPosition(input.lateReferralPosition ?? fallback.lateReferralPosition);
+
+  return {
+    organizationName,
+    complaintsTeamName,
+    complaintsEmail: sanitizeNullable(input.complaintsEmail ?? fallback.complaintsEmail),
+    complaintsPhone: sanitizeNullable(input.complaintsPhone ?? fallback.complaintsPhone),
+    complaintsAddress: sanitizeNullable(input.complaintsAddress ?? fallback.complaintsAddress),
+    boardPackSubtitle: sanitizeNullable(input.boardPackSubtitle ?? fallback.boardPackSubtitle) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.boardPackSubtitle,
+    lateReferralPosition,
+    lateReferralCustomText: lateReferralPosition === 'custom'
+      ? sanitizeNullable(input.lateReferralCustomText ?? fallback.lateReferralCustomText)
+      : sanitizeNullable(input.lateReferralCustomText) || null,
+    updatedAt: fallback.updatedAt,
+  };
 }
 
 function labelForLetterTemplate(templateKey: ComplaintLetterTemplateKey): string {
