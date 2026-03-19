@@ -95,6 +95,72 @@ export function parseFilters(searchParams: URLSearchParams): FOSDashboardFilters
   };
 }
 
+export async function searchFirmDirectory(
+  searchQuery: string,
+  filters: FOSDashboardFilters,
+  limit = 25
+): Promise<Array<{ firm: string; totalCases: number; latestDecisionDate: string | null }>> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+
+  const searchFilters: FOSDashboardFilters = {
+    ...filters,
+    query: '',
+    firms: [],
+    page: DEFAULT_PAGE,
+    pageSize: DEFAULT_PAGE_SIZE,
+  };
+  const where = buildWhereClause(searchFilters, 'd', 1);
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const safeLimit = clamp(limit, 1, 100);
+  const firmExpression = `COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm')`;
+  const params = [...where.params];
+  let searchFilterSql = '';
+  let orderSql = 'COUNT(*) DESC, firm ASC';
+
+  if (normalizedSearch) {
+    params.push(`${normalizedSearch}%`);
+    const prefixIndex = params.length;
+    params.push(`%${normalizedSearch}%`);
+    const containsIndex = params.length;
+    searchFilterSql = `AND LOWER(${firmExpression}) LIKE $${containsIndex}`;
+    orderSql = `
+      CASE
+        WHEN LOWER(${firmExpression}) LIKE $${prefixIndex} THEN 0
+        WHEN LOWER(${firmExpression}) LIKE $${containsIndex} THEN 1
+        ELSE 2
+      END ASC,
+      COUNT(*) DESC,
+      firm ASC
+    `;
+  }
+
+  params.push(safeLimit);
+  const limitIndex = params.length;
+
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT
+        ${firmExpression} AS firm,
+        COUNT(*)::INT AS total_cases,
+        MAX(d.decision_date) AS latest_decision_date
+      FROM fos_decisions d
+      ${where.whereSql || 'WHERE TRUE'}
+      ${searchFilterSql}
+      GROUP BY ${firmExpression}
+      ORDER BY ${orderSql}
+      LIMIT $${limitIndex}
+    `,
+    params
+  );
+
+  return rows.map((row) => ({
+    firm: normalizeLabel(row.firm, 'Unknown firm'),
+    totalCases: toInt(row.total_cases),
+    latestDecisionDate: toIsoDate(row.latest_decision_date),
+  }));
+}
+
 export async function getDashboardSnapshot(
   filters: FOSDashboardFilters,
   options: { includeCases?: boolean } = {}

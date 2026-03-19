@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
-import { Download, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
+import { Briefcase, Download, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,9 +14,10 @@ import {
 interface ExportButtonProps {
   onExportCsv?: () => void;
   onExportPdf?: () => void;
+  boardPackHref?: string;
 }
 
-export function ExportButton({ onExportCsv, onExportPdf }: ExportButtonProps) {
+export function ExportButton({ onExportCsv, onExportPdf, boardPackHref = '/board-pack' }: ExportButtonProps) {
   const [loading, setLoading] = useState<'csv' | 'pdf' | null>(null);
 
   async function handleCsv() {
@@ -53,6 +55,12 @@ export function ExportButton({ onExportCsv, onExportPdf }: ExportButtonProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link href={boardPackHref}>
+            <Briefcase className="mr-2 h-4 w-4" />
+            Board Pack Builder
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={handleCsv} disabled={!onExportCsv || loading !== null}>
           <FileSpreadsheet className="mr-2 h-4 w-4" />
           Export CSV

@@ -30,10 +30,21 @@ function sslModeFromDatabaseUrl(connectionString: string | undefined): SslMode |
   }
 }
 
+function isLocalDatabaseUrl(connectionString: string | undefined): boolean {
+  if (!connectionString) return false;
+  try {
+    const url = new URL(connectionString);
+    const hostname = (url.hostname || '').trim().toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
 function resolveSslOptions(connectionString: string | undefined) {
   const explicitMode = normalizeSslMode(process.env.DB_SSL_MODE);
   const detectedMode = explicitMode || sslModeFromDatabaseUrl(connectionString);
-  const mode = detectedMode || (process.env.NODE_ENV === 'production' ? 'require' : 'disable');
+  const mode = detectedMode || (isLocalDatabaseUrl(connectionString) ? 'disable' : 'require');
 
   if (mode === 'disable') return false;
   if (mode === 'verify-ca' || mode === 'verify-full') {

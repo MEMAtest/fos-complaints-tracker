@@ -23,7 +23,7 @@ test.describe('Smoke tests - pages load', () => {
   test('Comparison page loads with firm selectors', async ({ page }) => {
     await page.goto('/comparison');
     await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Firm Comparison');
-    await expect(page.getByText(/Select two firms above to compare/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /add firm/i })).toBeVisible();
   });
 });
 

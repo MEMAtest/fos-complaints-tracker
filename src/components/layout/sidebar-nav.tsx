@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle } from 'lucide-react';
+import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/layout/settings-dialog';
@@ -14,6 +14,9 @@ const NAV_ITEMS = [
   { href: '/analysis', label: 'Analysis', icon: BarChart3 },
   { href: '/root-causes', label: 'Root Causes', icon: Network },
   { href: '/comparison', label: 'Firm Comparison', icon: GitCompare },
+  { href: '/complaints', label: 'Complaints', icon: ClipboardList },
+  { href: '/imports/complaints', label: 'Imports', icon: Upload },
+  { href: '/board-pack', label: 'Board Pack', icon: Briefcase },
 ] as const;
 
 export function SidebarNav() {
@@ -30,7 +33,7 @@ export function SidebarNav() {
 
         <div className="flex flex-1 flex-col items-center gap-1">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
             const Icon = item.icon;
 
             return (

@@ -48,6 +48,17 @@ function sslModeFromConnectionString(connectionString) {
   }
 }
 
+function isLocalDatabaseUrl(connectionString) {
+  if (!connectionString) return false;
+  try {
+    const url = new URL(connectionString);
+    const hostname = String(url.hostname || '').trim().toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
 export function resolveSslMode(connectionString = process.env.DATABASE_URL) {
   const explicitEnvMode = normalizeSslMode(process.env.DB_SSL_MODE);
   if (explicitEnvMode) return explicitEnvMode;
@@ -55,7 +66,7 @@ export function resolveSslMode(connectionString = process.env.DATABASE_URL) {
   const connectionMode = sslModeFromConnectionString(connectionString);
   if (connectionMode) return connectionMode;
 
-  return process.env.NODE_ENV === 'production' ? 'require' : 'disable';
+  return isLocalDatabaseUrl(connectionString) ? 'disable' : 'require';
 }
 
 export function resolveSslConfig(connectionString = process.env.DATABASE_URL) {
