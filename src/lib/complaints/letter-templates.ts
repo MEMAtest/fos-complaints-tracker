@@ -97,6 +97,7 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         'Your right to refer to the Financial Ombudsman Service',
         `Because eight weeks have now passed since we received your complaint on ${received}, you may now refer the complaint to the Financial Ombudsman Service free of charge if you do not want to wait for our final response.`,
         fosRightsParagraph('delay_response'),
+        lateReferralPositionParagraph(),
         'Enclosure when issued: Financial Ombudsman Service standard explanatory leaflet.',
         '',
         'Yours sincerely,',
@@ -126,6 +127,7 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         'If you remain dissatisfied',
         'The Financial Ombudsman Service is a free and independent service. If you remain unhappy with our final response, you may be able to ask them to review your complaint.',
         fosRightsParagraph('final_response'),
+        lateReferralPositionParagraph(),
         'Enclosure when issued: Financial Ombudsman Service standard explanatory leaflet.',
         '',
         'Yours sincerely,',
@@ -147,6 +149,7 @@ function bodyForTemplate(complaint: ComplaintRecord, templateKey: ComplaintLette
         '',
         'Financial Ombudsman Service details',
         fosRightsParagraph('fos_referral'),
+        lateReferralPositionParagraph(),
         'Enclosure when issued: Financial Ombudsman Service standard explanatory leaflet.',
         '',
         'Yours sincerely,',
@@ -184,6 +187,10 @@ function fosRightsParagraph(context: 'delay_response' | 'final_response' | 'fos_
     'The Financial Ombudsman Service website is www.financial-ombudsman.org.uk.',
     'If you do not refer your complaint within the relevant time limit, the Ombudsman may be unable to consider it unless the applicable rules allow otherwise.',
   ].join(' ');
+}
+
+function lateReferralPositionParagraph(): string {
+  return 'Template completion note before issue: confirm whether your organisation will or will not consent to the Financial Ombudsman Service considering a complaint referred outside the applicable time limit, and update this paragraph to match the wording required by DISP 1 Annex 3R.';
 }
 
 function sanitize(value: string | null | undefined): string {

@@ -182,8 +182,8 @@ export const COMPLAINT_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [
 
 export const COMPLAINT_LETTER_TEMPLATES: Array<{ key: ComplaintLetterTemplateKey; label: string; description: string }> = [
   { key: 'acknowledgement', label: 'Acknowledgement', description: 'Confirms receipt, scope, investigation steps, and expected timelines.' },
-  { key: 'holding_response', label: 'Delay Response', description: 'Eight-week delay response with Ombudsman signposting and next steps.' },
-  { key: 'final_response', label: 'Final Response', description: 'Structured final response covering findings, redress, and Ombudsman rights.' },
-  { key: 'fos_referral', label: 'FOS Referral', description: 'Explains when and how the complaint can be referred to FOS.' },
+  { key: 'holding_response', label: 'Delay Response', description: 'Eight-week delay response with Ombudsman signposting, time-limit note, and next steps.' },
+  { key: 'final_response', label: 'Final Response', description: 'Structured final response covering findings, redress, Ombudsman rights, and the late-referral review note.' },
+  { key: 'fos_referral', label: 'FOS Referral', description: 'Explains when and how the complaint can be referred to FOS, including the late-referral review note.' },
   { key: 'custom', label: 'Custom Draft', description: 'Creates a manually-authored letter or response note.' },
 ];
