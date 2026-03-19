@@ -1,189 +1,234 @@
-import { PDFDocument, rgb, StandardFonts, type PDFPage } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { BoardPackData } from './types';
 
 const PAGE_WIDTH = 841.89;
 const PAGE_HEIGHT = 595.28;
 const MARGIN = 42;
-const LINE_HEIGHT = 16;
-const SECTION_GAP = 14;
+
+const theme = {
+  ink: rgb(0.08, 0.12, 0.22),
+  navy: rgb(0.07, 0.16, 0.34),
+  blue: rgb(0.14, 0.39, 0.78),
+  teal: rgb(0.05, 0.53, 0.47),
+  amber: rgb(0.79, 0.46, 0.09),
+  red: rgb(0.74, 0.18, 0.22),
+  slate: rgb(0.32, 0.37, 0.46),
+  muted: rgb(0.49, 0.53, 0.61),
+  border: rgb(0.84, 0.87, 0.92),
+  panel: rgb(0.97, 0.98, 0.99),
+  panelWarm: rgb(0.99, 0.98, 0.95),
+  white: rgb(1, 1, 1),
+};
 
 export async function buildBoardPackPdf(data: BoardPackData): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const pages: PDFPage[] = [];
-  let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  pages.push(page);
-  let y = PAGE_HEIGHT - MARGIN;
 
-  const theme = {
-    navy: rgb(0.07, 0.12, 0.31),
-    blue: rgb(0.13, 0.38, 0.86),
-    slate: rgb(0.27, 0.31, 0.39),
-    muted: rgb(0.45, 0.49, 0.58),
-    border: rgb(0.84, 0.87, 0.91),
-    panel: rgb(0.97, 0.98, 0.99),
-    green: rgb(0.04, 0.58, 0.42),
-    red: rgb(0.89, 0.2, 0.3),
-  };
+  const cover = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  pages.push(cover);
+  drawCoverPage(cover, data, regular, bold);
 
-  const ensureSpace = (needed: number) => {
-    if (y - needed > MARGIN) return;
-    page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    pages.push(page);
-    y = PAGE_HEIGHT - MARGIN;
-  };
+  const summary = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  pages.push(summary);
+  drawSummaryPage(summary, data, regular, bold);
 
-  const drawWrapped = (text: string, x: number, width: number, size = 10, font = regular, color = theme.slate) => {
-    const words = text.split(/\s+/).filter(Boolean);
-    let line = '';
-    for (const word of words) {
-      const next = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(next, size) <= width) {
-        line = next;
-        continue;
-      }
-      page.drawText(line, { x, y, size, font, color });
-      y -= LINE_HEIGHT;
-      line = word;
-      ensureSpace(LINE_HEIGHT + 20);
-    }
-    if (line) {
-      page.drawText(line, { x, y, size, font, color });
-      y -= LINE_HEIGHT;
-    }
-  };
-
-  const drawSectionTitle = (title: string) => {
-    ensureSpace(36);
-    page.drawText(title, { x: MARGIN, y, size: 16, font: bold, color: theme.navy });
-    y -= 12;
-    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: theme.border });
-    y -= 18;
-  };
-
-  const drawMetricStrip = () => {
-    const metrics = [
-      { label: 'FOS cases', value: formatNumber(data.summary.totalCases), tone: theme.navy },
-      { label: 'Upheld rate', value: `${data.summary.upheldRate.toFixed(1)}%`, tone: theme.blue },
-      { label: 'Open complaints', value: formatNumber(data.summary.openComplaints), tone: theme.green },
-      { label: 'Overdue complaints', value: formatNumber(data.summary.overdueComplaints), tone: theme.red },
-    ];
-    const gap = 12;
-    const boxWidth = (PAGE_WIDTH - MARGIN * 2 - gap * 3) / 4;
-    const boxHeight = 70;
-    ensureSpace(boxHeight + 12);
-    metrics.forEach((metric, index) => {
-      const x = MARGIN + index * (boxWidth + gap);
-      page.drawRectangle({ x, y: y - boxHeight, width: boxWidth, height: boxHeight, color: theme.panel, borderColor: theme.border, borderWidth: 1 });
-      page.drawText(metric.label, { x: x + 12, y: y - 18, size: 9, font: regular, color: theme.muted });
-      page.drawText(metric.value, { x: x + 12, y: y - 44, size: 18, font: bold, color: metric.tone });
-    });
-    y -= boxHeight + SECTION_GAP;
-  };
-
-  page.drawText(data.title, { x: MARGIN, y, size: 22, font: bold, color: theme.navy });
-  y -= 28;
-  page.drawText('Board-ready complaints pack', { x: MARGIN, y, size: 12, font: regular, color: theme.slate });
-  y -= 20;
-  page.drawText(`Period: ${data.periodLabel}`, { x: MARGIN, y, size: 10, font: regular, color: theme.muted });
-  y -= 14;
-  page.drawText(`Generated: ${new Date(data.generatedAt).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' })}`, {
-    x: MARGIN,
-    y,
-    size: 10,
-    font: regular,
-    color: theme.muted,
-  });
-  y -= 22;
-
-  drawMetricStrip();
-
-  drawSectionTitle('Executive summary');
-  const executiveSummary = data.boardNotes.executiveSummaryNote
-    || `The current FOS dataset shows ${formatNumber(data.summary.totalCases)} decisions in scope with an upheld rate of ${data.summary.upheldRate.toFixed(1)}%. Operational complaints data shows ${formatNumber(data.summary.openComplaints)} open complaints and ${formatNumber(data.summary.overdueComplaints)} overdue cases requiring immediate management attention.`;
-  drawWrapped(executiveSummary, MARGIN, PAGE_WIDTH - MARGIN * 2, 11, regular, theme.slate);
-  if (data.boardNotes.boardFocusNote) {
-    y -= 4;
-    drawWrapped(`Board focus: ${data.boardNotes.boardFocusNote}`, MARGIN, PAGE_WIDTH - MARGIN * 2, 10, bold, theme.navy);
-  }
-
-  drawSectionTitle('Outcome and trend overview');
-  drawWrapped(`Upheld rate: ${data.summary.upheldRate.toFixed(1)}%. Not upheld rate: ${data.summary.notUpheldRate.toFixed(1)}%.`, MARGIN, PAGE_WIDTH - MARGIN * 2);
-  y -= 4;
-  data.trends.slice(0, 6).forEach((trend) => {
-    ensureSpace(18);
-    page.drawText(`${trend.year}`, { x: MARGIN, y, size: 10, font: bold, color: theme.navy });
-    page.drawText(`${formatNumber(trend.total)} cases · ${formatNumber(trend.upheld)} upheld · ${formatNumber(trend.notUpheld)} not upheld`, {
-      x: MARGIN + 60,
-      y,
-      size: 10,
-      font: regular,
-      color: theme.slate,
-    });
-    y -= 16;
-  });
-
-  drawSectionTitle('Firm and product concentration');
-  const columnGap = 28;
-  const colWidth = (PAGE_WIDTH - MARGIN * 2 - columnGap) / 2;
-  const colTop = y;
-  let leftY = colTop;
-  let rightY = colTop;
-  page.drawText('Top firms', { x: MARGIN, y: leftY, size: 11, font: bold, color: theme.navy });
-  page.drawText('Top products', { x: MARGIN + colWidth + columnGap, y: rightY, size: 11, font: bold, color: theme.navy });
-  leftY -= 18;
-  rightY -= 18;
-  data.topFirms.slice(0, 6).forEach((item) => {
-    page.drawText(`${item.firm}`, { x: MARGIN, y: leftY, size: 10, font: regular, color: theme.slate });
-    page.drawText(`${formatNumber(item.total)} · ${item.upheldRate.toFixed(1)}% upheld`, { x: MARGIN + colWidth - 110, y: leftY, size: 9, font: regular, color: theme.muted });
-    leftY -= 15;
-  });
-  data.topProducts.slice(0, 6).forEach((item) => {
-    page.drawText(`${item.product}`, { x: MARGIN + colWidth + columnGap, y: rightY, size: 10, font: regular, color: theme.slate });
-    page.drawText(`${formatNumber(item.total)} · ${item.upheldRate.toFixed(1)}% upheld`, { x: MARGIN + colWidth + columnGap + colWidth - 110, y: rightY, size: 9, font: regular, color: theme.muted });
-    rightY -= 15;
-  });
-  y = Math.min(leftY, rightY) - SECTION_GAP;
-
-  drawSectionTitle('Root causes and operational health');
-  const rootCauseSummary = data.topRootCauses.length > 0
-    ? data.topRootCauses.map((item) => `${item.label} (${formatNumber(item.count)})`).join(', ')
-    : 'No root-cause tags currently available.';
-  drawWrapped(`Top root causes: ${rootCauseSummary}`, MARGIN, PAGE_WIDTH - MARGIN * 2);
-  y -= 4;
-  drawWrapped(`Operational complaints: ${formatNumber(data.summary.totalComplaints)} total complaints, ${formatNumber(data.summary.openComplaints)} open, ${formatNumber(data.summary.referredToFos)} referred to FOS, ${formatNumber(data.summary.overdueComplaints)} overdue.`, MARGIN, PAGE_WIDTH - MARGIN * 2);
-
-  drawSectionTitle('Management actions');
-  const actionSummary = data.boardNotes.actionSummaryNote
-    || `Immediate management focus should be on overdue complaints, repeat root causes, and any firms or products with elevated upheld volumes.`;
-  drawWrapped(actionSummary, MARGIN, PAGE_WIDTH - MARGIN * 2, 11, regular, theme.slate);
+  const concentration = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  pages.push(concentration);
+  drawConcentrationPage(concentration, data, regular, bold);
 
   if (data.sections.some((section) => section.key === 'appendix' && section.status === 'included')) {
-    drawSectionTitle('Appendix');
-    drawWrapped(
-      `Included sections: ${data.sections.filter((section) => section.status === 'included').map((section) => section.title).join(', ')}.`,
-      MARGIN,
-      PAGE_WIDTH - MARGIN * 2,
-      10,
-      regular,
-      theme.muted
-    );
+    const appendix = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    pages.push(appendix);
+    drawAppendixPage(appendix, data, regular, bold);
   }
 
-  pages.forEach((pdfPage, index) => {
-    pdfPage.drawLine({ start: { x: MARGIN, y: 28 }, end: { x: PAGE_WIDTH - MARGIN, y: 28 }, thickness: 0.75, color: theme.border });
-    pdfPage.drawText('MEMA Consultants · FOS Complaints Intelligence', { x: MARGIN, y: 14, size: 8, font: regular, color: theme.muted });
-    pdfPage.drawText(`Page ${index + 1} of ${pages.length}`, {
-      x: PAGE_WIDTH - MARGIN - regular.widthOfTextAtSize(`Page ${index + 1} of ${pages.length}`, 8),
-      y: 14,
-      size: 8,
-      font: regular,
-      color: theme.muted,
-    });
+  pages.forEach((page, index) => drawFooter(page, regular, index + 1, pages.length));
+  return pdfDoc.save();
+}
+
+function drawCoverPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bold: PDFFont) {
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: theme.panel });
+  page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 210, width: PAGE_WIDTH, height: 210, color: theme.navy });
+  page.drawRectangle({ x: PAGE_WIDTH - 160, y: PAGE_HEIGHT - 190, width: 220, height: 120, color: theme.blue, opacity: 0.18 });
+  page.drawRectangle({ x: PAGE_WIDTH - 250, y: PAGE_HEIGHT - 240, width: 120, height: 160, color: theme.teal, opacity: 0.12 });
+
+  page.drawText('MEMA Consultants', { x: MARGIN, y: PAGE_HEIGHT - 48, size: 10, font: regular, color: theme.white });
+  page.drawText(data.title, { x: MARGIN, y: PAGE_HEIGHT - 96, size: 28, font: bold, color: theme.white });
+  page.drawText('Board-ready complaints and ombudsman intelligence pack', { x: MARGIN, y: PAGE_HEIGHT - 126, size: 13, font: regular, color: theme.white });
+
+  drawRoundedPanel(page, MARGIN, PAGE_HEIGHT - 340, PAGE_WIDTH - MARGIN * 2, 112, theme.white, theme.border);
+  page.drawText('Scope and reporting frame', { x: MARGIN + 18, y: PAGE_HEIGHT - 366, size: 12, font: bold, color: theme.ink });
+  page.drawText(`Period: ${data.periodLabel}`, { x: MARGIN + 18, y: PAGE_HEIGHT - 392, size: 10, font: regular, color: theme.slate });
+  page.drawText(`Generated: ${new Date(data.generatedAt).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' })}`, {
+    x: MARGIN + 18,
+    y: PAGE_HEIGHT - 408,
+    size: 10,
+    font: regular,
+    color: theme.slate,
+  });
+  const included = data.sections.filter((section) => section.status === 'included').map((section) => section.title);
+  drawWrappedText(page, included.join(' • '), MARGIN + 18, PAGE_HEIGHT - 434, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.muted, 13);
+
+  const cardWidth = (PAGE_WIDTH - MARGIN * 2 - 24) / 4;
+  const metricY = 118;
+  drawMetricCard(page, MARGIN, metricY, cardWidth, 82, 'FOS cases', formatNumber(data.summary.totalCases), theme.navy, regular, bold);
+  drawMetricCard(page, MARGIN + cardWidth + 8, metricY, cardWidth, 82, 'Upheld rate', `${data.summary.upheldRate.toFixed(1)}%`, theme.blue, regular, bold);
+  drawMetricCard(page, MARGIN + (cardWidth + 8) * 2, metricY, cardWidth, 82, 'Open complaints', formatNumber(data.summary.openComplaints), theme.teal, regular, bold);
+  drawMetricCard(page, MARGIN + (cardWidth + 8) * 3, metricY, cardWidth, 82, 'Overdue complaints', formatNumber(data.summary.overdueComplaints), theme.red, regular, bold);
+}
+
+function drawSummaryPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bold: PDFFont) {
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: theme.white });
+  drawPageTitle(page, 'Executive Summary', 'Clear complaint posture, regulatory context, and management focus.', regular, bold);
+
+  drawRoundedPanel(page, MARGIN, 330, 480, 172, theme.panelWarm, theme.border);
+  page.drawText('Executive overview', { x: MARGIN + 18, y: 478, size: 12, font: bold, color: theme.ink });
+  const executiveSummary = data.boardNotes.executiveSummaryNote
+    || `There are ${formatNumber(data.summary.totalCases)} FOS decisions in scope with an upheld rate of ${data.summary.upheldRate.toFixed(1)}%. The operational complaint book currently contains ${formatNumber(data.summary.openComplaints)} open complaints and ${formatNumber(data.summary.overdueComplaints)} overdue matters that require active management attention.`;
+  drawWrappedText(page, executiveSummary, MARGIN + 18, 452, 444, 11, regular, theme.slate, 15);
+
+  drawRoundedPanel(page, 546, 410, 254, 92, theme.panel, theme.border);
+  page.drawText('Board focus', { x: 564, y: 478, size: 11, font: bold, color: theme.ink });
+  drawWrappedText(page, data.boardNotes.boardFocusNote || 'Focus on overdue complaints, concentration risks, and recurring root-cause themes.', 564, 456, 218, 10, regular, theme.slate, 14);
+
+  drawRoundedPanel(page, 546, 300, 254, 92, theme.panel, theme.border);
+  page.drawText('Management action lens', { x: 564, y: 368, size: 11, font: bold, color: theme.ink });
+  drawWrappedText(page, data.boardNotes.actionSummaryNote || 'Prioritise overdue matters, repeat complaint themes, and any population with rising upheld volumes.', 564, 346, 218, 10, regular, theme.slate, 14);
+
+  drawRoundedPanel(page, MARGIN, 92, PAGE_WIDTH - MARGIN * 2, 188, theme.panel, theme.border);
+  page.drawText('Trend and operational snapshot', { x: MARGIN + 18, y: 252, size: 12, font: bold, color: theme.ink });
+  const leftX = MARGIN + 18;
+  const rowYStart = 228;
+  page.drawText('Year', { x: leftX, y: rowYStart, size: 9, font: bold, color: theme.muted });
+  page.drawText('Total', { x: leftX + 72, y: rowYStart, size: 9, font: bold, color: theme.muted });
+  page.drawText('Upheld', { x: leftX + 132, y: rowYStart, size: 9, font: bold, color: theme.muted });
+  page.drawText('Not upheld', { x: leftX + 208, y: rowYStart, size: 9, font: bold, color: theme.muted });
+  let rowY = rowYStart - 18;
+  data.trends.slice(0, 6).forEach((trend) => {
+    page.drawText(String(trend.year), { x: leftX, y: rowY, size: 10, font: regular, color: theme.ink });
+    page.drawText(formatNumber(trend.total), { x: leftX + 72, y: rowY, size: 10, font: regular, color: theme.slate });
+    page.drawText(formatNumber(trend.upheld), { x: leftX + 132, y: rowY, size: 10, font: regular, color: theme.slate });
+    page.drawText(formatNumber(trend.notUpheld), { x: leftX + 208, y: rowY, size: 10, font: regular, color: theme.slate });
+    rowY -= 18;
   });
 
-  return pdfDoc.save();
+  drawRoundedPanel(page, 496, 118, 304, 136, theme.white, theme.border);
+  page.drawText('Operational posture', { x: 514, y: 226, size: 11, font: bold, color: theme.ink });
+  const operationsLines = [
+    `Total complaints: ${formatNumber(data.summary.totalComplaints)}`,
+    `Open complaints: ${formatNumber(data.summary.openComplaints)}`,
+    `Overdue complaints: ${formatNumber(data.summary.overdueComplaints)}`,
+    `Referred to FOS: ${formatNumber(data.summary.referredToFos)}`,
+    `Not upheld rate: ${data.summary.notUpheldRate.toFixed(1)}%`,
+  ];
+  operationsLines.forEach((line, index) => {
+    page.drawText(line, { x: 514, y: 198 - index * 18, size: 10, font: regular, color: theme.slate });
+  });
+}
+
+function drawConcentrationPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bold: PDFFont) {
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: theme.white });
+  drawPageTitle(page, 'Concentration and Root-Cause View', 'Where volume, uphold rates, and complaint themes are clustering.', regular, bold);
+
+  drawRoundedPanel(page, MARGIN, 184, 356, 318, theme.panel, theme.border);
+  drawRoundedPanel(page, 444, 184, 356, 318, theme.panel, theme.border);
+  page.drawText('Top firms', { x: MARGIN + 18, y: 474, size: 12, font: bold, color: theme.ink });
+  page.drawText('Top products', { x: 462, y: 474, size: 12, font: bold, color: theme.ink });
+
+  let firmY = 442;
+  data.topFirms.slice(0, 6).forEach((item) => {
+    drawMiniRowCard(page, MARGIN + 18, firmY, 320, 38, item.firm, `${formatNumber(item.total)} cases · ${item.upheldRate.toFixed(1)}% upheld`, regular, bold);
+    firmY -= 46;
+  });
+
+  let productY = 442;
+  data.topProducts.slice(0, 6).forEach((item) => {
+    drawMiniRowCard(page, 462, productY, 320, 38, item.product, `${formatNumber(item.total)} cases · ${item.upheldRate.toFixed(1)}% upheld`, regular, bold);
+    productY -= 46;
+  });
+
+  drawRoundedPanel(page, MARGIN, 54, PAGE_WIDTH - MARGIN * 2, 104, theme.panelWarm, theme.border);
+  page.drawText('Root-cause and governance note', { x: MARGIN + 18, y: 130, size: 12, font: bold, color: theme.ink });
+  const rootCauseText = data.topRootCauses.length > 0
+    ? data.topRootCauses.map((item) => `${item.label} (${formatNumber(item.count)})`).join(' • ')
+    : 'No root-cause tags currently available for this reporting scope.';
+  drawWrappedText(page, `Top root causes: ${rootCauseText}`, MARGIN + 18, 108, PAGE_WIDTH - MARGIN * 2 - 36, 10.5, regular, theme.slate, 14);
+  drawWrappedText(page, 'Use this page to challenge whether management attention is directed to the businesses, products, and recurring themes that are driving complaint exposure and upheld outcomes.', MARGIN + 18, 78, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.muted, 13);
+}
+
+function drawAppendixPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bold: PDFFont) {
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: theme.white });
+  drawPageTitle(page, 'Appendix and Methodology', 'Scope notes, included sections, and supporting observations.', regular, bold);
+
+  drawRoundedPanel(page, MARGIN, 308, PAGE_WIDTH - MARGIN * 2, 194, theme.panel, theme.border);
+  page.drawText('Included sections', { x: MARGIN + 18, y: 474, size: 12, font: bold, color: theme.ink });
+  const included = data.sections.filter((section) => section.status === 'included').map((section) => section.title);
+  drawWrappedText(page, included.join(' • '), MARGIN + 18, 448, PAGE_WIDTH - MARGIN * 2 - 36, 10.5, regular, theme.slate, 14);
+  page.drawText('Trend support', { x: MARGIN + 18, y: 396, size: 11, font: bold, color: theme.ink });
+  drawWrappedText(page, data.trends.map((trend) => `${trend.year}: ${formatNumber(trend.total)} total, ${formatNumber(trend.upheld)} upheld, ${formatNumber(trend.notUpheld)} not upheld`).join(' | '), MARGIN + 18, 372, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.slate, 13);
+
+  drawRoundedPanel(page, MARGIN, 132, PAGE_WIDTH - MARGIN * 2, 144, theme.panelWarm, theme.border);
+  page.drawText('Presentation note', { x: MARGIN + 18, y: 248, size: 12, font: bold, color: theme.ink });
+  drawWrappedText(page, 'This board pack is designed to support oversight discussions. It should be read alongside the underlying complaint register, remediation plans, and any complaint correspondence referenced in committee papers.', MARGIN + 18, 222, PAGE_WIDTH - MARGIN * 2 - 36, 10.5, regular, theme.slate, 14);
+  drawWrappedText(page, 'Where complaint operations data is incomplete, management commentary should explain the data gap, ownership, and timeline for correction before circulation.', MARGIN + 18, 176, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.muted, 13);
+}
+
+function drawPageTitle(page: PDFPage, title: string, subtitle: string, regular: PDFFont, bold: PDFFont) {
+  page.drawText(title, { x: MARGIN, y: PAGE_HEIGHT - 54, size: 22, font: bold, color: theme.navy });
+  page.drawText(subtitle, { x: MARGIN, y: PAGE_HEIGHT - 78, size: 10.5, font: regular, color: theme.muted });
+  page.drawLine({ start: { x: MARGIN, y: PAGE_HEIGHT - 92 }, end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - 92 }, thickness: 1, color: theme.border });
+}
+
+function drawMetricCard(page: PDFPage, x: number, y: number, width: number, height: number, label: string, value: string, accent: ReturnType<typeof rgb>, regular: PDFFont, bold: PDFFont) {
+  drawRoundedPanel(page, x, y, width, height, theme.white, theme.border);
+  page.drawRectangle({ x, y: y + height - 5, width, height: 5, color: accent });
+  page.drawText(label, { x: x + 14, y: y + height - 24, size: 9, font: regular, color: theme.muted });
+  page.drawText(value, { x: x + 14, y: y + 24, size: 20, font: bold, color: theme.ink });
+}
+
+function drawMiniRowCard(page: PDFPage, x: number, y: number, width: number, height: number, title: string, meta: string, regular: PDFFont, bold: PDFFont) {
+  drawRoundedPanel(page, x, y, width, height, theme.white, theme.border);
+  page.drawText(title, { x: x + 12, y: y + height - 15, size: 10, font: bold, color: theme.ink });
+  page.drawText(meta, { x: x + 12, y: y + 10, size: 9, font: regular, color: theme.muted });
+}
+
+function drawRoundedPanel(page: PDFPage, x: number, y: number, width: number, height: number, fill: ReturnType<typeof rgb>, border: ReturnType<typeof rgb>) {
+  page.drawRectangle({ x, y, width, height, color: fill, borderColor: border, borderWidth: 1 });
+}
+
+function drawWrappedText(page: PDFPage, text: string, x: number, y: number, width: number, size: number, font: PDFFont, color: ReturnType<typeof rgb>, leading: number) {
+  const lines = wrapText(text, width, size, font);
+  let currentY = y;
+  lines.forEach((line) => {
+    page.drawText(line, { x, y: currentY, size, font, color });
+    currentY -= leading;
+  });
+}
+
+function wrapText(text: string, width: number, size: number, font: PDFFont): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  words.forEach((word) => {
+    const next = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(next, size) <= width) {
+      line = next;
+    } else {
+      if (line) lines.push(line);
+      line = word;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+function drawFooter(page: PDFPage, regular: PDFFont, pageNumber: number, totalPages: number) {
+  page.drawLine({ start: { x: MARGIN, y: 28 }, end: { x: PAGE_WIDTH - MARGIN, y: 28 }, thickness: 0.75, color: theme.border });
+  page.drawText('MEMA Consultants · FOS Complaints Intelligence', { x: MARGIN, y: 14, size: 8, font: regular, color: theme.muted });
+  const text = `Page ${pageNumber} of ${totalPages}`;
+  page.drawText(text, { x: PAGE_WIDTH - MARGIN - regular.widthOfTextAtSize(text, 8), y: 14, size: 8, font: regular, color: theme.muted });
 }
 
 function formatNumber(value: number): string {
