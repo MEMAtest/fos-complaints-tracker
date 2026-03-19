@@ -129,16 +129,50 @@ END $$;
 `;
 
 let schemaPromise: Promise<void> | null = null;
+let schemaReady = false;
+
+const REQUIRED_TABLES = [
+  'complaints_records',
+  'complaint_activities',
+  'complaint_import_runs',
+  'complaint_import_run_rows',
+  'board_pack_runs',
+];
 
 export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
+  if (schemaReady) return;
+  if (await hasComplaintsWorkspaceTables()) {
+    schemaReady = true;
+    return;
+  }
+
   if (!schemaPromise) {
     schemaPromise = DatabaseClient.query(COMPLAINTS_WORKSPACE_SCHEMA_SQL)
-      .then(() => undefined)
-      .catch((error) => {
+      .then(() => {
+        schemaReady = true;
+      })
+      .catch(async (error) => {
         schemaPromise = null;
+        if (await hasComplaintsWorkspaceTables()) {
+          schemaReady = true;
+          return;
+        }
         throw error;
       });
   }
 
   await schemaPromise;
+}
+
+async function hasComplaintsWorkspaceTables(): Promise<boolean> {
+  const row = await DatabaseClient.queryOne<{ existing_count: number }>(
+    `
+      SELECT COUNT(*)::INT AS existing_count
+      FROM UNNEST($1::text[]) AS table_name
+      WHERE to_regclass('public.' || table_name) IS NOT NULL
+    `,
+    [REQUIRED_TABLES]
+  );
+
+  return Number(row?.existing_count || 0) === REQUIRED_TABLES.length;
 }
