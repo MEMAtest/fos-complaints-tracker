@@ -1089,42 +1089,41 @@ export async function listComplaintAppendixArtifacts(dateFrom?: string | null, d
   await ensureComplaintsWorkspaceSchema();
   const { whereSql, params } = buildComplaintDateRangeClause(dateFrom, dateTo, 'c', 1);
 
-  const [letterRows, evidenceRows] = await Promise.all([
-    DatabaseClient.query<Record<string, unknown>>(
-      `
-        SELECT
-          l.id,
-          c.complaint_reference,
-          l.subject,
-          l.status,
-          l.recipient_name,
-          l.created_at
-        FROM complaint_letters l
-        INNER JOIN complaints_records c ON c.id = l.complaint_id
-        ${whereSql}
-        ORDER BY l.created_at DESC
-        LIMIT 6
-      `,
-      params
-    ),
-    DatabaseClient.query<Record<string, unknown>>(
-      `
-        SELECT
-          e.id,
-          c.complaint_reference,
-          e.file_name,
-          e.category,
-          e.summary,
-          e.created_at
-        FROM complaint_evidence e
-        INNER JOIN complaints_records c ON c.id = e.complaint_id
-        ${whereSql}
-        ORDER BY e.created_at DESC
-        LIMIT 6
-      `,
-      params
-    ),
-  ]);
+  const letterRows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT
+        l.id,
+        c.complaint_reference,
+        l.subject,
+        l.status,
+        l.recipient_name,
+        l.created_at
+      FROM complaint_letters l
+      INNER JOIN complaints_records c ON c.id = l.complaint_id
+      ${whereSql}
+      ORDER BY l.created_at DESC
+      LIMIT 6
+    `,
+    params
+  );
+
+  const evidenceRows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT
+        e.id,
+        c.complaint_reference,
+        e.file_name,
+        e.category,
+        e.summary,
+        e.created_at
+      FROM complaint_evidence e
+      INNER JOIN complaints_records c ON c.id = e.complaint_id
+      ${whereSql}
+      ORDER BY e.created_at DESC
+      LIMIT 6
+    `,
+    params
+  );
 
   return {
     recentLetters: letterRows.map((row) => ({
@@ -1180,44 +1179,33 @@ export async function getComplaintOperationsSummary(dateFrom?: string | null, da
   topRootCauses: Array<{ label: string; count: number }>;
 }> {
   await ensureComplaintsWorkspaceSchema();
-  const params: unknown[] = [];
-  const conditions: string[] = [];
-  if (dateFrom) {
-    params.push(dateFrom);
-    conditions.push(`received_date >= $${params.length}::date`);
-  }
-  if (dateTo) {
-    params.push(dateTo);
-    conditions.push(`received_date <= $${params.length}::date`);
-  }
-  const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const { whereSql, params } = buildComplaintDateRangeClause(dateFrom, dateTo, 'complaints_records', 1);
 
-  const [summaryRow, rootCauseRows] = await Promise.all([
-    DatabaseClient.queryOne<Record<string, unknown>>(
-      `
-        SELECT
-          COUNT(*)::INT AS total,
-          COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed'))::INT AS open,
-          COUNT(*) FILTER (WHERE fos_referred = TRUE)::INT AS referred_to_fos,
-          COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed') AND eight_week_due_date < CURRENT_DATE)::INT AS overdue,
-          COUNT(*) FILTER (WHERE priority = 'urgent')::INT AS urgent
-        FROM complaints_records
-        ${whereSql}
-      `,
-      params
-    ),
-    DatabaseClient.query<Record<string, unknown>>(
-      `
-        SELECT COALESCE(NULLIF(BTRIM(root_cause), ''), 'Unspecified') AS label, COUNT(*)::INT AS count
-        FROM complaints_records
-        ${whereSql}
-        GROUP BY COALESCE(NULLIF(BTRIM(root_cause), ''), 'Unspecified')
-        ORDER BY count DESC, label ASC
-        LIMIT 6
-      `,
-      params
-    ),
-  ]);
+  const summaryRow = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `
+      SELECT
+        COUNT(*)::INT AS total,
+        COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed'))::INT AS open,
+        COUNT(*) FILTER (WHERE fos_referred = TRUE)::INT AS referred_to_fos,
+        COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed') AND eight_week_due_date < CURRENT_DATE)::INT AS overdue,
+        COUNT(*) FILTER (WHERE priority = 'urgent')::INT AS urgent
+      FROM complaints_records
+      ${whereSql}
+    `,
+    params
+  );
+
+  const rootCauseRows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT COALESCE(NULLIF(BTRIM(root_cause), ''), 'Unspecified') AS label, COUNT(*)::INT AS count
+      FROM complaints_records
+      ${whereSql}
+      GROUP BY COALESCE(NULLIF(BTRIM(root_cause), ''), 'Unspecified')
+      ORDER BY count DESC, label ASC
+      LIMIT 6
+    `,
+    params
+  );
 
   return {
     total: toInt(summaryRow?.total),
@@ -1619,6 +1607,7 @@ function normalizeComplaintWorkspaceSettingsInput(
   input: ComplaintWorkspaceSettingsInput,
   fallback: ComplaintWorkspaceSettings
 ): ComplaintWorkspaceSettings {
+  const has = (key: keyof ComplaintWorkspaceSettingsInput) => Object.prototype.hasOwnProperty.call(input, key);
   const organizationName = sanitizeText(input.organizationName ?? fallback.organizationName) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.organizationName;
   const complaintsTeamName = sanitizeText(input.complaintsTeamName ?? fallback.complaintsTeamName) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.complaintsTeamName;
   const lateReferralPosition = normalizeLateReferralPosition(input.lateReferralPosition ?? fallback.lateReferralPosition);
@@ -1626,14 +1615,16 @@ function normalizeComplaintWorkspaceSettingsInput(
   return {
     organizationName,
     complaintsTeamName,
-    complaintsEmail: sanitizeNullable(input.complaintsEmail ?? fallback.complaintsEmail),
-    complaintsPhone: sanitizeNullable(input.complaintsPhone ?? fallback.complaintsPhone),
-    complaintsAddress: sanitizeNullable(input.complaintsAddress ?? fallback.complaintsAddress),
-    boardPackSubtitle: sanitizeNullable(input.boardPackSubtitle ?? fallback.boardPackSubtitle) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.boardPackSubtitle,
+    complaintsEmail: has('complaintsEmail') ? sanitizeNullable(input.complaintsEmail) : sanitizeNullable(fallback.complaintsEmail),
+    complaintsPhone: has('complaintsPhone') ? sanitizeNullable(input.complaintsPhone) : sanitizeNullable(fallback.complaintsPhone),
+    complaintsAddress: has('complaintsAddress') ? sanitizeNullable(input.complaintsAddress) : sanitizeNullable(fallback.complaintsAddress),
+    boardPackSubtitle: has('boardPackSubtitle')
+      ? sanitizeNullable(input.boardPackSubtitle) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.boardPackSubtitle
+      : sanitizeNullable(fallback.boardPackSubtitle) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.boardPackSubtitle,
     lateReferralPosition,
     lateReferralCustomText: lateReferralPosition === 'custom'
-      ? sanitizeNullable(input.lateReferralCustomText ?? fallback.lateReferralCustomText)
-      : sanitizeNullable(input.lateReferralCustomText) || null,
+      ? (has('lateReferralCustomText') ? sanitizeNullable(input.lateReferralCustomText) : sanitizeNullable(fallback.lateReferralCustomText))
+      : (has('lateReferralCustomText') ? sanitizeNullable(input.lateReferralCustomText) : null),
     updatedAt: fallback.updatedAt,
   };
 }

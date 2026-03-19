@@ -7,14 +7,11 @@ import type { BoardPackData, BoardPackPreview, BoardPackRequest, BoardPackSectio
 export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Promise<BoardPackPreview> {
   const filters = filtersFromBoardPackInput(input);
   const sections = buildBoardPackSections(input);
-
-  const [dashboard, complaintSummary, recentRuns, settings, appendix] = await Promise.all([
-    getDashboardSnapshot(filters, { includeCases: false }),
-    getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null),
-    listBoardPackRuns(8),
-    getComplaintWorkspaceSettings(),
-    listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null),
-  ]);
+  const dashboard = await getDashboardSnapshot(filters, { includeCases: false });
+  const complaintSummary = await getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null);
+  const recentRuns = await listBoardPackRuns(8);
+  const settings = await getComplaintWorkspaceSettings();
+  const appendix = await listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null);
 
   return {
     success: true,
@@ -39,15 +36,12 @@ export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Pro
 export async function buildBoardPackData(input: BoardPackRequest): Promise<BoardPackData> {
   const filters = filtersFromBoardPackInput(input);
   const sections = buildBoardPackSections(input);
-
-  const [dashboard, analysis, rootCauseSnapshot, complaintSummary, settings, appendix] = await Promise.all([
-    getDashboardSnapshot(filters, { includeCases: false }),
-    getAnalysisSnapshot(filters),
-    getRootCauseSnapshot(filters),
-    getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null),
-    getComplaintWorkspaceSettings(),
-    listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null),
-  ]);
+  const dashboard = await getDashboardSnapshot(filters, { includeCases: false });
+  const analysis = await getAnalysisSnapshot(filters);
+  const rootCauseSnapshot = await getRootCauseSnapshot(filters);
+  const complaintSummary = await getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null);
+  const settings = await getComplaintWorkspaceSettings();
+  const appendix = await listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null);
 
   const topFirms = dashboard.firms.slice(0, 8).map((firm) => ({
     firm: firm.firm,
