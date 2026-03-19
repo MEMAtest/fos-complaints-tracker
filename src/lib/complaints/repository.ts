@@ -1,18 +1,26 @@
+import { createHash } from 'crypto';
 import { pool, DatabaseClient } from '@/lib/database';
 import type { PoolClient } from 'pg';
 import {
   ComplaintActivity,
   ComplaintActivityType,
+  ComplaintEvidence,
+  ComplaintEvidenceCategory,
   ComplaintFilters,
   ComplaintImportPreviewRow,
   ComplaintImportRun,
+  ComplaintLetter,
+  ComplaintLetterStatus,
+  ComplaintLetterTemplateKey,
   ComplaintListResult,
   ComplaintMutationInput,
   ComplaintPriority,
   ComplaintRecord,
   ComplaintStatus,
   ComplaintStats,
+  COMPLAINT_EVIDENCE_CATEGORIES,
 } from './types';
+import { buildComplaintLetterDraft } from './letter-templates';
 import { ensureComplaintsWorkspaceSchema } from './schema';
 
 const DEFAULT_PAGE = 1;
@@ -20,6 +28,9 @@ const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const VALID_STATUSES: ComplaintStatus[] = ['open', 'investigating', 'resolved', 'closed', 'escalated', 'referred_to_fos'];
 const VALID_PRIORITIES: ComplaintPriority[] = ['low', 'medium', 'high', 'urgent'];
+const VALID_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [...COMPLAINT_EVIDENCE_CATEGORIES];
+const VALID_LETTER_TEMPLATE_KEYS: ComplaintLetterTemplateKey[] = ['acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom'];
+const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'sent'];
 const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'complaint_created',
   'status_change',
@@ -125,6 +136,294 @@ export async function listComplaintActivities(complaintId: string): Promise<Comp
     [complaintId]
   );
   return rows.map(mapComplaintActivity);
+}
+
+export async function listComplaintEvidence(complaintId: string): Promise<ComplaintEvidence[]> {
+  await ensureComplaintsWorkspaceSchema();
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT id, complaint_id, file_name, content_type, file_size, category, summary, uploaded_by, created_at
+      FROM complaint_evidence
+      WHERE complaint_id = $1
+      ORDER BY created_at DESC
+    `,
+    [complaintId]
+  );
+
+  return rows.map(mapComplaintEvidence);
+}
+
+export async function getComplaintEvidenceContent(evidenceId: string): Promise<{
+  id: string;
+  complaintId: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  fileBytes: Buffer;
+} | null> {
+  await ensureComplaintsWorkspaceSchema();
+  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `
+      SELECT id, complaint_id, file_name, content_type, file_size, file_bytes
+      FROM complaint_evidence
+      WHERE id = $1
+    `,
+    [evidenceId]
+  );
+
+  if (!row) return null;
+  const rawBytes = row.file_bytes;
+  const fileBytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(String(rawBytes || ''), 'binary');
+
+  return {
+    id: String(row.id || ''),
+    complaintId: String(row.complaint_id || ''),
+    fileName: String(row.file_name || 'evidence.bin'),
+    contentType: String(row.content_type || 'application/octet-stream'),
+    fileSize: toInt(row.file_size),
+    fileBytes,
+  };
+}
+
+export async function createComplaintEvidence(input: {
+  complaintId: string;
+  fileName: string;
+  contentType?: string | null;
+  fileBytes: Buffer;
+  category?: ComplaintEvidenceCategory | null;
+  summary?: string | null;
+  uploadedBy?: string | null;
+}): Promise<ComplaintEvidence> {
+  await ensureComplaintsWorkspaceSchema();
+  const category = normalizeEvidenceCategory(input.category);
+  const fileName = sanitizeText(input.fileName) || 'complaint-evidence.bin';
+  const contentType = sanitizeText(input.contentType) || 'application/octet-stream';
+  const summary = sanitizeNullable(input.summary);
+  const sha256 = createHash('sha256').update(input.fileBytes).digest('hex');
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query<Record<string, unknown>>(
+      `
+        INSERT INTO complaint_evidence (
+          complaint_id,
+          file_name,
+          content_type,
+          file_size,
+          category,
+          summary,
+          file_bytes,
+          sha256,
+          uploaded_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, complaint_id, file_name, content_type, file_size, category, summary, uploaded_by, created_at
+      `,
+      [
+        input.complaintId,
+        fileName,
+        contentType,
+        input.fileBytes.length,
+        category,
+        summary,
+        input.fileBytes,
+        sha256,
+        sanitizeNullable(input.uploadedBy),
+      ]
+    );
+
+    const row = inserted.rows[0];
+    await insertComplaintActivityTx(client, {
+      complaintId: input.complaintId,
+      activityType: 'note_added',
+      description: `Evidence added: ${fileName}.`,
+      performedBy: input.uploadedBy,
+      metadata: {
+        source: 'evidence',
+        evidenceId: String(row.id),
+        fileName,
+        category,
+      },
+    });
+
+    await client.query('COMMIT');
+    return mapComplaintEvidence(row);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function listComplaintLetters(complaintId: string): Promise<ComplaintLetter[]> {
+  await ensureComplaintsWorkspaceSchema();
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT *
+      FROM complaint_letters
+      WHERE complaint_id = $1
+      ORDER BY created_at DESC
+    `,
+    [complaintId]
+  );
+
+  return rows.map(mapComplaintLetter);
+}
+
+export async function createComplaintLetter(input: {
+  complaintId: string;
+  templateKey: ComplaintLetterTemplateKey;
+  subject?: string | null;
+  bodyText?: string | null;
+  recipientName?: string | null;
+  recipientEmail?: string | null;
+  generatedBy?: string | null;
+}): Promise<ComplaintLetter> {
+  await ensureComplaintsWorkspaceSchema();
+  const complaint = await getComplaintById(input.complaintId);
+  if (!complaint) {
+    throw new Error('Complaint not found.');
+  }
+
+  const templateKey = normalizeLetterTemplateKey(input.templateKey);
+  const draft = buildComplaintLetterDraft(complaint, templateKey, {
+    subject: input.subject,
+    bodyText: input.bodyText,
+    recipientName: input.recipientName,
+    recipientEmail: input.recipientEmail,
+  });
+  const status: ComplaintLetterStatus = templateKey === 'custom' ? 'draft' : 'generated';
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query<Record<string, unknown>>(
+      `
+        INSERT INTO complaint_letters (
+          complaint_id,
+          template_key,
+          status,
+          subject,
+          recipient_name,
+          recipient_email,
+          body_text,
+          generated_by,
+          sent_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NOW())
+        RETURNING *
+      `,
+      [
+        input.complaintId,
+        templateKey,
+        status,
+        draft.subject,
+        draft.recipientName,
+        draft.recipientEmail,
+        draft.bodyText,
+        sanitizeNullable(input.generatedBy),
+      ]
+    );
+
+    const row = inserted.rows[0];
+    await insertComplaintActivityTx(client, {
+      complaintId: input.complaintId,
+      activityType: 'letter_generated',
+      description: `${labelForLetterTemplate(templateKey)} generated.`,
+      performedBy: input.generatedBy,
+      metadata: {
+        letterId: String(row.id),
+        templateKey,
+        subject: draft.subject,
+      },
+    });
+
+    await client.query('COMMIT');
+    return mapComplaintLetter(row);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateComplaintLetter(input: {
+  letterId: string;
+  subject?: string | null;
+  bodyText?: string | null;
+  recipientName?: string | null;
+  recipientEmail?: string | null;
+  status?: ComplaintLetterStatus | null;
+  performedBy?: string | null;
+}): Promise<ComplaintLetter | null> {
+  await ensureComplaintsWorkspaceSchema();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const existingResult = await client.query<Record<string, unknown>>(
+      `SELECT * FROM complaint_letters WHERE id = $1`,
+      [input.letterId]
+    );
+    const existing = existingResult.rows[0];
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const nextStatus = normalizeLetterStatus(input.status ?? existing.status);
+    const sentAt = nextStatus === 'sent' ? toIsoDateTime(input.status === 'sent' ? new Date().toISOString() : existing.sent_at) : null;
+    const updatedResult = await client.query<Record<string, unknown>>(
+      `
+        UPDATE complaint_letters
+        SET
+          subject = $2,
+          recipient_name = $3,
+          recipient_email = $4,
+          body_text = $5,
+          status = $6,
+          sent_at = $7,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `,
+      [
+        input.letterId,
+        sanitizeText(input.subject ?? existing.subject) || String(existing.subject || 'Complaint correspondence'),
+        sanitizeNullable(input.recipientName ?? existing.recipient_name),
+        sanitizeNullable(input.recipientEmail ?? existing.recipient_email),
+        sanitizeText(input.bodyText ?? existing.body_text),
+        nextStatus,
+        sentAt,
+      ]
+    );
+
+    const updated = updatedResult.rows[0];
+    if (String(existing.status || 'draft') !== nextStatus && nextStatus === 'sent') {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'letter_sent',
+        description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} marked as sent.`,
+        oldValue: String(existing.status || 'draft'),
+        newValue: nextStatus,
+        performedBy: input.performedBy,
+        metadata: {
+          letterId: String(existing.id || ''),
+          subject: String(updated.subject || ''),
+        },
+      });
+    }
+
+    await client.query('COMMIT');
+    return mapComplaintLetter(updated);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function createComplaint(input: ComplaintMutationInput, performedBy?: string | null): Promise<ComplaintRecord> {
@@ -930,6 +1229,37 @@ function mapComplaintActivity(row: Record<string, unknown>): ComplaintActivity {
   };
 }
 
+function mapComplaintEvidence(row: Record<string, unknown>): ComplaintEvidence {
+  return {
+    id: String(row.id || ''),
+    complaintId: String(row.complaint_id || ''),
+    fileName: String(row.file_name || 'evidence.bin'),
+    contentType: String(row.content_type || 'application/octet-stream'),
+    fileSize: toInt(row.file_size),
+    category: normalizeEvidenceCategory(row.category),
+    summary: sanitizeNullable(row.summary),
+    uploadedBy: sanitizeNullable(row.uploaded_by),
+    createdAt: toIsoDateTime(row.created_at),
+  };
+}
+
+function mapComplaintLetter(row: Record<string, unknown>): ComplaintLetter {
+  return {
+    id: String(row.id || ''),
+    complaintId: String(row.complaint_id || ''),
+    templateKey: normalizeLetterTemplateKey(row.template_key),
+    status: normalizeLetterStatus(row.status),
+    subject: String(row.subject || 'Complaint correspondence'),
+    recipientName: sanitizeNullable(row.recipient_name),
+    recipientEmail: sanitizeNullable(row.recipient_email),
+    bodyText: String(row.body_text || ''),
+    generatedBy: sanitizeNullable(row.generated_by),
+    sentAt: row.sent_at ? toIsoDateTime(row.sent_at) : null,
+    createdAt: toIsoDateTime(row.created_at),
+    updatedAt: toIsoDateTime(row.updated_at),
+  };
+}
+
 function mapComplaintImportRun(row: Record<string, unknown>): ComplaintImportRun {
   return {
     id: String(row.id || ''),
@@ -967,6 +1297,40 @@ function normalizeActivityType(value: unknown): ComplaintActivityType {
   return VALID_ACTIVITY_TYPES.includes(String(value) as ComplaintActivityType)
     ? (String(value) as ComplaintActivityType)
     : 'note_added';
+}
+
+function normalizeEvidenceCategory(value: unknown): ComplaintEvidenceCategory {
+  return VALID_EVIDENCE_CATEGORIES.includes(String(value) as ComplaintEvidenceCategory)
+    ? (String(value) as ComplaintEvidenceCategory)
+    : 'other';
+}
+
+function normalizeLetterTemplateKey(value: unknown): ComplaintLetterTemplateKey {
+  return VALID_LETTER_TEMPLATE_KEYS.includes(String(value) as ComplaintLetterTemplateKey)
+    ? (String(value) as ComplaintLetterTemplateKey)
+    : 'custom';
+}
+
+function normalizeLetterStatus(value: unknown): ComplaintLetterStatus {
+  return VALID_LETTER_STATUSES.includes(String(value) as ComplaintLetterStatus)
+    ? (String(value) as ComplaintLetterStatus)
+    : 'draft';
+}
+
+function labelForLetterTemplate(templateKey: ComplaintLetterTemplateKey): string {
+  switch (templateKey) {
+    case 'acknowledgement':
+      return 'Acknowledgement letter';
+    case 'holding_response':
+      return 'Holding response';
+    case 'final_response':
+      return 'Final response';
+    case 'fos_referral':
+      return 'FOS referral letter';
+    case 'custom':
+    default:
+      return 'Custom correspondence';
+  }
 }
 
 function toInt(value: unknown): number {

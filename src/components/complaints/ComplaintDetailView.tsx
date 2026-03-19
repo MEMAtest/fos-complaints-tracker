@@ -2,24 +2,28 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, FileText, Loader2, Scale } from 'lucide-react';
+import { ArrowLeft, Loader2, Scale } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ComplaintTimeline } from './ComplaintTimeline';
 import { DeadlineTracker } from './DeadlineTracker';
 import { QuickActions } from './QuickActions';
-import type { ComplaintActivity, ComplaintRecord } from '@/lib/complaints/types';
+import { ComplaintEvidencePanel } from './ComplaintEvidencePanel';
+import { ComplaintLettersPanel } from './ComplaintLettersPanel';
+import type { ComplaintActivity, ComplaintEvidence, ComplaintLetter, ComplaintRecord } from '@/lib/complaints/types';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/utils';
 
 interface ComplaintPayload extends ComplaintRecord {
   activities?: ComplaintActivity[];
+  evidence?: ComplaintEvidence[];
+  letters?: ComplaintLetter[];
 }
 
 export function ComplaintDetailView({ complaintId }: { complaintId: string }) {
   const [complaint, setComplaint] = useState<ComplaintPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'letters'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'evidence' | 'letters'>('overview');
 
   const fetchComplaint = useCallback(async () => {
     setLoading(true);
@@ -93,7 +97,7 @@ export function ComplaintDetailView({ complaintId }: { complaintId: string }) {
       <div className="grid gap-5 xl:grid-cols-[1.75fr_0.95fr]">
         <div className="space-y-5">
           <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-            {(['overview', 'timeline', 'letters'] as const).map((tab) => (
+            {(['overview', 'timeline', 'evidence', 'letters'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -140,19 +144,9 @@ export function ComplaintDetailView({ complaintId }: { complaintId: string }) {
 
           {activeTab === 'timeline' ? <ComplaintTimeline activities={complaint.activities || []} /> : null}
 
-          {activeTab === 'letters' ? (
-            <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4" />Letters & response workflow</CardTitle></CardHeader>
-              <CardContent className="space-y-4 text-sm text-slate-600">
-                <p>
-                  This first implementation anchors the letters tab around timeline, deadlines, and complaint resolution. The next step is to store generated holding letters and final responses as first-class complaint artifacts.
-                </p>
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Use the quick actions rail to add a management note or update status. Those actions are already logged into the complaint timeline.
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
+          {activeTab === 'evidence' ? <ComplaintEvidencePanel complaintId={complaint.id} evidence={complaint.evidence || []} onRefresh={fetchComplaint} /> : null}
+
+          {activeTab === 'letters' ? <ComplaintLettersPanel complaint={complaint} letters={complaint.letters || []} onRefresh={fetchComplaint} /> : null}
         </div>
 
         <div className="space-y-5">

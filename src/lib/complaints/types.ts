@@ -1,5 +1,8 @@
 export type ComplaintStatus = 'open' | 'investigating' | 'resolved' | 'closed' | 'escalated' | 'referred_to_fos';
 export type ComplaintPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type ComplaintEvidenceCategory = 'email' | 'statement' | 'screenshot' | 'call_recording' | 'policy_document' | 'letter' | 'other';
+export type ComplaintLetterTemplateKey = 'acknowledgement' | 'holding_response' | 'final_response' | 'fos_referral' | 'custom';
+export type ComplaintLetterStatus = 'draft' | 'generated' | 'sent';
 export type ComplaintActivityType =
   | 'complaint_created'
   | 'status_change'
@@ -57,6 +60,33 @@ export interface ComplaintActivity {
   metadata: Record<string, unknown> | null;
   performedBy: string | null;
   createdAt: string;
+}
+
+export interface ComplaintEvidence {
+  id: string;
+  complaintId: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  category: ComplaintEvidenceCategory;
+  summary: string | null;
+  uploadedBy: string | null;
+  createdAt: string;
+}
+
+export interface ComplaintLetter {
+  id: string;
+  complaintId: string;
+  templateKey: ComplaintLetterTemplateKey;
+  status: ComplaintLetterStatus;
+  subject: string;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  bodyText: string;
+  generatedBy: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ComplaintFilters {
@@ -139,3 +169,21 @@ export type ComplaintMutationInput = Partial<Omit<ComplaintRecord, 'id' | 'creat
   createdBy?: string | null;
   updatedBy?: string | null;
 };
+
+export const COMPLAINT_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [
+  'email',
+  'statement',
+  'screenshot',
+  'call_recording',
+  'policy_document',
+  'letter',
+  'other',
+];
+
+export const COMPLAINT_LETTER_TEMPLATES: Array<{ key: ComplaintLetterTemplateKey; label: string; description: string }> = [
+  { key: 'acknowledgement', label: 'Acknowledgement', description: 'Confirms receipt and explains the investigation path.' },
+  { key: 'holding_response', label: '4-Week Holding', description: 'Explains delay and sets expectations before final response.' },
+  { key: 'final_response', label: 'Final Response', description: 'Summarises the outcome, redress, and next steps.' },
+  { key: 'fos_referral', label: 'FOS Referral', description: 'Explains escalation rights and referral options.' },
+  { key: 'custom', label: 'Custom Draft', description: 'Creates a manually-authored letter or response note.' },
+];

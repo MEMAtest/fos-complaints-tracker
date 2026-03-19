@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { AlertCircle, CheckCircle2, Clock3, Flag, Mail, MessageSquare, Scale, UserRound } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, Flag, Mail, MessageSquare, Paperclip, Scale, UserRound } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ComplaintActivity, ComplaintActivityType } from '@/lib/complaints/types';
 import { formatDateTime } from '@/lib/utils';
@@ -50,7 +50,7 @@ export function ComplaintTimeline({ activities }: { activities: ComplaintActivit
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{group.date}</div>
               <div className="space-y-3">
                 {group.items.map((activity) => {
-                  const Icon = ICONS[activity.activityType] || MessageSquare;
+                  const Icon = iconForActivity(activity);
                   return (
                     <div key={activity.id} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                       <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600">
@@ -58,7 +58,7 @@ export function ComplaintTimeline({ activities }: { activities: ComplaintActivit
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-900">{labelForActivity(activity.activityType)}</p>
+                          <p className="text-sm font-semibold text-slate-900">{labelForActivity(activity)}</p>
                           <p className="text-xs text-slate-500">{formatDateTime(activity.createdAt)}</p>
                         </div>
                         <p className="mt-1 text-sm text-slate-600">{activity.description}</p>
@@ -82,7 +82,12 @@ export function ComplaintTimeline({ activities }: { activities: ComplaintActivit
   );
 }
 
-function labelForActivity(type: ComplaintActivityType): string {
+function labelForActivity(activity: ComplaintActivity): string {
+  if (activity.activityType === 'note_added' && activity.metadata?.source === 'evidence') {
+    return 'Evidence Added';
+  }
+
+  const type = activity.activityType;
   switch (type) {
     case 'complaint_created':
       return 'Complaint Created';
@@ -107,4 +112,11 @@ function labelForActivity(type: ComplaintActivityType): string {
     default:
       return 'Activity';
   }
+}
+
+function iconForActivity(activity: ComplaintActivity) {
+  if (activity.activityType === 'note_added' && activity.metadata?.source === 'evidence') {
+    return Paperclip;
+  }
+  return ICONS[activity.activityType] || MessageSquare;
 }

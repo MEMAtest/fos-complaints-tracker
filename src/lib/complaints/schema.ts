@@ -128,10 +128,50 @@ BEGIN
 END $$;
 `;
 
+const COMPLAINTS_WORKSPACE_EXTENSION_SQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS complaint_evidence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  complaint_id UUID NOT NULL REFERENCES complaints_records(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  category TEXT NOT NULL DEFAULT 'other',
+  summary TEXT,
+  file_bytes BYTEA NOT NULL,
+  sha256 TEXT NOT NULL,
+  uploaded_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT complaint_evidence_category_check CHECK (category IN ('email', 'statement', 'screenshot', 'call_recording', 'policy_document', 'letter', 'other'))
+);
+CREATE INDEX IF NOT EXISTS idx_complaint_evidence_complaint_created_at ON complaint_evidence (complaint_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaint_evidence_sha256 ON complaint_evidence (sha256);
+
+CREATE TABLE IF NOT EXISTS complaint_letters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  complaint_id UUID NOT NULL REFERENCES complaints_records(id) ON DELETE CASCADE,
+  template_key TEXT NOT NULL DEFAULT 'custom',
+  status TEXT NOT NULL DEFAULT 'draft',
+  subject TEXT NOT NULL,
+  recipient_name TEXT,
+  recipient_email TEXT,
+  body_text TEXT NOT NULL,
+  generated_by TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT complaint_letters_template_key_check CHECK (template_key IN ('acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom')),
+  CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'sent'))
+);
+CREATE INDEX IF NOT EXISTS idx_complaint_letters_complaint_created_at ON complaint_letters (complaint_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaint_letters_status ON complaint_letters (status);
+`;
+
 let schemaPromise: Promise<void> | null = null;
 let schemaReady = false;
 
-const REQUIRED_TABLES = [
+const BASE_TABLES = [
   'complaints_records',
   'complaint_activities',
   'complaint_import_runs',
@@ -139,40 +179,60 @@ const REQUIRED_TABLES = [
   'board_pack_runs',
 ];
 
+const EXTENSION_TABLES = [
+  'complaint_evidence',
+  'complaint_letters',
+];
+
 export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
   if (schemaReady) return;
-  if (await hasComplaintsWorkspaceTables()) {
+  const hasBaseTables = await hasComplaintsWorkspaceTables(BASE_TABLES);
+  if (!hasBaseTables) {
+    await ensureSchemaSql(COMPLAINTS_WORKSPACE_SCHEMA_SQL, BASE_TABLES);
+  }
+
+  const hasExtensionTables = await hasComplaintsWorkspaceTables(EXTENSION_TABLES);
+  if (!hasExtensionTables) {
+    await ensureSchemaSql(COMPLAINTS_WORKSPACE_EXTENSION_SQL, EXTENSION_TABLES);
+  }
+
+  if (await hasComplaintsWorkspaceTables(BASE_TABLES) && await hasComplaintsWorkspaceTables(EXTENSION_TABLES)) {
     schemaReady = true;
     return;
   }
 
+  throw new Error('Complaints workspace schema is not ready.');
+}
+
+async function ensureSchemaSql(sql: string, expectedTables: string[]): Promise<void> {
   if (!schemaPromise) {
-    schemaPromise = DatabaseClient.query(COMPLAINTS_WORKSPACE_SCHEMA_SQL)
-      .then(() => {
-        schemaReady = true;
-      })
+    schemaPromise = DatabaseClient.query(sql)
+      .then(() => undefined)
       .catch(async (error) => {
         schemaPromise = null;
-        if (await hasComplaintsWorkspaceTables()) {
-          schemaReady = true;
+        if (await hasComplaintsWorkspaceTables(expectedTables)) {
           return;
         }
         throw error;
       });
   }
 
-  await schemaPromise;
+  try {
+    await schemaPromise;
+  } finally {
+    schemaPromise = null;
+  }
 }
 
-async function hasComplaintsWorkspaceTables(): Promise<boolean> {
+async function hasComplaintsWorkspaceTables(tables: string[]): Promise<boolean> {
   const row = await DatabaseClient.queryOne<{ existing_count: number }>(
     `
       SELECT COUNT(*)::INT AS existing_count
       FROM UNNEST($1::text[]) AS table_name
       WHERE to_regclass('public.' || table_name) IS NOT NULL
     `,
-    [REQUIRED_TABLES]
+    [tables]
   );
 
-  return Number(row?.existing_count || 0) === REQUIRED_TABLES.length;
+  return Number(row?.existing_count || 0) === tables.length;
 }

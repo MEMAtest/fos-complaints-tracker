@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { deleteComplaint, getComplaintById, listComplaintActivities, updateComplaint } from '@/lib/complaints/repository';
+import { deleteComplaint, getComplaintById, listComplaintActivities, listComplaintEvidence, listComplaintLetters, updateComplaint } from '@/lib/complaints/repository';
 import type { ComplaintMutationInput } from '@/lib/complaints/types';
 
 export const dynamic = 'force-dynamic';
@@ -12,8 +12,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (!complaint) {
       return Response.json({ success: false, error: 'Complaint not found.' }, { status: 404 });
     }
-    const activities = await listComplaintActivities(id);
-    return Response.json({ success: true, complaint: { ...complaint, activities } });
+    const [activities, evidence, letters] = await Promise.all([
+      listComplaintActivities(id),
+      listComplaintEvidence(id),
+      listComplaintLetters(id),
+    ]);
+    return Response.json({ success: true, complaint: { ...complaint, activities, evidence, letters } });
   } catch (error) {
     return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to fetch complaint.' }, { status: 500 });
   }
