@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase } from 'lucide-react';
+import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/layout/settings-dialog';
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/complaints', label: 'Complaints', icon: ClipboardList },
   { href: '/imports/complaints', label: 'Imports', icon: Upload },
   { href: '/board-pack', label: 'Board Pack', icon: Briefcase },
+  { href: '/advisor', label: 'Complaint Advisor', icon: Lightbulb },
 ] as const;
 
 export function SidebarNav() {
