@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { SidebarNav } from './sidebar-nav';
 import { AppHeader } from './app-header';
@@ -8,6 +9,11 @@ import { cn } from '@/lib/utils';
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
 
   return (
     <TooltipProvider delayDuration={200}>

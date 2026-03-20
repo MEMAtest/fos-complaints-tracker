@@ -74,20 +74,33 @@ function delay(ms: number): Promise<void> {
 }
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const DB_POOL_MAX = parseIntEnv(process.env.DB_POOL_MAX, 20, 1, 200);
+const DB_POOL_MAX = parseIntEnv(process.env.DB_POOL_MAX, 8, 1, 200);
 const DB_IDLE_TIMEOUT_MS = parseIntEnv(process.env.DB_IDLE_TIMEOUT_MS, 30_000, 1_000, 300_000);
 const DB_CONNECT_TIMEOUT_MS = parseIntEnv(process.env.DB_CONNECT_TIMEOUT_MS, 5_000, 500, 120_000);
 const DB_CONNECT_RETRIES = parseIntEnv(process.env.DB_CONNECT_RETRIES, 2, 0, 10);
 const DB_RETRY_BASE_MS = parseIntEnv(process.env.DB_RETRY_BASE_MS, 200, 50, 10_000);
 const DB_RETRY_MAX_MS = parseIntEnv(process.env.DB_RETRY_MAX_MS, 2_000, 100, 120_000);
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: resolveSslOptions(DATABASE_URL),
-  max: DB_POOL_MAX,
-  idleTimeoutMillis: DB_IDLE_TIMEOUT_MS,
-  connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
-});
+type GlobalWithDbPool = typeof globalThis & {
+  __fciDbPool?: Pool;
+};
+
+function createPool() {
+  return new Pool({
+    connectionString: DATABASE_URL,
+    ssl: resolveSslOptions(DATABASE_URL),
+    max: DB_POOL_MAX,
+    idleTimeoutMillis: DB_IDLE_TIMEOUT_MS,
+    connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
+  });
+}
+
+const globalForDbPool = globalThis as GlobalWithDbPool;
+const pool = globalForDbPool.__fciDbPool ?? createPool();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForDbPool.__fciDbPool = pool;
+}
 
 export { pool };
 

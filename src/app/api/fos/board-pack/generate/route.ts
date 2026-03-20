@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { buildBoardPackData } from '@/lib/board-pack/repository';
 import { buildBoardPackPdf } from '@/lib/board-pack/build-board-pack-pdf';
 import { buildBoardPackPptx } from '@/lib/board-pack/build-board-pack-pptx';
@@ -10,7 +11,10 @@ export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   let body: BoardPackRequest | null = null;
+  let generatedBy: string | null = null;
   try {
+    const user = await requireAuthenticatedUser(request, 'manager');
+    generatedBy = user.fullName;
     body = await request.json();
     if (!body || typeof body !== 'object') {
       return Response.json({ success: false, error: 'Invalid request body.' }, { status: 400 });
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
         status: 'success',
         title: data.title,
         fileName,
-        generatedBy: 'MEMA user',
+        generatedBy,
         requestPayload: body,
       });
       return new Response(pptxBuffer, {
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
       status: 'success',
       title: data.title,
       fileName,
-      generatedBy: 'MEMA user',
+      generatedBy,
       requestPayload: body,
     });
     return new Response(pdfBytes, {
@@ -63,11 +67,12 @@ export async function POST(request: NextRequest) {
         format: body.format || 'pdf',
         status: 'failed',
         title: body.title || 'FOS Complaints Board Pack',
-        generatedBy: 'MEMA user',
+        generatedBy,
         requestPayload: body,
       }).catch(() => undefined);
     }
-    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to generate board pack.' }, { status: 500 });
+    const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to generate board pack.' }, { status });
   }
 }
 

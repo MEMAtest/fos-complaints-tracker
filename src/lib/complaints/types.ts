@@ -2,15 +2,29 @@ export type ComplaintStatus = 'open' | 'investigating' | 'resolved' | 'closed' |
 export type ComplaintPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type ComplaintEvidenceCategory = 'email' | 'statement' | 'screenshot' | 'call_recording' | 'policy_document' | 'letter' | 'other';
 export type ComplaintLetterTemplateKey = 'acknowledgement' | 'holding_response' | 'final_response' | 'fos_referral' | 'custom';
-export type ComplaintLetterStatus = 'draft' | 'generated' | 'approved' | 'sent' | 'superseded';
+export type ComplaintLetterStatus = 'draft' | 'generated' | 'under_review' | 'approved' | 'rejected_for_rework' | 'sent' | 'superseded';
 export type ComplaintLateReferralPosition = 'review_required' | 'consent' | 'do_not_consent' | 'custom';
 export type ComplaintLetterIntelligenceSourceScope = 'product_root_cause' | 'product_only' | 'none';
 export type ComplaintWorkspaceActorRole = 'operator' | 'reviewer' | 'manager' | 'admin';
+export type ComplaintLetterReviewDecisionCode =
+  | 'ready_to_issue'
+  | 'reasoning_strengthened'
+  | 'evidence_gap'
+  | 'template_non_compliant'
+  | 'redress_unclear'
+  | 'fos_rights_missing'
+  | 'other';
 export type ComplaintActivityType =
   | 'complaint_created'
   | 'status_change'
+  | 'evidence_added'
+  | 'evidence_updated'
+  | 'evidence_archived'
+  | 'evidence_deleted'
   | 'letter_generated'
+  | 'letter_submitted_for_review'
   | 'letter_approved'
+  | 'letter_rejected'
   | 'letter_sent'
   | 'letter_superseded'
   | 'note_added'
@@ -73,10 +87,22 @@ export interface ComplaintEvidence {
   fileName: string;
   contentType: string;
   fileSize: number;
+  sha256: string;
   category: ComplaintEvidenceCategory;
   summary: string | null;
+  previewText: string | null;
   uploadedBy: string | null;
+  archivedAt: string | null;
+  archivedBy: string | null;
   createdAt: string;
+}
+
+export interface ComplaintEvidencePreview {
+  evidence: ComplaintEvidence;
+  previewKind: 'image' | 'pdf' | 'text' | 'download';
+  inlineUrl: string;
+  downloadUrl: string;
+  textPreview: string | null;
 }
 
 export interface ComplaintLetter {
@@ -95,6 +121,11 @@ export interface ComplaintLetter {
   updatedByRole: ComplaintWorkspaceActorRole;
   reviewerNotes: string | null;
   approvalRoleRequired: ComplaintWorkspaceActorRole;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewedRole: ComplaintWorkspaceActorRole | null;
+  reviewDecisionCode: ComplaintLetterReviewDecisionCode | null;
+  reviewDecisionNote: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
   approvedRole: ComplaintWorkspaceActorRole | null;
@@ -115,6 +146,11 @@ export interface ComplaintLetterVersion {
   bodyText: string;
   reviewerNotes: string | null;
   approvalRoleRequired: ComplaintWorkspaceActorRole;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewedRole: ComplaintWorkspaceActorRole | null;
+  reviewDecisionCode: ComplaintLetterReviewDecisionCode | null;
+  reviewDecisionNote: string | null;
   approvedRole: ComplaintWorkspaceActorRole | null;
   snapshotReason: string | null;
   snapshotBy: string | null;
@@ -321,6 +357,16 @@ export const COMPLAINT_WORKSPACE_ACTOR_ROLES: ComplaintWorkspaceActorRole[] = [
   'reviewer',
   'manager',
   'admin',
+];
+
+export const COMPLAINT_LETTER_REVIEW_DECISION_CODES: ComplaintLetterReviewDecisionCode[] = [
+  'ready_to_issue',
+  'reasoning_strengthened',
+  'evidence_gap',
+  'template_non_compliant',
+  'redress_unclear',
+  'fos_rights_missing',
+  'other',
 ];
 
 export const COMPLAINT_LETTER_TEMPLATES: Array<{ key: ComplaintLetterTemplateKey; label: string; description: string }> = [

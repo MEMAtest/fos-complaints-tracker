@@ -11,6 +11,7 @@ import {
   ComplaintImportRun,
   ComplaintLateReferralPosition,
   ComplaintLetter,
+  ComplaintLetterReviewDecisionCode,
   ComplaintLetterVersion,
   ComplaintLetterStatus,
   ComplaintLetterTemplateKey,
@@ -24,6 +25,7 @@ import {
   ComplaintWorkspaceSettings,
   ComplaintWorkspaceSettingsInput,
   COMPLAINT_EVIDENCE_CATEGORIES,
+  COMPLAINT_LETTER_REVIEW_DECISION_CODES,
   COMPLAINT_WORKSPACE_ACTOR_ROLES,
 } from './types';
 import { buildComplaintLetterDraft } from './letter-templates';
@@ -36,14 +38,21 @@ const VALID_STATUSES: ComplaintStatus[] = ['open', 'investigating', 'resolved', 
 const VALID_PRIORITIES: ComplaintPriority[] = ['low', 'medium', 'high', 'urgent'];
 const VALID_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [...COMPLAINT_EVIDENCE_CATEGORIES];
 const VALID_LETTER_TEMPLATE_KEYS: ComplaintLetterTemplateKey[] = ['acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom'];
-const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'approved', 'sent', 'superseded'];
+const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'];
 const VALID_LATE_REFERRAL_POSITIONS: ComplaintLateReferralPosition[] = ['review_required', 'consent', 'do_not_consent', 'custom'];
 const VALID_ACTOR_ROLES: ComplaintWorkspaceActorRole[] = [...COMPLAINT_WORKSPACE_ACTOR_ROLES];
+const VALID_REVIEW_DECISION_CODES: ComplaintLetterReviewDecisionCode[] = [...COMPLAINT_LETTER_REVIEW_DECISION_CODES];
 const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'complaint_created',
   'status_change',
+  'evidence_added',
+  'evidence_updated',
+  'evidence_archived',
+  'evidence_deleted',
   'letter_generated',
+  'letter_submitted_for_review',
   'letter_approved',
+  'letter_rejected',
   'letter_sent',
   'letter_superseded',
   'note_added',
@@ -233,16 +242,21 @@ export async function listComplaintActivities(complaintId: string): Promise<Comp
   return rows.map(mapComplaintActivity);
 }
 
-export async function listComplaintEvidence(complaintId: string): Promise<ComplaintEvidence[]> {
+export async function listComplaintEvidence(
+  complaintId: string,
+  options: { includeArchived?: boolean } = {}
+): Promise<ComplaintEvidence[]> {
   await ensureComplaintsWorkspaceSchema();
+  const includeArchived = options.includeArchived === true;
   const rows = await DatabaseClient.query<Record<string, unknown>>(
     `
-      SELECT id, complaint_id, file_name, content_type, file_size, category, summary, uploaded_by, created_at
+      SELECT id, complaint_id, file_name, content_type, file_size, sha256, category, summary, preview_text, uploaded_by, archived_at, archived_by, created_at
       FROM complaint_evidence
       WHERE complaint_id = $1
-      ORDER BY created_at DESC
+        AND ($2::boolean = TRUE OR archived_at IS NULL)
+      ORDER BY archived_at NULLS FIRST, created_at DESC
     `,
-    [complaintId]
+    [complaintId, includeArchived]
   );
 
   return rows.map(mapComplaintEvidence);
@@ -254,12 +268,20 @@ export async function getComplaintEvidenceContent(evidenceId: string): Promise<{
   fileName: string;
   contentType: string;
   fileSize: number;
+  sha256: string;
+  category: ComplaintEvidenceCategory;
+  summary: string | null;
+  previewText: string | null;
+  uploadedBy: string | null;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  createdAt: string;
   fileBytes: Buffer;
 } | null> {
   await ensureComplaintsWorkspaceSchema();
   const row = await DatabaseClient.queryOne<Record<string, unknown>>(
     `
-      SELECT id, complaint_id, file_name, content_type, file_size, file_bytes
+      SELECT id, complaint_id, file_name, content_type, file_size, sha256, category, summary, preview_text, uploaded_by, archived_at, archived_by, created_at, file_bytes
       FROM complaint_evidence
       WHERE id = $1
     `,
@@ -276,6 +298,14 @@ export async function getComplaintEvidenceContent(evidenceId: string): Promise<{
     fileName: String(row.file_name || 'evidence.bin'),
     contentType: String(row.content_type || 'application/octet-stream'),
     fileSize: toInt(row.file_size),
+    sha256: String(row.sha256 || ''),
+    category: normalizeEvidenceCategory(row.category),
+    summary: sanitizeNullable(row.summary),
+    previewText: sanitizeNullable(row.preview_text),
+    uploadedBy: sanitizeNullable(row.uploaded_by),
+    archivedAt: row.archived_at ? toIsoDateTime(row.archived_at) : null,
+    archivedBy: sanitizeNullable(row.archived_by),
+    createdAt: toIsoDateTime(row.created_at),
     fileBytes,
   };
 }
@@ -295,10 +325,27 @@ export async function createComplaintEvidence(input: {
   const contentType = sanitizeText(input.contentType) || 'application/octet-stream';
   const summary = sanitizeNullable(input.summary);
   const sha256 = createHash('sha256').update(input.fileBytes).digest('hex');
+  const previewText = extractEvidencePreviewText(input.fileBytes, contentType, fileName);
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
+    const duplicateRow = await client.query<Record<string, unknown>>(
+      `
+        SELECT id, complaint_id, file_name, content_type, file_size, sha256, category, summary, preview_text, uploaded_by, archived_at, archived_by, created_at
+        FROM complaint_evidence
+        WHERE complaint_id = $1
+          AND sha256 = $2
+          AND archived_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [input.complaintId, sha256]
+    );
+    if (duplicateRow.rows[0]) {
+      throw createDuplicateEvidenceError(mapComplaintEvidence(duplicateRow.rows[0]));
+    }
+
     const inserted = await client.query<Record<string, unknown>>(
       `
         INSERT INTO complaint_evidence (
@@ -308,11 +355,12 @@ export async function createComplaintEvidence(input: {
           file_size,
           category,
           summary,
+          preview_text,
           file_bytes,
           sha256,
           uploaded_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id, complaint_id, file_name, content_type, file_size, category, summary, uploaded_by, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id, complaint_id, file_name, content_type, file_size, sha256, category, summary, preview_text, uploaded_by, archived_at, archived_by, created_at
       `,
       [
         input.complaintId,
@@ -321,6 +369,7 @@ export async function createComplaintEvidence(input: {
         input.fileBytes.length,
         category,
         summary,
+        previewText,
         input.fileBytes,
         sha256,
         sanitizeNullable(input.uploadedBy),
@@ -330,7 +379,7 @@ export async function createComplaintEvidence(input: {
     const row = inserted.rows[0];
     await insertComplaintActivityTx(client, {
       complaintId: input.complaintId,
-      activityType: 'note_added',
+      activityType: 'evidence_added',
       description: `Evidence added: ${fileName}.`,
       performedBy: input.uploadedBy,
       metadata: {
@@ -343,6 +392,161 @@ export async function createComplaintEvidence(input: {
 
     await client.query('COMMIT');
     return mapComplaintEvidence(row);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateComplaintEvidence(input: {
+  evidenceId: string;
+  fileName?: string | null;
+  category?: ComplaintEvidenceCategory | null;
+  summary?: string | null;
+  archived?: boolean | null;
+  performedBy?: string | null;
+}): Promise<ComplaintEvidence | null> {
+  await ensureComplaintsWorkspaceSchema();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const existingRow = await client.query<Record<string, unknown>>(
+      `
+        SELECT id, complaint_id, file_name, content_type, file_size, sha256, category, summary, preview_text, uploaded_by, archived_at, archived_by, created_at
+        FROM complaint_evidence
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [input.evidenceId]
+    );
+    const existing = existingRow.rows[0];
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const nextFileName = sanitizeText(input.fileName) || String(existing.file_name || 'evidence.bin');
+    const nextCategory = input.category === undefined ? normalizeEvidenceCategory(existing.category) : normalizeEvidenceCategory(input.category);
+    const nextSummary = input.summary === undefined ? sanitizeNullable(existing.summary) : sanitizeNullable(input.summary);
+    const requestedArchived = input.archived === null || input.archived === undefined
+      ? Boolean(existing.archived_at)
+      : Boolean(input.archived);
+
+    const updated = await client.query<Record<string, unknown>>(
+      `
+        UPDATE complaint_evidence
+        SET
+          file_name = $2,
+          category = $3,
+          summary = $4,
+          archived_at = CASE
+            WHEN $5::boolean = TRUE THEN COALESCE(archived_at, NOW())
+            ELSE NULL
+          END,
+          archived_by = CASE
+            WHEN $5::boolean = TRUE THEN $6
+            ELSE NULL
+          END
+        WHERE id = $1
+        RETURNING id, complaint_id, file_name, content_type, file_size, sha256, category, summary, preview_text, uploaded_by, archived_at, archived_by, created_at
+      `,
+      [
+        input.evidenceId,
+        nextFileName,
+        nextCategory,
+        nextSummary,
+        requestedArchived,
+        requestedArchived ? sanitizeNullable(input.performedBy) : null,
+      ]
+    );
+    const row = updated.rows[0];
+    const updatedEvidence = mapComplaintEvidence(row);
+
+    const previousArchived = Boolean(existing.archived_at);
+    if (
+      nextFileName !== String(existing.file_name || 'evidence.bin')
+      || nextCategory !== normalizeEvidenceCategory(existing.category)
+      || nextSummary !== sanitizeNullable(existing.summary)
+    ) {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'evidence_updated',
+        description: `Evidence updated: ${nextFileName}.`,
+        performedBy: input.performedBy,
+        metadata: {
+          source: 'evidence',
+          evidenceId: input.evidenceId,
+          fileName: nextFileName,
+          category: nextCategory,
+        },
+      });
+    }
+
+    if (requestedArchived !== previousArchived) {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'evidence_archived',
+        description: requestedArchived
+          ? `Evidence archived: ${nextFileName}.`
+          : `Evidence restored: ${nextFileName}.`,
+        performedBy: input.performedBy,
+        metadata: {
+          source: 'evidence',
+          evidenceId: input.evidenceId,
+          archived: requestedArchived,
+        },
+      });
+    }
+
+    await client.query('COMMIT');
+    return updatedEvidence;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteComplaintEvidence(evidenceId: string, performedBy?: string | null): Promise<boolean> {
+  await ensureComplaintsWorkspaceSchema();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const existingRow = await client.query<Record<string, unknown>>(
+      `
+        SELECT id, complaint_id, file_name
+        FROM complaint_evidence
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [evidenceId]
+    );
+    const existing = existingRow.rows[0];
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    await insertComplaintActivityTx(client, {
+      complaintId: String(existing.complaint_id || ''),
+      activityType: 'evidence_deleted',
+      description: `Evidence deleted: ${String(existing.file_name || 'evidence.bin')}.`,
+      performedBy,
+      metadata: {
+        source: 'evidence',
+        evidenceId,
+        fileName: String(existing.file_name || 'evidence.bin'),
+      },
+    });
+
+    await client.query(`DELETE FROM complaint_evidence WHERE id = $1`, [evidenceId]);
+    await client.query('COMMIT');
+    return true;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -594,6 +798,8 @@ export async function updateComplaintLetter(input: {
   recipientEmail?: string | null;
   status?: ComplaintLetterStatus | null;
   approvalNote?: string | null;
+  reviewDecisionCode?: ComplaintLetterReviewDecisionCode | null;
+  reviewDecisionNote?: string | null;
   reviewerNotes?: string | null;
   performedBy?: string | null;
   performedByRole?: ComplaintWorkspaceActorRole | null;
@@ -605,7 +811,7 @@ export async function updateComplaintLetter(input: {
   try {
     await client.query('BEGIN');
     const existingResult = await client.query<Record<string, unknown>>(
-      `SELECT * FROM complaint_letters WHERE id = $1`,
+      `SELECT * FROM complaint_letters WHERE id = $1 FOR UPDATE`,
       [input.letterId]
     );
     const existing = existingResult.rows[0];
@@ -630,32 +836,61 @@ export async function updateComplaintLetter(input: {
     const requestedStatus = input.status == null ? null : normalizeLetterStatus(input.status);
     const actor = resolveComplaintWorkspaceActor(settings, input.performedBy, input.performedByRole);
     const requiredApprovalRole = normalizeActorRole(existing.approval_role_required || settings.letterApprovalRole);
+    const incomingReviewDecisionCode = input.reviewDecisionCode == null ? null : normalizeReviewDecisionCode(input.reviewDecisionCode);
+    const incomingReviewDecisionNote = sanitizeNullable(input.reviewDecisionNote ?? input.approvalNote);
+
     if (requestedStatus === 'sent' && !['approved', 'sent'].includes(existingStatus)) {
       throw new Error('Letter must be approved before it can be marked as sent.');
     }
     if (requestedStatus === 'sent' && contentChanged) {
       throw new Error('Edited letter content must be approved again before it can be marked as sent.');
     }
-    if ((requestedStatus === 'approved' || requestedStatus === 'sent') && !canMeetApprovalRole(actor.role, requiredApprovalRole)) {
-      throw new Error(`A ${requiredApprovalRole} role is required before this letter can be ${requestedStatus === 'approved' ? 'approved' : 'sent'}.`);
+    if ((requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework' || requestedStatus === 'sent') && !canMeetApprovalRole(actor.role, requiredApprovalRole)) {
+      throw new Error(`A ${requiredApprovalRole} role is required before this letter can be ${requestedStatus === 'sent' ? 'sent' : 'reviewed'}.`);
     }
     if (
-      requestedStatus === 'approved'
+      (requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework')
       && settings.requireIndependentReviewer
       && actor.name
       && actor.name === sanitizeNullable(existing.updated_by)
     ) {
       throw new Error('Independent reviewer is required before approval.');
     }
+    if ((requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework') && !['under_review', 'approved', 'rejected_for_rework'].includes(existingStatus)) {
+      throw new Error('Letter must be submitted for review before it can be approved or rejected.');
+    }
+    if ((requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework') && (!incomingReviewDecisionCode || !incomingReviewDecisionNote)) {
+      throw new Error('Reviewer decision code and reviewer decision note are required.');
+    }
 
     let nextStatus = requestedStatus ?? existingStatus;
-    if (contentChanged && ['approved', 'sent'].includes(existingStatus) && requestedStatus == null) {
+    if (contentChanged && ['approved', 'sent', 'under_review', 'rejected_for_rework'].includes(existingStatus) && requestedStatus == null) {
       nextStatus = 'draft';
     }
 
     const nextVersionNumber = contentChanged || reviewerNotesChanged || requestedStatus !== null
       ? Math.max(1, toInt(existing.version_number) + 1)
       : Math.max(1, toInt(existing.version_number) || 1);
+    const reviewedAt =
+      nextStatus === 'approved' || nextStatus === 'rejected_for_rework'
+        ? new Date().toISOString()
+        : sanitizeNullable(existing.reviewed_at) ? toIsoDateTime(existing.reviewed_at) : null;
+    const reviewedBy =
+      nextStatus === 'approved' || nextStatus === 'rejected_for_rework'
+        ? actor.name
+        : sanitizeNullable(existing.reviewed_by);
+    const reviewedRole =
+      nextStatus === 'approved' || nextStatus === 'rejected_for_rework'
+        ? actor.role
+        : (sanitizeNullable(existing.reviewed_role) ? normalizeActorRole(existing.reviewed_role) : null);
+    const reviewDecisionCode =
+      nextStatus === 'approved' || nextStatus === 'rejected_for_rework'
+        ? incomingReviewDecisionCode
+        : sanitizeNullable(existing.review_decision_code) ? normalizeReviewDecisionCode(existing.review_decision_code) : null;
+    const reviewDecisionNote =
+      nextStatus === 'approved' || nextStatus === 'rejected_for_rework'
+        ? incomingReviewDecisionNote
+        : sanitizeNullable(existing.review_decision_note);
     const approvedAt =
       nextStatus === 'approved'
         ? toIsoDateTime(existingStatus === 'approved' && existing.approved_at ? existing.approved_at : new Date().toISOString())
@@ -684,10 +919,15 @@ export async function updateComplaintLetter(input: {
           reviewer_notes = $8,
           updated_by = $9,
           updated_by_role = $10,
-          approved_at = $11,
-          approved_by = $12,
-          approved_role = $13,
-          sent_at = $14,
+          reviewed_at = $11,
+          reviewed_by = $12,
+          reviewed_role = $13,
+          review_decision_code = $14,
+          review_decision_note = $15,
+          approved_at = $16,
+          approved_by = $17,
+          approved_role = $18,
+          sent_at = $19,
           updated_at = NOW()
         WHERE id = $1
         RETURNING *
@@ -703,6 +943,11 @@ export async function updateComplaintLetter(input: {
         nextReviewerNotes,
         actor.name,
         actor.role,
+        reviewedAt,
+        reviewedBy,
+        reviewedRole,
+        reviewDecisionCode,
+        reviewDecisionNote,
         approvedAt,
         approvedBy,
         approvedRole,
@@ -721,6 +966,8 @@ export async function updateComplaintLetter(input: {
           contentChanged,
           reviewerNotesChanged,
           approvalNote: input.approvalNote,
+          reviewDecisionCode,
+          reviewDecisionNote,
         }),
         snapshotBy: actor.name,
         snapshotByRole: actor.role,
@@ -744,6 +991,22 @@ export async function updateComplaintLetter(input: {
       });
     }
 
+    if (existingStatus !== nextStatus && nextStatus === 'under_review') {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'letter_submitted_for_review',
+        description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} submitted for review.`,
+        oldValue: existingStatus,
+        newValue: nextStatus,
+        performedBy: actor.name,
+        metadata: {
+          letterId: String(existing.id || ''),
+          versionNumber: nextVersionNumber,
+          actorRole: actor.role,
+        },
+      });
+    }
+
     if (existingStatus !== nextStatus && nextStatus === 'approved') {
       await insertComplaintActivityTx(client, {
         complaintId: String(existing.complaint_id || ''),
@@ -755,7 +1018,27 @@ export async function updateComplaintLetter(input: {
         metadata: {
           letterId: String(existing.id || ''),
           versionNumber: nextVersionNumber,
-          approvalNote: sanitizeNullable(input.approvalNote),
+          approvalNote: reviewDecisionNote,
+          reviewDecisionCode,
+          actorRole: actor.role,
+          requiredApprovalRole,
+        },
+      });
+    }
+
+    if (existingStatus !== nextStatus && nextStatus === 'rejected_for_rework') {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'letter_rejected',
+        description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} rejected for rework.`,
+        oldValue: existingStatus,
+        newValue: nextStatus,
+        performedBy: actor.name,
+        metadata: {
+          letterId: String(existing.id || ''),
+          versionNumber: nextVersionNumber,
+          reviewDecisionCode,
+          reviewDecisionNote,
           actorRole: actor.role,
           requiredApprovalRole,
         },
@@ -1383,12 +1666,17 @@ async function insertComplaintLetterVersionTx(
         body_text,
         reviewer_notes,
         approval_role_required,
+        reviewed_at,
+        reviewed_by,
+        reviewed_role,
+        review_decision_code,
+        review_decision_note,
         approved_role,
         snapshot_reason,
         snapshot_by,
         snapshot_by_role,
         created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
       ON CONFLICT (letter_id, version_number) DO NOTHING
     `,
     [
@@ -1402,6 +1690,11 @@ async function insertComplaintLetterVersionTx(
       String(input.letter.body_text || ''),
       sanitizeNullable(input.letter.reviewer_notes),
       normalizeActorRole(input.letter.approval_role_required),
+      sanitizeNullable(input.letter.reviewed_at) ? toIsoDateTime(input.letter.reviewed_at) : null,
+      sanitizeNullable(input.letter.reviewed_by),
+      sanitizeNullable(input.letter.reviewed_role) ? normalizeActorRole(input.letter.reviewed_role) : null,
+      sanitizeNullable(input.letter.review_decision_code) ? normalizeReviewDecisionCode(input.letter.review_decision_code) : null,
+      sanitizeNullable(input.letter.review_decision_note),
       sanitizeNullable(input.letter.approved_role) ? normalizeActorRole(input.letter.approved_role) : null,
       sanitizeNullable(input.snapshotReason),
       sanitizeNullable(input.snapshotBy),
@@ -1416,9 +1709,17 @@ function deriveLetterSnapshotReason(input: {
   contentChanged: boolean;
   reviewerNotesChanged?: boolean;
   approvalNote?: string | null;
+  reviewDecisionCode?: ComplaintLetterReviewDecisionCode | null;
+  reviewDecisionNote?: string | null;
 }): string {
+  if (input.nextStatus === 'under_review') {
+    return 'Submitted for reviewer signoff.';
+  }
   if (input.nextStatus === 'approved') {
-    return sanitizeText(input.approvalNote) || 'Approved version saved.';
+    return sanitizeText(input.reviewDecisionNote) || sanitizeText(input.approvalNote) || 'Approved version saved.';
+  }
+  if (input.nextStatus === 'rejected_for_rework') {
+    return sanitizeText(input.reviewDecisionNote) || (input.reviewDecisionCode ? `Rejected for rework (${input.reviewDecisionCode.replace(/_/g, ' ')}).` : 'Rejected for rework.');
   }
   if (input.nextStatus === 'sent') {
     return 'Sent version recorded.';
@@ -1770,9 +2071,13 @@ function mapComplaintEvidence(row: Record<string, unknown>): ComplaintEvidence {
     fileName: String(row.file_name || 'evidence.bin'),
     contentType: String(row.content_type || 'application/octet-stream'),
     fileSize: toInt(row.file_size),
+    sha256: String(row.sha256 || ''),
     category: normalizeEvidenceCategory(row.category),
     summary: sanitizeNullable(row.summary),
+    previewText: sanitizeNullable(row.preview_text),
     uploadedBy: sanitizeNullable(row.uploaded_by),
+    archivedAt: row.archived_at ? toIsoDateTime(row.archived_at) : null,
+    archivedBy: sanitizeNullable(row.archived_by),
     createdAt: toIsoDateTime(row.created_at),
   };
 }
@@ -1794,6 +2099,11 @@ function mapComplaintLetter(row: Record<string, unknown>): ComplaintLetter {
     updatedByRole: normalizeActorRole(row.updated_by_role),
     reviewerNotes: sanitizeNullable(row.reviewer_notes),
     approvalRoleRequired: normalizeActorRole(row.approval_role_required),
+    reviewedAt: row.reviewed_at ? toIsoDateTime(row.reviewed_at) : null,
+    reviewedBy: sanitizeNullable(row.reviewed_by),
+    reviewedRole: sanitizeNullable(row.reviewed_role) ? normalizeActorRole(row.reviewed_role) : null,
+    reviewDecisionCode: sanitizeNullable(row.review_decision_code) ? normalizeReviewDecisionCode(row.review_decision_code) : null,
+    reviewDecisionNote: sanitizeNullable(row.review_decision_note),
     approvedAt: row.approved_at ? toIsoDateTime(row.approved_at) : null,
     approvedBy: sanitizeNullable(row.approved_by),
     approvedRole: sanitizeNullable(row.approved_role) ? normalizeActorRole(row.approved_role) : null,
@@ -1816,6 +2126,11 @@ function mapComplaintLetterVersion(row: Record<string, unknown>): ComplaintLette
     bodyText: String(row.body_text || ''),
     reviewerNotes: sanitizeNullable(row.reviewer_notes),
     approvalRoleRequired: normalizeActorRole(row.approval_role_required),
+    reviewedAt: row.reviewed_at ? toIsoDateTime(row.reviewed_at) : null,
+    reviewedBy: sanitizeNullable(row.reviewed_by),
+    reviewedRole: sanitizeNullable(row.reviewed_role) ? normalizeActorRole(row.reviewed_role) : null,
+    reviewDecisionCode: sanitizeNullable(row.review_decision_code) ? normalizeReviewDecisionCode(row.review_decision_code) : null,
+    reviewDecisionNote: sanitizeNullable(row.review_decision_note),
     approvedRole: sanitizeNullable(row.approved_role) ? normalizeActorRole(row.approved_role) : null,
     snapshotReason: sanitizeNullable(row.snapshot_reason),
     snapshotBy: sanitizeNullable(row.snapshot_by),
@@ -1887,6 +2202,35 @@ function normalizeEvidenceCategory(value: unknown): ComplaintEvidenceCategory {
     : 'other';
 }
 
+function extractEvidencePreviewText(fileBytes: Buffer, contentType: string, fileName: string): string | null {
+  const normalizedType = String(contentType || '').toLowerCase();
+  const lowerName = String(fileName || '').toLowerCase();
+  const isTextLike = normalizedType.startsWith('text/')
+    || normalizedType.includes('json')
+    || normalizedType.includes('xml')
+    || normalizedType.includes('message/rfc822')
+    || lowerName.endsWith('.txt')
+    || lowerName.endsWith('.md')
+    || lowerName.endsWith('.csv')
+    || lowerName.endsWith('.eml');
+
+  if (!isTextLike) return null;
+
+  const decoded = fileBytes.toString('utf8').replace(/\u0000/g, '').trim();
+  if (!decoded) return null;
+  return decoded.slice(0, 8000);
+}
+
+function createDuplicateEvidenceError(existingEvidence: ComplaintEvidence) {
+  const error = new Error('Duplicate evidence already exists for this complaint.');
+  Object.assign(error, {
+    status: 409,
+    code: 'DUPLICATE_EVIDENCE',
+    duplicateEvidence: existingEvidence,
+  });
+  return error;
+}
+
 function normalizeLetterTemplateKey(value: unknown): ComplaintLetterTemplateKey {
   return VALID_LETTER_TEMPLATE_KEYS.includes(String(value) as ComplaintLetterTemplateKey)
     ? (String(value) as ComplaintLetterTemplateKey)
@@ -1897,6 +2241,12 @@ function normalizeLetterStatus(value: unknown): ComplaintLetterStatus {
   return VALID_LETTER_STATUSES.includes(String(value) as ComplaintLetterStatus)
     ? (String(value) as ComplaintLetterStatus)
     : 'draft';
+}
+
+function normalizeReviewDecisionCode(value: unknown): ComplaintLetterReviewDecisionCode {
+  return VALID_REVIEW_DECISION_CODES.includes(String(value) as ComplaintLetterReviewDecisionCode)
+    ? (String(value) as ComplaintLetterReviewDecisionCode)
+    : 'other';
 }
 
 function normalizeLateReferralPosition(value: unknown): ComplaintLateReferralPosition {

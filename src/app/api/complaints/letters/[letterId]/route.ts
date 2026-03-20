@@ -1,13 +1,19 @@
 import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { buildComplaintLetterPdf } from '@/lib/complaints/build-letter-pdf';
 import { getComplaintLetterContext, updateComplaintLetter } from '@/lib/complaints/repository';
-import type { ComplaintLetterStatus, ComplaintWorkspaceActorRole } from '@/lib/complaints/types';
+import type { ComplaintLetterReviewDecisionCode, ComplaintLetterStatus, ComplaintWorkspaceActorRole } from '@/lib/complaints/types';
+
+const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'];
+const VALID_REVIEW_CODES: ComplaintLetterReviewDecisionCode[] = ['ready_to_issue', 'reasoning_strengthened', 'evidence_gap', 'template_non_compliant', 'redress_unclear', 'fos_rights_missing', 'other'];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ letterId: string }> }) {
   try {
+    await requireAuthenticatedUser(request, 'viewer');
     const { letterId } = await params;
     const context = await getComplaintLetterContext(letterId);
     if (!context) {
@@ -36,16 +42,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to download complaint letter.' }, { status: 500 });
+    const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to download complaint letter.' }, { status });
   }
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ letterId: string }> }) {
   try {
+    const user = await requireAuthenticatedUser(request, 'operator');
     const { letterId } = await params;
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ success: false, error: 'Invalid request body.' }, { status: 400 });
+    }
+
+    const rawEmail = typeof (body as { recipientEmail?: string }).recipientEmail === 'string'
+      ? (body as { recipientEmail?: string }).recipientEmail!.trim()
+      : null;
+    if (rawEmail && !EMAIL_RE.test(rawEmail)) {
+      return Response.json({ success: false, error: 'Invalid recipient email address.' }, { status: 400 });
+    }
+
+    const rawStatus = typeof (body as { status?: string }).status === 'string' ? (body as { status?: string }).status! : null;
+    if (rawStatus && !VALID_LETTER_STATUSES.includes(rawStatus as ComplaintLetterStatus)) {
+      return Response.json({ success: false, error: `Invalid letter status "${rawStatus}".` }, { status: 400 });
+    }
+
+    const rawReviewCode = typeof (body as { reviewDecisionCode?: string }).reviewDecisionCode === 'string'
+      ? (body as { reviewDecisionCode?: string }).reviewDecisionCode!
+      : null;
+    if (rawReviewCode && !VALID_REVIEW_CODES.includes(rawReviewCode as ComplaintLetterReviewDecisionCode)) {
+      return Response.json({ success: false, error: `Invalid review decision code "${rawReviewCode}".` }, { status: 400 });
     }
 
     const letter = await updateComplaintLetter({
@@ -53,12 +80,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       subject: typeof (body as { subject?: string }).subject === 'string' ? (body as { subject?: string }).subject : null,
       bodyText: typeof (body as { bodyText?: string }).bodyText === 'string' ? (body as { bodyText?: string }).bodyText : null,
       recipientName: typeof (body as { recipientName?: string }).recipientName === 'string' ? (body as { recipientName?: string }).recipientName : null,
-      recipientEmail: typeof (body as { recipientEmail?: string }).recipientEmail === 'string' ? (body as { recipientEmail?: string }).recipientEmail : null,
-      status: typeof (body as { status?: string }).status === 'string' ? (body as { status?: string }).status as ComplaintLetterStatus : null,
+      recipientEmail: rawEmail,
+      status: rawStatus as ComplaintLetterStatus | null,
       approvalNote: typeof (body as { approvalNote?: string }).approvalNote === 'string' ? (body as { approvalNote?: string }).approvalNote : null,
+      reviewDecisionCode: rawReviewCode as ComplaintLetterReviewDecisionCode | null,
+      reviewDecisionNote: typeof (body as { reviewDecisionNote?: string }).reviewDecisionNote === 'string'
+        ? (body as { reviewDecisionNote?: string }).reviewDecisionNote
+        : null,
       reviewerNotes: typeof (body as { reviewerNotes?: string }).reviewerNotes === 'string' ? (body as { reviewerNotes?: string }).reviewerNotes : null,
-      performedBy: typeof (body as { actorName?: string }).actorName === 'string' ? (body as { actorName?: string }).actorName : null,
-      performedByRole: typeof (body as { actorRole?: string }).actorRole === 'string' ? (body as { actorRole?: string }).actorRole as ComplaintWorkspaceActorRole : null,
+      performedBy: user.fullName,
+      performedByRole: user.role as ComplaintWorkspaceActorRole,
     });
 
     if (!letter) {
@@ -67,7 +98,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return Response.json({ success: true, letter });
   } catch (error) {
-    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to update complaint letter.' }, { status: 500 });
+    const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to update complaint letter.' }, { status });
   }
 }
 

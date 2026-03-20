@@ -9,8 +9,14 @@ import { formatDateTime } from '@/lib/utils';
 const ICONS: Record<ComplaintActivityType, React.ComponentType<{ className?: string }>> = {
   complaint_created: CheckCircle2,
   status_change: AlertCircle,
+  evidence_added: Paperclip,
+  evidence_updated: FileText,
+  evidence_archived: Clock3,
+  evidence_deleted: AlertCircle,
   letter_generated: Mail,
+  letter_submitted_for_review: Clock3,
   letter_approved: CheckCircle2,
+  letter_rejected: AlertCircle,
   letter_sent: Mail,
   letter_superseded: FileText,
   note_added: MessageSquare,
@@ -85,20 +91,28 @@ export function ComplaintTimeline({ activities }: { activities: ComplaintActivit
 }
 
 function labelForActivity(activity: ComplaintActivity): string {
-  if (activity.activityType === 'note_added' && activity.metadata?.source === 'evidence') {
-    return 'Evidence Added';
-  }
-
   const type = activity.activityType;
   switch (type) {
     case 'complaint_created':
       return 'Complaint Created';
     case 'status_change':
       return 'Status Change';
+    case 'evidence_added':
+      return 'Evidence Added';
+    case 'evidence_updated':
+      return 'Evidence Updated';
+    case 'evidence_archived':
+      return 'Evidence Archived';
+    case 'evidence_deleted':
+      return 'Evidence Deleted';
     case 'letter_generated':
       return 'Letter Generated';
+    case 'letter_submitted_for_review':
+      return 'Letter Submitted for Review';
     case 'letter_approved':
       return 'Letter Approved';
+    case 'letter_rejected':
+      return 'Letter Rejected for Rework';
     case 'letter_sent':
       return 'Letter Sent';
     case 'letter_superseded':
@@ -121,8 +135,5 @@ function labelForActivity(activity: ComplaintActivity): string {
 }
 
 function iconForActivity(activity: ComplaintActivity) {
-  if (activity.activityType === 'note_added' && activity.metadata?.source === 'evidence') {
-    return Paperclip;
-  }
   return ICONS[activity.activityType] || MessageSquare;
 }

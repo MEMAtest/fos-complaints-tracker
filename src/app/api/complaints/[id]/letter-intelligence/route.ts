@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { getComplaintById } from '@/lib/complaints/repository';
 import { buildComplaintLetterIntelligence, getComplaintLetterIntelligenceFromCorpus } from '@/lib/complaints/letter-intelligence';
 import { getAdvisorBrief } from '@/lib/fos/repository';
@@ -7,8 +8,9 @@ import type { ComplaintLetterIntelligenceResponse, ComplaintLetterIntelligenceSo
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuthenticatedUser(request, 'viewer');
     const { id } = await params;
     const complaint = await getComplaintById(id);
     if (!complaint) {
@@ -82,7 +84,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         success: false,
         error: error instanceof Error ? error.message : 'Failed to build complaint letter intelligence.',
       } satisfies ComplaintLetterIntelligenceResponse,
-      { status: 500 }
+      { status: 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500 }
     );
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { DatabaseClient } from '@/lib/database';
 import { ensureComplaintsWorkspaceSchema } from '@/lib/complaints/schema';
 import { commitComplaintImport } from '@/lib/complaints/repository';
@@ -10,6 +11,7 @@ export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuthenticatedUser(request, 'operator');
     const formData = await request.formData();
     const file = formData.get('file');
     const previewRaw = String(formData.get('preview') || 'true').toLowerCase();
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
       fileName: parsed.fileName,
       rows: previewRows,
       warnings: parsed.warnings,
-      createdBy: 'MEMA user',
+      createdBy: user.fullName,
     });
 
     return Response.json({
@@ -67,7 +69,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to import complaint file.';
-    const status = message.toLowerCase().includes('worksheet') || message.toLowerCase().includes('required') ? 400 : 500;
+    const status = 'status' in (error as object)
+      ? Number((error as { status?: number }).status || 500)
+      : ((message.toLowerCase().includes('worksheet') || message.toLowerCase().includes('required')) ? 400 : 500);
     return Response.json({ success: false, error: message }, { status });
   }
 }

@@ -18,6 +18,22 @@ const palette = {
   white: rgb(1, 1, 1),
 };
 
+const BODY_HEADINGS = new Set([
+  'Summary of your complaint',
+  'What happens next',
+  'Current status of our investigation',
+  'Why we need more time',
+  'Your right to refer to the Financial Ombudsman Service',
+  'Our understanding of your complaint',
+  'Our review',
+  'Our decision and reasons',
+  'Redress and remedial action',
+  'If you remain dissatisfied',
+  'When you can refer the complaint',
+  'What to provide',
+  'Financial Ombudsman Service details',
+]);
+
 export async function buildComplaintLetterPdf(input: {
   complaint: ComplaintRecord;
   letter: ComplaintLetter;
@@ -50,8 +66,18 @@ export async function buildComplaintLetterPdf(input: {
     `Issue date: ${formatDateTime(input.letter.createdAt)}`,
   ];
 
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - 6,
+    width: PAGE_WIDTH - MARGIN * 2,
+    height: 54,
+    color: palette.panel,
+    borderColor: palette.border,
+    borderWidth: 1,
+  });
+
   metaLines.forEach((line) => {
-    page.drawText(line, { x: MARGIN, y, size: 10, font: regular, color: palette.slate });
+    page.drawText(line, { x: MARGIN + 12, y, size: 10, font: regular, color: palette.slate });
     y -= 13;
   });
 
@@ -60,6 +86,17 @@ export async function buildComplaintLetterPdf(input: {
   y -= 24;
 
   for (const paragraph of splitParagraphs(input.letter.bodyText)) {
+    const trimmed = paragraph.trim();
+    if (isHeading(trimmed)) {
+      if (y - 24 < FOOTER_HEIGHT + 12) {
+        page = addPage(pdf, pages, input.settings, regular, bold);
+        y = PAGE_HEIGHT - HEADER_HEIGHT - 34;
+      }
+      page.drawText(trimmed, { x: MARGIN, y, size: 11.5, font: bold, color: palette.blue });
+      y -= 18;
+      continue;
+    }
+
     const lines = wrapText(paragraph, PAGE_WIDTH - MARGIN * 2, 11, regular);
     const neededHeight = Math.max(16, lines.length * 15);
     if (y - neededHeight < FOOTER_HEIGHT + 12) {
@@ -184,4 +221,8 @@ function formatTemplateLabel(templateKey: ComplaintLetter['templateKey']): strin
     default:
       return 'Custom correspondence';
   }
+}
+
+function isHeading(value: string): boolean {
+  return BODY_HEADINGS.has(value);
 }

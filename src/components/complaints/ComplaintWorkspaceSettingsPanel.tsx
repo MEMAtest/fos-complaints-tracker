@@ -105,19 +105,6 @@ export function ComplaintWorkspaceSettingsPanel({
               <Field label="Complaints phone" value={settings.complaintsPhone || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsPhone: value }))} />
             </div>
             <div className={`grid gap-4 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-2'}`}>
-              <Field label="Current actor name" value={settings.currentActorName} onChange={(value) => setSettings((current) => ({ ...current, currentActorName: value }))} />
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Current actor role</span>
-                <select
-                  value={settings.currentActorRole}
-                  onChange={(event) => setSettings((current) => ({ ...current, currentActorRole: event.target.value as ComplaintWorkspaceSettings['currentActorRole'] }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                >
-                  {COMPLAINT_WORKSPACE_ACTOR_ROLES.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-              </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Required approval role</span>
                 <select
@@ -130,7 +117,7 @@ export function ComplaintWorkspaceSettingsPanel({
                   ))}
                 </select>
               </label>
-              <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 md:col-span-2">
                 <input
                   type="checkbox"
                   checked={settings.requireIndependentReviewer}
@@ -178,7 +165,7 @@ export function ComplaintWorkspaceSettingsPanel({
               </label>
             ) : null}
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-              <span>These settings apply to complaint letters and board-pack branding across the workspace.</span>
+              <span>These settings control complaint correspondence policy, reviewer thresholds, and board-pack branding across the workspace.</span>
               <Button size="sm" className="gap-2" onClick={() => void save()} disabled={saving}>
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 Save settings

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { getBoardPackPreview } from '@/lib/board-pack/repository';
 
 export const dynamic = 'force-dynamic';
@@ -6,6 +7,7 @@ export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuthenticatedUser(request, 'viewer');
     const searchParams = request.nextUrl.searchParams;
     const preview = await getBoardPackPreview({
       title: searchParams.get('title') || 'FOS Complaints Board Pack',
@@ -21,7 +23,8 @@ export async function GET(request: NextRequest) {
     });
     return Response.json(preview, { headers: { 'Cache-Control': 's-maxage=120, stale-while-revalidate=600' } });
   } catch (error) {
-    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to build board pack preview.' }, { status: 500 });
+    const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to build board pack preview.' }, { status });
   }
 }
 

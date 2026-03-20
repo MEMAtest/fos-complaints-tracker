@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS complaint_activities (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   performed_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT complaint_activities_activity_type_check CHECK (activity_type IN ('complaint_created', 'status_change', 'letter_generated', 'letter_sent', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed'))
+  CONSTRAINT complaint_activities_activity_type_check CHECK (activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed'))
 );
 CREATE INDEX IF NOT EXISTS idx_complaint_activities_complaint_created_at ON complaint_activities (complaint_id, created_at DESC);
 
@@ -139,9 +139,12 @@ CREATE TABLE IF NOT EXISTS complaint_evidence (
   file_size INTEGER NOT NULL DEFAULT 0,
   category TEXT NOT NULL DEFAULT 'other',
   summary TEXT,
+  preview_text TEXT,
   file_bytes BYTEA NOT NULL,
   sha256 TEXT NOT NULL,
   uploaded_by TEXT,
+  archived_at TIMESTAMPTZ,
+  archived_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT complaint_evidence_category_check CHECK (category IN ('email', 'statement', 'screenshot', 'call_recording', 'policy_document', 'letter', 'other'))
 );
@@ -164,6 +167,11 @@ CREATE TABLE IF NOT EXISTS complaint_letters (
   updated_by_role TEXT NOT NULL DEFAULT 'operator',
   reviewer_notes TEXT,
   approval_role_required TEXT NOT NULL DEFAULT 'reviewer',
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by TEXT,
+  reviewed_role TEXT,
+  review_decision_code TEXT,
+  review_decision_note TEXT,
   approved_at TIMESTAMPTZ,
   approved_by TEXT,
   approved_role TEXT,
@@ -171,11 +179,12 @@ CREATE TABLE IF NOT EXISTS complaint_letters (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT complaint_letters_template_key_check CHECK (template_key IN ('acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom')),
-  CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'approved', 'sent', 'superseded')),
+  CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded')),
   CONSTRAINT complaint_letters_generated_by_role_check CHECK (generated_by_role IN ('operator', 'reviewer', 'manager', 'admin')),
   CONSTRAINT complaint_letters_updated_by_role_check CHECK (updated_by_role IN ('operator', 'reviewer', 'manager', 'admin')),
   CONSTRAINT complaint_letters_approval_role_required_check CHECK (approval_role_required IN ('operator', 'reviewer', 'manager', 'admin')),
-  CONSTRAINT complaint_letters_approved_role_check CHECK (approved_role IS NULL OR approved_role IN ('operator', 'reviewer', 'manager', 'admin'))
+  CONSTRAINT complaint_letters_approved_role_check CHECK (approved_role IS NULL OR approved_role IN ('operator', 'reviewer', 'manager', 'admin')),
+  CONSTRAINT complaint_letters_reviewed_role_check CHECK (reviewed_role IS NULL OR reviewed_role IN ('operator', 'reviewer', 'manager', 'admin'))
 );
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_complaint_created_at ON complaint_letters (complaint_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_status ON complaint_letters (status);
@@ -192,11 +201,16 @@ ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS updated_by TEXT;
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS updated_by_role TEXT NOT NULL DEFAULT 'operator';
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS approval_role_required TEXT NOT NULL DEFAULT 'reviewer';
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewed_role TEXT;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS review_decision_code TEXT;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS review_decision_note TEXT;
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS approved_role TEXT;
 
 ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_status_check;
 ALTER TABLE complaint_letters
-  ADD CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'approved', 'sent', 'superseded'));
+  ADD CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'));
 ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_generated_by_role_check;
 ALTER TABLE complaint_letters
   ADD CONSTRAINT complaint_letters_generated_by_role_check CHECK (generated_by_role IN ('operator', 'reviewer', 'manager', 'admin'));
@@ -209,11 +223,14 @@ ALTER TABLE complaint_letters
 ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_approved_role_check;
 ALTER TABLE complaint_letters
   ADD CONSTRAINT complaint_letters_approved_role_check CHECK (approved_role IS NULL OR approved_role IN ('operator', 'reviewer', 'manager', 'admin'));
+ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_reviewed_role_check;
+ALTER TABLE complaint_letters
+  ADD CONSTRAINT complaint_letters_reviewed_role_check CHECK (reviewed_role IS NULL OR reviewed_role IN ('operator', 'reviewer', 'manager', 'admin'));
 
 ALTER TABLE complaint_activities DROP CONSTRAINT IF EXISTS complaint_activities_activity_type_check;
 ALTER TABLE complaint_activities
   ADD CONSTRAINT complaint_activities_activity_type_check CHECK (
-    activity_type IN ('complaint_created', 'status_change', 'letter_generated', 'letter_approved', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
+    activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
   );
 
 CREATE TABLE IF NOT EXISTS complaint_letter_versions (
@@ -228,15 +245,21 @@ CREATE TABLE IF NOT EXISTS complaint_letter_versions (
   body_text TEXT NOT NULL,
   reviewer_notes TEXT,
   approval_role_required TEXT NOT NULL DEFAULT 'reviewer',
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by TEXT,
+  reviewed_role TEXT,
+  review_decision_code TEXT,
+  review_decision_note TEXT,
   approved_role TEXT,
   snapshot_reason TEXT,
   snapshot_by TEXT,
   snapshot_by_role TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT complaint_letter_versions_status_check CHECK (status IN ('draft', 'generated', 'approved', 'sent', 'superseded')),
+  CONSTRAINT complaint_letter_versions_status_check CHECK (status IN ('draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded')),
   CONSTRAINT complaint_letter_versions_unique UNIQUE (letter_id, version_number),
   CONSTRAINT complaint_letter_versions_approval_role_required_check CHECK (approval_role_required IN ('operator', 'reviewer', 'manager', 'admin')),
   CONSTRAINT complaint_letter_versions_approved_role_check CHECK (approved_role IS NULL OR approved_role IN ('operator', 'reviewer', 'manager', 'admin')),
+  CONSTRAINT complaint_letter_versions_reviewed_role_check CHECK (reviewed_role IS NULL OR reviewed_role IN ('operator', 'reviewer', 'manager', 'admin')),
   CONSTRAINT complaint_letter_versions_snapshot_by_role_check CHECK (snapshot_by_role IS NULL OR snapshot_by_role IN ('operator', 'reviewer', 'manager', 'admin'))
 );
 
@@ -294,13 +317,25 @@ ON CONFLICT (singleton) DO NOTHING;
 const COMPLAINTS_WORKSPACE_LETTER_REVIEW_SQL = `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+ALTER TABLE complaint_evidence ADD COLUMN IF NOT EXISTS preview_text TEXT;
+ALTER TABLE complaint_evidence ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE complaint_evidence ADD COLUMN IF NOT EXISTS archived_by TEXT;
+
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS generated_by_role TEXT NOT NULL DEFAULT 'operator';
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS updated_by TEXT;
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS updated_by_role TEXT NOT NULL DEFAULT 'operator';
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS approval_role_required TEXT NOT NULL DEFAULT 'reviewer';
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS reviewed_role TEXT;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS review_decision_code TEXT;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS review_decision_note TEXT;
 ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS approved_role TEXT;
 
+ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_status_check;
+ALTER TABLE complaint_letters
+  ADD CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'));
 ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_generated_by_role_check;
 ALTER TABLE complaint_letters
   ADD CONSTRAINT complaint_letters_generated_by_role_check CHECK (generated_by_role IN ('operator', 'reviewer', 'manager', 'admin'));
@@ -313,18 +348,32 @@ ALTER TABLE complaint_letters
 ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_approved_role_check;
 ALTER TABLE complaint_letters
   ADD CONSTRAINT complaint_letters_approved_role_check CHECK (approved_role IS NULL OR approved_role IN ('operator', 'reviewer', 'manager', 'admin'));
+ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_reviewed_role_check;
+ALTER TABLE complaint_letters
+  ADD CONSTRAINT complaint_letters_reviewed_role_check CHECK (reviewed_role IS NULL OR reviewed_role IN ('operator', 'reviewer', 'manager', 'admin'));
 
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS approval_role_required TEXT NOT NULL DEFAULT 'reviewer';
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS reviewed_role TEXT;
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS review_decision_code TEXT;
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS review_decision_note TEXT;
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS approved_role TEXT;
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS snapshot_by_role TEXT;
 
+ALTER TABLE complaint_letter_versions DROP CONSTRAINT IF EXISTS complaint_letter_versions_status_check;
+ALTER TABLE complaint_letter_versions
+  ADD CONSTRAINT complaint_letter_versions_status_check CHECK (status IN ('draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'));
 ALTER TABLE complaint_letter_versions DROP CONSTRAINT IF EXISTS complaint_letter_versions_approval_role_required_check;
 ALTER TABLE complaint_letter_versions
   ADD CONSTRAINT complaint_letter_versions_approval_role_required_check CHECK (approval_role_required IN ('operator', 'reviewer', 'manager', 'admin'));
 ALTER TABLE complaint_letter_versions DROP CONSTRAINT IF EXISTS complaint_letter_versions_approved_role_check;
 ALTER TABLE complaint_letter_versions
   ADD CONSTRAINT complaint_letter_versions_approved_role_check CHECK (approved_role IS NULL OR approved_role IN ('operator', 'reviewer', 'manager', 'admin'));
+ALTER TABLE complaint_letter_versions DROP CONSTRAINT IF EXISTS complaint_letter_versions_reviewed_role_check;
+ALTER TABLE complaint_letter_versions
+  ADD CONSTRAINT complaint_letter_versions_reviewed_role_check CHECK (reviewed_role IS NULL OR reviewed_role IN ('operator', 'reviewer', 'manager', 'admin'));
 ALTER TABLE complaint_letter_versions DROP CONSTRAINT IF EXISTS complaint_letter_versions_snapshot_by_role_check;
 ALTER TABLE complaint_letter_versions
   ADD CONSTRAINT complaint_letter_versions_snapshot_by_role_check CHECK (snapshot_by_role IS NULL OR snapshot_by_role IN ('operator', 'reviewer', 'manager', 'admin'));
@@ -333,6 +382,12 @@ ALTER TABLE complaints_workspace_settings ADD COLUMN IF NOT EXISTS current_actor
 ALTER TABLE complaints_workspace_settings ADD COLUMN IF NOT EXISTS current_actor_role TEXT NOT NULL DEFAULT 'reviewer';
 ALTER TABLE complaints_workspace_settings ADD COLUMN IF NOT EXISTS letter_approval_role TEXT NOT NULL DEFAULT 'reviewer';
 ALTER TABLE complaints_workspace_settings ADD COLUMN IF NOT EXISTS require_independent_reviewer BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE complaint_activities DROP CONSTRAINT IF EXISTS complaint_activities_activity_type_check;
+ALTER TABLE complaint_activities
+  ADD CONSTRAINT complaint_activities_activity_type_check CHECK (
+    activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
+  );
 
 ALTER TABLE complaints_workspace_settings DROP CONSTRAINT IF EXISTS complaints_workspace_settings_current_actor_role_check;
 ALTER TABLE complaints_workspace_settings
@@ -372,12 +427,28 @@ const LETTER_REVIEW_COLUMNS = [
   'updated_by_role',
   'reviewer_notes',
   'approval_role_required',
+  'reviewed_at',
+  'reviewed_by',
+  'reviewed_role',
+  'review_decision_code',
+  'review_decision_note',
   'approved_role',
+];
+
+const EVIDENCE_MANAGEMENT_COLUMNS = [
+  'preview_text',
+  'archived_at',
+  'archived_by',
 ];
 
 const LETTER_VERSION_REVIEW_COLUMNS = [
   'reviewer_notes',
   'approval_role_required',
+  'reviewed_at',
+  'reviewed_by',
+  'reviewed_role',
+  'review_decision_code',
+  'review_decision_note',
   'approved_role',
   'snapshot_by_role',
 ];
@@ -387,6 +458,21 @@ const SETTINGS_REVIEW_COLUMNS = [
   'current_actor_role',
   'letter_approval_role',
   'require_independent_reviewer',
+];
+
+const EXPECTED_CONSTRAINT_DEFINITIONS = [
+  {
+    name: 'complaint_letters_status_check',
+    includes: ["under_review", "rejected_for_rework", "superseded"],
+  },
+  {
+    name: 'complaint_letter_versions_status_check',
+    includes: ["under_review", "rejected_for_rework", "superseded"],
+  },
+  {
+    name: 'complaint_activities_activity_type_check',
+    includes: ["evidence_added", "evidence_updated", "evidence_archived", "evidence_deleted", "letter_submitted_for_review", "letter_rejected", "letter_superseded"],
+  },
 ];
 
 export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
@@ -414,7 +500,9 @@ export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
   const hasLetterReviewColumns = await hasComplaintsWorkspaceColumns('complaint_letters', LETTER_REVIEW_COLUMNS);
   const hasLetterVersionReviewColumns = await hasComplaintsWorkspaceColumns('complaint_letter_versions', LETTER_VERSION_REVIEW_COLUMNS);
   const hasSettingsReviewColumns = await hasComplaintsWorkspaceColumns('complaints_workspace_settings', SETTINGS_REVIEW_COLUMNS);
-  if (!hasLetterReviewColumns || !hasLetterVersionReviewColumns || !hasSettingsReviewColumns) {
+  const hasEvidenceManagementColumns = await hasComplaintsWorkspaceColumns('complaint_evidence', EVIDENCE_MANAGEMENT_COLUMNS);
+  const hasExpectedConstraints = await hasComplaintsWorkspaceConstraints(EXPECTED_CONSTRAINT_DEFINITIONS);
+  if (!hasLetterReviewColumns || !hasLetterVersionReviewColumns || !hasSettingsReviewColumns || !hasEvidenceManagementColumns || !hasExpectedConstraints) {
     await ensureSchemaSql(COMPLAINTS_WORKSPACE_LETTER_REVIEW_SQL, [...LETTER_VERSIONING_TABLES, ...SETTINGS_TABLES]);
   }
 
@@ -423,9 +511,11 @@ export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
     && await hasComplaintsWorkspaceTables(EXTENSION_TABLES)
     && await hasComplaintsWorkspaceTables(SETTINGS_TABLES)
     && await hasComplaintsWorkspaceTables(LETTER_VERSIONING_TABLES)
+    && await hasComplaintsWorkspaceColumns('complaint_evidence', EVIDENCE_MANAGEMENT_COLUMNS)
     && await hasComplaintsWorkspaceColumns('complaint_letters', LETTER_REVIEW_COLUMNS)
     && await hasComplaintsWorkspaceColumns('complaint_letter_versions', LETTER_VERSION_REVIEW_COLUMNS)
     && await hasComplaintsWorkspaceColumns('complaints_workspace_settings', SETTINGS_REVIEW_COLUMNS)
+    && await hasComplaintsWorkspaceConstraints(EXPECTED_CONSTRAINT_DEFINITIONS)
   ) {
     schemaReady = true;
     return;
@@ -480,4 +570,24 @@ async function hasComplaintsWorkspaceColumns(table: string, columns: string[]): 
   );
 
   return Number(row?.existing_count || 0) === columns.length;
+}
+
+async function hasComplaintsWorkspaceConstraints(
+  constraints: Array<{ name: string; includes: string[] }>
+): Promise<boolean> {
+  const rows = await DatabaseClient.query<{ conname: string; definition: string }>(
+    `
+      SELECT conname, pg_get_constraintdef(oid) AS definition
+      FROM pg_constraint
+      WHERE conname = ANY($1::text[])
+    `,
+    [constraints.map((constraint) => constraint.name)]
+  );
+
+  const byName = new Map(rows.map((row) => [row.conname, String(row.definition || '').toLowerCase()]));
+  return constraints.every((constraint) => {
+    const definition = byName.get(constraint.name);
+    if (!definition) return false;
+    return constraint.includes.every((fragment) => definition.includes(fragment.toLowerCase()));
+  });
 }

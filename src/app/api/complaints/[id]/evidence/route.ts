@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { createComplaintEvidence, getComplaintById, listComplaintEvidence } from '@/lib/complaints/repository';
 import type { ComplaintEvidenceCategory } from '@/lib/complaints/types';
 
@@ -7,22 +8,26 @@ export const runtime = 'nodejs';
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuthenticatedUser(request, 'viewer');
     const { id } = await params;
     const complaint = await getComplaintById(id);
     if (!complaint) {
       return Response.json({ success: false, error: 'Complaint not found.' }, { status: 404 });
     }
-    const evidence = await listComplaintEvidence(id);
+    const includeArchived = request.nextUrl.searchParams.get('includeArchived') === '1';
+    const evidence = await listComplaintEvidence(id, { includeArchived });
     return Response.json({ success: true, evidence });
   } catch (error) {
-    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to fetch complaint evidence.' }, { status: 500 });
+    const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to fetch complaint evidence.' }, { status });
   }
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuthenticatedUser(request, 'operator');
     const { id } = await params;
     const complaint = await getComplaintById(id);
     if (!complaint) {
@@ -48,13 +53,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       fileBytes,
       category,
       summary,
-      uploadedBy: 'MEMA user',
+      uploadedBy: user.fullName,
     });
 
     return Response.json({ success: true, evidence }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to upload evidence.';
-    const status = message.toLowerCase().includes('required') || message.toLowerCase().includes('limit') ? 400 : 500;
-    return Response.json({ success: false, error: message }, { status });
+    const duplicateEvidence = 'duplicateEvidence' in (error as object)
+      ? (error as { duplicateEvidence?: unknown }).duplicateEvidence
+      : null;
+    const status = 'status' in (error as object)
+      ? Number((error as { status?: number }).status || 500)
+      : ((message.toLowerCase().includes('required') || message.toLowerCase().includes('limit')) ? 400 : 500);
+    return Response.json({ success: false, error: message, duplicateEvidence }, { status });
   }
 }
