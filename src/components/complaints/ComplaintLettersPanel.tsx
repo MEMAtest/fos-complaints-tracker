@@ -5,6 +5,7 @@ import { Download, FileText, Loader2, Mail, Save, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ComplaintLetterIntelligencePanel } from '@/components/complaints/ComplaintLetterIntelligencePanel';
 import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/ComplaintWorkspaceSettingsPanel';
 import { COMPLAINT_LETTER_TEMPLATES, type ComplaintLetter, type ComplaintRecord } from '@/lib/complaints/types';
 import { formatDateTime } from '@/lib/utils';
@@ -131,6 +132,10 @@ export function ComplaintLettersPanel({
     URL.revokeObjectURL(url);
   }
 
+  function appendDraftingText(text: string) {
+    setEditorBody((current) => (current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text));
+  }
+
   return (
     <div className="space-y-5">
       <Card>
@@ -156,6 +161,13 @@ export function ComplaintLettersPanel({
       </Card>
 
       <ComplaintWorkspaceSettingsPanel title="Correspondence profile" compact />
+
+      <ComplaintLetterIntelligencePanel
+        complaint={complaint}
+        activeTemplateKey={selectedLetter?.templateKey || null}
+        hasActiveLetter={Boolean(selectedLetter)}
+        onInsert={appendDraftingText}
+      />
 
       <Card>
         <CardHeader>

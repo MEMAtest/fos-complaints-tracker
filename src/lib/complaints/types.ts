@@ -4,6 +4,7 @@ export type ComplaintEvidenceCategory = 'email' | 'statement' | 'screenshot' | '
 export type ComplaintLetterTemplateKey = 'acknowledgement' | 'holding_response' | 'final_response' | 'fos_referral' | 'custom';
 export type ComplaintLetterStatus = 'draft' | 'generated' | 'sent';
 export type ComplaintLateReferralPosition = 'review_required' | 'consent' | 'do_not_consent' | 'custom';
+export type ComplaintLetterIntelligenceSourceScope = 'product_root_cause' | 'product_only' | 'none';
 export type ComplaintActivityType =
   | 'complaint_created'
   | 'status_change'
@@ -100,6 +101,74 @@ export interface ComplaintWorkspaceSettings {
   lateReferralPosition: ComplaintLateReferralPosition;
   lateReferralCustomText: string | null;
   updatedAt: string;
+}
+
+export interface ComplaintLetterIntelligenceTheme {
+  theme: string;
+  frequency: number;
+}
+
+export interface ComplaintLetterIntelligencePrecedent {
+  label: string;
+  count: number;
+  percentOfCases: number;
+}
+
+export interface ComplaintLetterIntelligenceSampleCase {
+  caseId: string;
+  decisionReference: string;
+  decisionDate: string | null;
+  firmName: string | null;
+  outcome: string;
+  summary: string | null;
+}
+
+export interface ComplaintLetterIntelligenceAction {
+  item: string;
+  source: 'precedent' | 'root_cause' | 'theme' | 'vulnerability';
+  priority: 'critical' | 'important' | 'recommended';
+}
+
+export interface ComplaintLetterIntelligence {
+  complaintId: string;
+  sourceScope: ComplaintLetterIntelligenceSourceScope;
+  product: string;
+  rootCause: string | null;
+  generatedAt: string;
+  riskSnapshot: {
+    totalCases: number;
+    upheldRate: number;
+    notUpheldRate: number;
+    overallUpheldRate: number;
+    riskLevel: 'low' | 'medium' | 'high' | 'very_high';
+    trendDirection: 'improving' | 'stable' | 'worsening';
+  };
+  draftingGuidance: {
+    reviewPoints: string[];
+    challengeAreas: string[];
+    responseStrengths: string[];
+    remediationPrompts: string[];
+    referralChecklist: string[];
+  };
+  keyPrecedents: ComplaintLetterIntelligencePrecedent[];
+  sampleCases: ComplaintLetterIntelligenceSampleCase[];
+  whatWins: ComplaintLetterIntelligenceTheme[];
+  whatLoses: ComplaintLetterIntelligenceTheme[];
+  rootCausePatterns: Array<{ label: string; count: number; upheldRate: number }>;
+  recommendedActions: ComplaintLetterIntelligenceAction[];
+  aiGuidance: string | null;
+}
+
+export interface ComplaintLetterIntelligenceResponse {
+  success: boolean;
+  data?: ComplaintLetterIntelligence | null;
+  meta?: {
+    complaintId: string;
+    sourceScope: ComplaintLetterIntelligenceSourceScope;
+    generatedAt: string;
+  };
+  reason?: string;
+  error?: string;
 }
 
 export interface ComplaintFilters {
