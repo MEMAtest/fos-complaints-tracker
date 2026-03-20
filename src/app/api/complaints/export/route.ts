@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuthenticatedUser(request, 'viewer');
     actor = user.email;
-    rateLimitOrThrow(clientKeyFromRequest(request, `complaints-export:${user.email}`), 20, 60_000);
+    await rateLimitOrThrow(clientKeyFromRequest(request, `complaints-export:${user.email}`), 20, 60_000);
     const filters = parseComplaintFilters(request.nextUrl.searchParams);
     const csv = await exportComplaints(filters);
     const stamp = new Date().toISOString().slice(0, 10);

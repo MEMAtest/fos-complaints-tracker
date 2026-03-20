@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuthenticatedUser(request, 'viewer');
     actor = user.email;
-    rateLimitOrThrow(clientKeyFromRequest(request, `board-pack-preview:${user.email}`), 60, 60_000);
+    await rateLimitOrThrow(clientKeyFromRequest(request, `board-pack-preview:${user.email}`), 60, 60_000);
     const searchParams = request.nextUrl.searchParams;
     const templateKey = parseTemplateKey(searchParams.get('templateKey'));
     const preview = await getBoardPackPreview({

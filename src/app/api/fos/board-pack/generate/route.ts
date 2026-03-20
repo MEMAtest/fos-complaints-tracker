@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuthenticatedUser(request, 'manager');
     generatedBy = user.fullName;
     actor = user.email;
-    rateLimitOrThrow(clientKeyFromRequest(request, `board-pack-generate:${user.email}`), 10, 600_000);
+    await rateLimitOrThrow(clientKeyFromRequest(request, `board-pack-generate:${user.email}`), 10, 600_000);
     body = await request.json();
     if (!body || typeof body !== 'object') {
       return Response.json({ success: false, error: 'Invalid request body.' }, { status: 400 });

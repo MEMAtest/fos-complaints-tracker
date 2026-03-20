@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file');
     const previewRaw = String(formData.get('preview') || 'true').toLowerCase();
     const preview = ['1', 'true', 'yes'].includes(previewRaw);
-    rateLimitOrThrow(clientKeyFromRequest(request, `complaints-import:${user.email}`), preview ? 30 : 10, preview ? 60_000 : 300_000);
+    await rateLimitOrThrow(clientKeyFromRequest(request, `complaints-import:${user.email}`), preview ? 30 : 10, preview ? 60_000 : 300_000);
 
     if (!file || typeof File === 'undefined' || !(file instanceof File)) {
       return Response.json({ success: false, error: 'A CSV or Excel file is required.' }, { status: 400 });
