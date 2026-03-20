@@ -149,6 +149,15 @@ export interface ComplaintLetterIntelligence {
     responseStrengths: string[];
     remediationPrompts: string[];
     referralChecklist: string[];
+    letterScaffolds: {
+      acknowledgement: string[];
+      holdingResponse: string[];
+      finalResponseReview: string[];
+      finalResponseReasoning: string[];
+      finalResponseRedress: string[];
+      referralResponse: string[];
+    };
+    comparableCaseSummary: string[];
   };
   keyPrecedents: ComplaintLetterIntelligencePrecedent[];
   sampleCases: ComplaintLetterIntelligenceSampleCase[];

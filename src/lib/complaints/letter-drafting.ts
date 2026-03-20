@@ -1,4 +1,4 @@
-import type { ComplaintLetterIntelligence } from './types';
+import type { ComplaintLetterIntelligence, ComplaintLetterIntelligenceSampleCase } from './types';
 
 export function buildReviewPointsBlock(intelligence: ComplaintLetterIntelligence): string {
   return buildDraftAssistBlock('review before issue', intelligence.draftingGuidance.reviewPoints);
@@ -18,6 +18,45 @@ export function buildRemediationPromptsBlock(intelligence: ComplaintLetterIntell
 
 export function buildReferralChecklistBlock(intelligence: ComplaintLetterIntelligence): string {
   return buildDraftAssistBlock('file readiness checklist', intelligence.draftingGuidance.referralChecklist);
+}
+
+export function buildAcknowledgementScaffoldBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('acknowledgement scaffold', intelligence.draftingGuidance.letterScaffolds.acknowledgement);
+}
+
+export function buildHoldingResponseScaffoldBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('holding-response scaffold', intelligence.draftingGuidance.letterScaffolds.holdingResponse);
+}
+
+export function buildFinalResponseReviewBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('final-response review scaffold', intelligence.draftingGuidance.letterScaffolds.finalResponseReview);
+}
+
+export function buildFinalResponseReasoningBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('final-response reasoning scaffold', intelligence.draftingGuidance.letterScaffolds.finalResponseReasoning);
+}
+
+export function buildFinalResponseRedressBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('final-response redress scaffold', intelligence.draftingGuidance.letterScaffolds.finalResponseRedress);
+}
+
+export function buildReferralResponseScaffoldBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('referral-response scaffold', intelligence.draftingGuidance.letterScaffolds.referralResponse);
+}
+
+export function buildComparableCaseSummaryBlock(intelligence: ComplaintLetterIntelligence): string {
+  return buildDraftAssistBlock('comparable-case summary', intelligence.draftingGuidance.comparableCaseSummary);
+}
+
+export function buildComparableCaseNoteBlock(sampleCase: ComplaintLetterIntelligenceSampleCase): string {
+  const lines = [
+    `Comparable case: ${sampleCase.decisionReference}`,
+    `Outcome: ${sampleCase.outcome.replace(/_/g, ' ')}`,
+    ...(sampleCase.decisionDate ? [`Decision date: ${sampleCase.decisionDate}`] : []),
+    ...(sampleCase.firmName ? [`Firm: ${sampleCase.firmName}`] : []),
+    ...(sampleCase.summary ? [`Summary: ${sampleCase.summary}`] : []),
+  ];
+  return buildDraftAssistBlock('comparable-case note', lines);
 }
 
 function buildDraftAssistBlock(title: string, lines: string[]): string {

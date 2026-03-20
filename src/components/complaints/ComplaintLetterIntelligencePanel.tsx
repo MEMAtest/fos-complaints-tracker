@@ -13,8 +13,16 @@ import {
   ComplaintRecord,
 } from '@/lib/complaints/types';
 import {
+  buildAcknowledgementScaffoldBlock,
   buildChallengeAreasBlock,
+  buildComparableCaseNoteBlock,
+  buildComparableCaseSummaryBlock,
+  buildFinalResponseReasoningBlock,
+  buildFinalResponseRedressBlock,
+  buildFinalResponseReviewBlock,
+  buildHoldingResponseScaffoldBlock,
   buildReferralChecklistBlock,
+  buildReferralResponseScaffoldBlock,
   buildRemediationPromptsBlock,
   buildResponseStrengthsBlock,
   buildReviewPointsBlock,
@@ -23,26 +31,37 @@ import { formatDate, formatDateTime, formatNumber, formatPercent, truncate } fro
 
 const ACTIONS_BY_TEMPLATE: Record<ComplaintLetterTemplateKey, Array<{ key: string; label: string }>> = {
   acknowledgement: [
+    { key: 'ackScaffold', label: 'Insert acknowledgement scaffold' },
     { key: 'reviewPoints', label: 'Insert review points' },
   ],
   holding_response: [
+    { key: 'holdingScaffold', label: 'Insert holding scaffold' },
     { key: 'reviewPoints', label: 'Insert review points' },
     { key: 'challengeAreas', label: 'Insert challenge areas' },
   ],
   final_response: [
-    { key: 'reviewPoints', label: 'Insert review points' },
+    { key: 'finalReview', label: 'Insert review scaffold' },
+    { key: 'finalReasoning', label: 'Insert reasoning scaffold' },
+    { key: 'finalRedress', label: 'Insert redress scaffold' },
     { key: 'challengeAreas', label: 'Insert challenge areas' },
     { key: 'responseStrengths', label: 'Insert response strengths' },
     { key: 'remediationPrompts', label: 'Insert remediation prompts' },
+    { key: 'caseSummary', label: 'Insert comparable-case summary' },
   ],
   fos_referral: [
+    { key: 'referralScaffold', label: 'Insert referral scaffold' },
     { key: 'referralChecklist', label: 'Insert referral checklist' },
   ],
   custom: [
+    { key: 'ackScaffold', label: 'Insert acknowledgement scaffold' },
+    { key: 'holdingScaffold', label: 'Insert holding scaffold' },
+    { key: 'finalReasoning', label: 'Insert reasoning scaffold' },
+    { key: 'finalRedress', label: 'Insert redress scaffold' },
     { key: 'reviewPoints', label: 'Insert review points' },
     { key: 'challengeAreas', label: 'Insert challenge areas' },
     { key: 'responseStrengths', label: 'Insert response strengths' },
     { key: 'remediationPrompts', label: 'Insert remediation prompts' },
+    { key: 'caseSummary', label: 'Insert comparable-case summary' },
     { key: 'referralChecklist', label: 'Insert referral checklist' },
   ],
 };
@@ -104,6 +123,21 @@ export function ComplaintLetterIntelligencePanel({
       case 'reviewPoints':
         onInsert(buildReviewPointsBlock(intelligence));
         return;
+      case 'ackScaffold':
+        onInsert(buildAcknowledgementScaffoldBlock(intelligence));
+        return;
+      case 'holdingScaffold':
+        onInsert(buildHoldingResponseScaffoldBlock(intelligence));
+        return;
+      case 'finalReview':
+        onInsert(buildFinalResponseReviewBlock(intelligence));
+        return;
+      case 'finalReasoning':
+        onInsert(buildFinalResponseReasoningBlock(intelligence));
+        return;
+      case 'finalRedress':
+        onInsert(buildFinalResponseRedressBlock(intelligence));
+        return;
       case 'challengeAreas':
         onInsert(buildChallengeAreasBlock(intelligence));
         return;
@@ -115,6 +149,12 @@ export function ComplaintLetterIntelligencePanel({
         return;
       case 'referralChecklist':
         onInsert(buildReferralChecklistBlock(intelligence));
+        return;
+      case 'referralScaffold':
+        onInsert(buildReferralResponseScaffoldBlock(intelligence));
+        return;
+      case 'caseSummary':
+        onInsert(buildComparableCaseSummaryBlock(intelligence));
         return;
       default:
         return;
@@ -181,6 +221,19 @@ export function ComplaintLetterIntelligencePanel({
                 </div>
               </div>
 
+              <div className="grid gap-4 xl:grid-cols-2">
+                <InsightList
+                  title="Current letter scaffold"
+                  emptyLabel="No scaffold is available for this letter type yet."
+                  items={selectScaffoldPreview(intelligence, activeTemplateKey)}
+                />
+                <InsightList
+                  title="Comparable-case challenge summary"
+                  emptyLabel="No comparable-case summary is available yet."
+                  items={intelligence.draftingGuidance.comparableCaseSummary}
+                />
+              </div>
+
               {intelligence.aiGuidance ? (
                 <section className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Internal guidance</p>
@@ -235,18 +288,16 @@ export function ComplaintLetterIntelligencePanel({
               <section className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Comparable cases</p>
-                  <p className="mt-1 text-xs text-slate-500">Review the underlying published decisions before finalising the reasoning.</p>
+                  <p className="mt-1 text-xs text-slate-500">Review the underlying published decisions before finalising the reasoning, or insert an internal note based on a selected case.</p>
                 </div>
                 {intelligence.sampleCases.length === 0 ? (
                   <p className="text-sm text-slate-500">No comparable cases available.</p>
                 ) : (
                   <div className="space-y-3">
                     {intelligence.sampleCases.map((item) => (
-                      <button
+                      <div
                         key={item.caseId}
-                        type="button"
-                        onClick={() => setSelectedCaseId(item.caseId)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-blue-300 hover:bg-blue-50"
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-slate-900">{item.decisionReference}</p>
@@ -257,7 +308,21 @@ export function ComplaintLetterIntelligencePanel({
                           {item.decisionDate ? ` · ${formatDate(item.decisionDate)}` : ''}
                         </p>
                         {item.summary ? <p className="mt-2 text-sm text-slate-600">{truncate(item.summary, 220)}</p> : null}
-                      </button>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => setSelectedCaseId(item.caseId)}>
+                            Open case
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!hasActiveLetter}
+                            onClick={() => onInsert(buildComparableCaseNoteBlock(item))}
+                          >
+                            Insert case note
+                          </Button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -278,6 +343,29 @@ export function ComplaintLetterIntelligencePanel({
       />
     </>
   );
+}
+
+function selectScaffoldPreview(
+  intelligence: NonNullable<ComplaintLetterIntelligenceResponse['data']>,
+  activeTemplateKey: ComplaintLetterTemplateKey | null
+): string[] {
+  switch (activeTemplateKey) {
+    case 'acknowledgement':
+      return intelligence.draftingGuidance.letterScaffolds.acknowledgement;
+    case 'holding_response':
+      return intelligence.draftingGuidance.letterScaffolds.holdingResponse;
+    case 'final_response':
+      return [
+        ...intelligence.draftingGuidance.letterScaffolds.finalResponseReview,
+        ...intelligence.draftingGuidance.letterScaffolds.finalResponseReasoning,
+        ...intelligence.draftingGuidance.letterScaffolds.finalResponseRedress,
+      ];
+    case 'fos_referral':
+      return intelligence.draftingGuidance.letterScaffolds.referralResponse;
+    case 'custom':
+    default:
+      return intelligence.draftingGuidance.reviewPoints;
+  }
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {

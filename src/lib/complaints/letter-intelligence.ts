@@ -77,8 +77,9 @@ export function buildComplaintLetterIntelligence(
   brief: AdvisorBriefLike,
   sourceScope: Exclude<ComplaintLetterIntelligenceSourceScope, 'none'>
 ): ComplaintLetterIntelligence {
+  const complaintDescription = describeComplaint(complaint);
   const challengeAreas = dedupeLines([
-    `Address the complaint chronology clearly against the recorded issue: ${describeComplaint(complaint)}.`,
+    `Address the complaint chronology clearly against the recorded issue: ${complaintDescription}.`,
     ...brief.whatLoses.slice(0, 4).map((item) => `Cover likely challenge area: ${formatTheme(item.theme)}.`),
     ...brief.rootCausePatterns
       .filter((item) => item.upheldRate >= 50)
@@ -104,7 +105,7 @@ export function buildComplaintLetterIntelligence(
   const reviewPoints = dedupeLines([
     `Confirm the product and issue framing before issue: ${brief.query.product}${brief.query.rootCause ? ` / ${brief.query.rootCause}` : ''}.`,
     `Benchmark for similar cases: ${brief.riskAssessment.totalCases} cases reviewed, ${formatPercent(brief.riskAssessment.upheldRate)} upheld, ${formatPercent(brief.riskAssessment.notUpheldRate)} not upheld.`,
-    `Explain the reasoning so it addresses the main complaint summary: ${describeComplaint(complaint)}.`,
+    `Explain the reasoning so it addresses the main complaint summary: ${complaintDescription}.`,
     ...brief.keyPrecedents.slice(0, 3).map((item) => `Review the internal precedent theme ${item.label} before finalising the reasoning.`),
     ...brief.recommendedActions.slice(0, 3).map((item) => normalizeSentence(item.item)),
   ]);
@@ -115,6 +116,60 @@ export function buildComplaintLetterIntelligence(
     'Ensure the complaint reference, dates received, and any final-response date are consistent across the file and letter.',
     'Confirm the standard Ombudsman leaflet or equivalent signposting is referenced in the outgoing correspondence.',
     'Review the late-referral wording against the current complaints policy setting before issue.',
+  ]);
+
+  const acknowledgementScaffold = dedupeLines([
+    `State the complaint reference, date received, and concise complaint summary: ${complaintDescription}.`,
+    'Confirm the investigation scope, what information has already been received, and what further information is being requested.',
+    `Set the next expected progress point and confirm the target final-response deadline from the complaint file.`,
+    'Keep the tone procedural and avoid premature conclusions about outcome or redress.',
+  ]);
+
+  const holdingResponseScaffold = dedupeLines([
+    `Explain why the review is not yet complete and tie that explanation back to the live issues on the file: ${complaintDescription}.`,
+    ...challengeAreas.slice(0, 3).map((item) => `Outstanding review point: ${stripTrailingPunctuation(item)}.`),
+    'State what evidence, chronology checks, or remediation assessment is still outstanding before a fair final response can be issued.',
+    'Reconfirm Ombudsman rights and the expected next response date without sounding formulaic.',
+  ]);
+
+  const finalResponseReviewScaffold = dedupeLines([
+    `Set out the chronology you reviewed, the complaint summary, and the evidence considered for ${complaintDescription}.`,
+    'Separate the complaint allegations, the firm actions, and the file evidence so the review section reads as an ordered assessment.',
+    ...brief.keyPrecedents.slice(0, 2).map((item) => `Test the review section internally against the precedent theme ${item.label}.`),
+    ...responseStrengths.slice(0, 2).map((item) => `Review support point: ${stripTrailingPunctuation(item)}.`),
+  ]);
+
+  const finalResponseReasoningScaffold = dedupeLines([
+    'Make the decision section explicit: what conclusion was reached, why that conclusion follows from the evidence, and which complaint points were upheld or not upheld.',
+    ...challengeAreas.slice(0, 3).map((item) => `Reasoning prompt: ${stripTrailingPunctuation(item)}.`),
+    ...responseStrengths.slice(0, 3).map((item) => `Balance point: ${stripTrailingPunctuation(item)}.`),
+    `If the complaint is rejected or only partly upheld, explain why the file position differs from the higher-risk patterns seen in similar ${brief.query.product} cases.`,
+  ]);
+
+  const finalResponseRedressScaffold = dedupeLines([
+    ...(complaint.compensationAmount != null
+      ? [`Explain how the recorded redress amount of GBP ${complaint.compensationAmount.toFixed(2)} was calculated and why it is fair.`]
+      : ['If no monetary redress is offered, explain clearly why that is fair and whether any apology or service correction is still appropriate.']),
+    ...(complaint.remedialAction
+      ? [`State the remedial action already recorded on the file: ${stripTrailingPunctuation(normalizeSentence(complaint.remedialAction))}.`]
+      : ['State whether any remedial action, process fix, or service correction will be completed after the response.']),
+    ...remediationPrompts.slice(0, 3).map((item) => `Redress prompt: ${stripTrailingPunctuation(item)}.`),
+    'Close the section by linking the redress or remediation back to the customer impact and root cause.',
+  ]);
+
+  const referralResponseScaffold = dedupeLines([
+    'Keep the outward wording procedural: when the complaint may be referred, what documents should be included, and the relevant time limits.',
+    ...referralChecklist.slice(0, 3).map((item) => `File-readiness prompt: ${stripTrailingPunctuation(item)}.`),
+    'Check that the final response or delay letter being referenced matches the complaint chronology and any enclosed evidence bundle.',
+  ]);
+
+  const comparableCaseSummary = dedupeLines([
+    ...brief.sampleCases.slice(0, 3).map((item) => {
+      const summary = item.decisionSummary?.trim() ? stripTrailingPunctuation(item.decisionSummary) : 'No summary recorded';
+      const dateText = item.decisionDate ? ` on ${formatDateLabel(item.decisionDate)}` : '';
+      return `Comparable case ${item.decisionReference} (${formatOutcomeLabel(item.outcome)}${dateText}) focused on ${summary}.`;
+    }),
+    ...brief.whatLoses.slice(0, 2).map((item) => `Repeated challenge theme across comparable cases: ${formatTheme(item.theme)}.`),
   ]);
 
   return {
@@ -137,6 +192,15 @@ export function buildComplaintLetterIntelligence(
       responseStrengths,
       remediationPrompts,
       referralChecklist,
+      letterScaffolds: {
+        acknowledgement: acknowledgementScaffold,
+        holdingResponse: holdingResponseScaffold,
+        finalResponseReview: finalResponseReviewScaffold,
+        finalResponseReasoning: finalResponseReasoningScaffold,
+        finalResponseRedress: finalResponseRedressScaffold,
+        referralResponse: referralResponseScaffold,
+      },
+      comparableCaseSummary,
     },
     keyPrecedents: brief.keyPrecedents.slice(0, 6).map((item) => ({
       label: normalizeSentence(item.label),
@@ -230,6 +294,16 @@ function formatTheme(value: string): string {
 
 function formatPercent(value: number): string {
   return `${roundOneDecimal(value)}%`;
+}
+
+function formatDateLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
+
+function formatOutcomeLabel(value: string): string {
+  return value.replace(/_/g, ' ');
 }
 
 function roundOneDecimal(value: number): number {
