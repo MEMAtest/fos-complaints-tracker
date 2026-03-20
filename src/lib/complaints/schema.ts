@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS complaint_evidence (
 );
 CREATE INDEX IF NOT EXISTS idx_complaint_evidence_complaint_created_at ON complaint_evidence (complaint_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_complaint_evidence_sha256 ON complaint_evidence (sha256);
+CREATE INDEX IF NOT EXISTS idx_complaint_evidence_complaint_archived ON complaint_evidence (complaint_id, archived_at);
 
 CREATE TABLE IF NOT EXISTS complaint_letters (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -188,6 +189,8 @@ CREATE TABLE IF NOT EXISTS complaint_letters (
 );
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_complaint_created_at ON complaint_letters (complaint_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_status ON complaint_letters (status);
+CREATE INDEX IF NOT EXISTS idx_complaint_letters_complaint_status ON complaint_letters (complaint_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaint_letters_reviewed_by ON complaint_letters (reviewed_by);
 `;
 
 const COMPLAINTS_WORKSPACE_LETTER_VERSIONING_SQL = `
@@ -397,6 +400,93 @@ ALTER TABLE complaints_workspace_settings
   ADD CONSTRAINT complaints_workspace_settings_letter_approval_role_check CHECK (letter_approval_role IN ('operator', 'reviewer', 'manager', 'admin'));
 `;
 
+const COMPLAINTS_WORKSPACE_ACTIONS_SQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS complaint_actions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  complaint_id UUID NOT NULL REFERENCES complaints_records(id) ON DELETE CASCADE,
+  action_type TEXT NOT NULL DEFAULT 'custom',
+  source TEXT NOT NULL DEFAULT 'manual',
+  status TEXT NOT NULL DEFAULT 'open',
+  title TEXT NOT NULL,
+  description TEXT,
+  owner TEXT,
+  due_date DATE,
+  completed_at TIMESTAMPTZ,
+  completed_by TEXT,
+  created_by TEXT,
+  updated_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT complaint_actions_action_type_check CHECK (action_type IN ('custom', 'four_week_progress', 'eight_week_final_response')),
+  CONSTRAINT complaint_actions_source_check CHECK (source IN ('manual', 'system')),
+  CONSTRAINT complaint_actions_status_check CHECK (status IN ('open', 'in_progress', 'completed', 'cancelled'))
+);
+CREATE INDEX IF NOT EXISTS idx_complaint_actions_complaint_created_at ON complaint_actions (complaint_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaint_actions_due_date ON complaint_actions (due_date ASC);
+CREATE INDEX IF NOT EXISTS idx_complaint_actions_status ON complaint_actions (status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_complaint_actions_system_unique
+  ON complaint_actions (complaint_id, action_type)
+  WHERE source = 'system';
+
+ALTER TABLE complaint_activities DROP CONSTRAINT IF EXISTS complaint_activities_activity_type_check;
+ALTER TABLE complaint_activities
+  ADD CONSTRAINT complaint_activities_activity_type_check CHECK (
+    activity_type IN (
+      'complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted',
+      'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded',
+      'note_added', 'action_created', 'action_updated', 'action_completed', 'action_deleted',
+      'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed'
+    )
+  );
+
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION set_complaints_workspace_updated_at()
+  RETURNS TRIGGER AS $fn$
+  BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+  END;
+  $fn$ LANGUAGE plpgsql;
+
+  DROP TRIGGER IF EXISTS trg_complaint_actions_updated_at ON complaint_actions;
+  CREATE TRIGGER trg_complaint_actions_updated_at BEFORE UPDATE ON complaint_actions FOR EACH ROW EXECUTE FUNCTION set_complaints_workspace_updated_at();
+END $$;
+`;
+
+const COMPLAINTS_WORKSPACE_BOARD_PACK_DEFINITIONS_SQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS board_pack_saved_definitions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  template_key TEXT,
+  request_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by TEXT,
+  updated_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT board_pack_saved_definitions_template_key_check CHECK (template_key IS NULL OR template_key IN ('board', 'risk_committee', 'exco', 'complaints_mi'))
+);
+CREATE INDEX IF NOT EXISTS idx_board_pack_saved_definitions_created_at ON board_pack_saved_definitions (created_at DESC);
+
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION set_complaints_workspace_updated_at()
+  RETURNS TRIGGER AS $fn$
+  BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+  END;
+  $fn$ LANGUAGE plpgsql;
+
+  DROP TRIGGER IF EXISTS trg_board_pack_saved_definitions_updated_at ON board_pack_saved_definitions;
+  CREATE TRIGGER trg_board_pack_saved_definitions_updated_at BEFORE UPDATE ON board_pack_saved_definitions FOR EACH ROW EXECUTE FUNCTION set_complaints_workspace_updated_at();
+END $$;
+`;
+
 let schemaPromise: Promise<void> | null = null;
 let schemaReady = false;
 
@@ -419,6 +509,14 @@ const SETTINGS_TABLES = [
 
 const LETTER_VERSIONING_TABLES = [
   'complaint_letter_versions',
+];
+
+const ACTIONS_TABLES = [
+  'complaint_actions',
+];
+
+const BOARD_PACK_DEFINITION_TABLES = [
+  'board_pack_saved_definitions',
 ];
 
 const LETTER_REVIEW_COLUMNS = [
@@ -471,7 +569,15 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = [
   },
   {
     name: 'complaint_activities_activity_type_check',
-    includes: ["evidence_added", "evidence_updated", "evidence_archived", "evidence_deleted", "letter_submitted_for_review", "letter_rejected", "letter_superseded"],
+    includes: ["evidence_added", "evidence_updated", "evidence_archived", "evidence_deleted", "letter_submitted_for_review", "letter_rejected", "letter_superseded", "action_created", "action_completed"],
+  },
+  {
+    name: 'complaint_actions_status_check',
+    includes: ["in_progress", "completed", "cancelled"],
+  },
+  {
+    name: 'board_pack_saved_definitions_template_key_check',
+    includes: ["risk_committee", "complaints_mi"],
   },
 ];
 
@@ -497,6 +603,16 @@ export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
     await ensureSchemaSql(COMPLAINTS_WORKSPACE_LETTER_VERSIONING_SQL, LETTER_VERSIONING_TABLES);
   }
 
+  const hasActionTables = await hasComplaintsWorkspaceTables(ACTIONS_TABLES);
+  if (!hasActionTables) {
+    await ensureSchemaSql(COMPLAINTS_WORKSPACE_ACTIONS_SQL, ACTIONS_TABLES);
+  }
+
+  const hasBoardPackDefinitionTables = await hasComplaintsWorkspaceTables(BOARD_PACK_DEFINITION_TABLES);
+  if (!hasBoardPackDefinitionTables) {
+    await ensureSchemaSql(COMPLAINTS_WORKSPACE_BOARD_PACK_DEFINITIONS_SQL, BOARD_PACK_DEFINITION_TABLES);
+  }
+
   const hasLetterReviewColumns = await hasComplaintsWorkspaceColumns('complaint_letters', LETTER_REVIEW_COLUMNS);
   const hasLetterVersionReviewColumns = await hasComplaintsWorkspaceColumns('complaint_letter_versions', LETTER_VERSION_REVIEW_COLUMNS);
   const hasSettingsReviewColumns = await hasComplaintsWorkspaceColumns('complaints_workspace_settings', SETTINGS_REVIEW_COLUMNS);
@@ -511,6 +627,8 @@ export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
     && await hasComplaintsWorkspaceTables(EXTENSION_TABLES)
     && await hasComplaintsWorkspaceTables(SETTINGS_TABLES)
     && await hasComplaintsWorkspaceTables(LETTER_VERSIONING_TABLES)
+    && await hasComplaintsWorkspaceTables(ACTIONS_TABLES)
+    && await hasComplaintsWorkspaceTables(BOARD_PACK_DEFINITION_TABLES)
     && await hasComplaintsWorkspaceColumns('complaint_evidence', EVIDENCE_MANAGEMENT_COLUMNS)
     && await hasComplaintsWorkspaceColumns('complaint_letters', LETTER_REVIEW_COLUMNS)
     && await hasComplaintsWorkspaceColumns('complaint_letter_versions', LETTER_VERSION_REVIEW_COLUMNS)

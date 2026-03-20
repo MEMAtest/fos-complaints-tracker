@@ -5,6 +5,8 @@ import { buildBoardPackPdf } from '@/lib/board-pack/build-board-pack-pdf';
 import { buildBoardPackPptx } from '@/lib/board-pack/build-board-pack-pptx';
 import { recordBoardPackRun } from '@/lib/complaints/repository';
 import type { BoardPackRequest } from '@/lib/board-pack/types';
+import { clientKeyFromRequest, RateLimitError, rateLimitOrThrow } from '@/lib/server/rate-limit';
+import { logRouteMetric } from '@/lib/server/route-metrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,9 +14,13 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   let body: BoardPackRequest | null = null;
   let generatedBy: string | null = null;
+  const startedAt = Date.now();
+  let actor: string | null = null;
   try {
     const user = await requireAuthenticatedUser(request, 'manager');
     generatedBy = user.fullName;
+    actor = user.email;
+    rateLimitOrThrow(clientKeyFromRequest(request, `board-pack-generate:${user.email}`), 10, 600_000);
     body = await request.json();
     if (!body || typeof body !== 'object') {
       return Response.json({ success: false, error: 'Invalid request body.' }, { status: 400 });
@@ -35,6 +41,14 @@ export async function POST(request: NextRequest) {
         generatedBy,
         requestPayload: body,
       });
+      logRouteMetric({
+        route: '/api/fos/board-pack/generate',
+        method: 'POST',
+        status: 200,
+        durationMs: Date.now() - startedAt,
+        actor,
+        detail: { format: 'pptx', title: data.title },
+      });
       return new Response(pptxBuffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -54,6 +68,14 @@ export async function POST(request: NextRequest) {
       generatedBy,
       requestPayload: body,
     });
+    logRouteMetric({
+      route: '/api/fos/board-pack/generate',
+      method: 'POST',
+      status: 200,
+      durationMs: Date.now() - startedAt,
+      actor,
+      detail: { format: 'pdf', title: data.title },
+    });
     return new Response(pdfBytes, {
       headers: {
         'Content-Type': 'application/pdf',
@@ -72,6 +94,17 @@ export async function POST(request: NextRequest) {
       }).catch(() => undefined);
     }
     const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    logRouteMetric({
+      route: '/api/fos/board-pack/generate',
+      method: 'POST',
+      status,
+      durationMs: Date.now() - startedAt,
+      actor,
+      detail: { format: body?.format || 'pdf', error: error instanceof Error ? error.message : 'Failed to generate board pack.' },
+    });
+    if (error instanceof RateLimitError) {
+      return Response.json({ success: false, error: error.message }, { status, headers: { 'Retry-After': String(error.retryAfterSeconds) } });
+    }
     return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to generate board pack.' }, { status });
   }
 }

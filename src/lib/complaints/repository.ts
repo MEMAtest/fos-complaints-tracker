@@ -2,6 +2,11 @@ import { createHash } from 'crypto';
 import { pool, DatabaseClient } from '@/lib/database';
 import type { PoolClient } from 'pg';
 import {
+  ComplaintAction,
+  ComplaintActionMutationInput,
+  ComplaintActionSource,
+  ComplaintActionStatus,
+  ComplaintActionType,
   ComplaintActivity,
   ComplaintActivityType,
   ComplaintEvidence,
@@ -19,15 +24,20 @@ import {
   ComplaintMutationInput,
   ComplaintPriority,
   ComplaintRecord,
+  ComplaintSlaState,
+  ComplaintSlaSummary,
   ComplaintStatus,
   ComplaintStats,
   ComplaintWorkspaceActorRole,
   ComplaintWorkspaceSettings,
   ComplaintWorkspaceSettingsInput,
+  COMPLAINT_ACTION_STATUSES,
+  COMPLAINT_ACTION_TYPES,
   COMPLAINT_EVIDENCE_CATEGORIES,
   COMPLAINT_LETTER_REVIEW_DECISION_CODES,
   COMPLAINT_WORKSPACE_ACTOR_ROLES,
 } from './types';
+import type { BoardPackDefinition, BoardPackRequest, BoardPackTemplateKey } from '@/lib/board-pack/types';
 import { buildComplaintLetterDraft } from './letter-templates';
 import { ensureComplaintsWorkspaceSchema } from './schema';
 
@@ -41,6 +51,8 @@ const VALID_LETTER_TEMPLATE_KEYS: ComplaintLetterTemplateKey[] = ['acknowledgeme
 const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'];
 const VALID_LATE_REFERRAL_POSITIONS: ComplaintLateReferralPosition[] = ['review_required', 'consent', 'do_not_consent', 'custom'];
 const VALID_ACTOR_ROLES: ComplaintWorkspaceActorRole[] = [...COMPLAINT_WORKSPACE_ACTOR_ROLES];
+const VALID_ACTION_TYPES: ComplaintActionType[] = [...COMPLAINT_ACTION_TYPES];
+const VALID_ACTION_STATUSES: ComplaintActionStatus[] = [...COMPLAINT_ACTION_STATUSES];
 const VALID_REVIEW_DECISION_CODES: ComplaintLetterReviewDecisionCode[] = [...COMPLAINT_LETTER_REVIEW_DECISION_CODES];
 const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'complaint_created',
@@ -56,6 +68,10 @@ const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'letter_sent',
   'letter_superseded',
   'note_added',
+  'action_created',
+  'action_updated',
+  'action_completed',
+  'action_deleted',
   'assigned',
   'priority_change',
   'fos_referred',
@@ -83,6 +99,9 @@ export function parseComplaintFilters(searchParams: URLSearchParams): ComplaintF
   const statusRaw = (searchParams.get('status') || 'all').trim();
   const priorityRaw = (searchParams.get('priority') || 'all').trim();
   const fosReferredRaw = (searchParams.get('fosReferred') || 'all').trim();
+  const letterStatusRaw = (searchParams.get('letterStatus') || 'all').trim();
+  const hasEvidenceRaw = (searchParams.get('hasEvidence') || 'all').trim();
+  const slaStateRaw = (searchParams.get('slaState') || 'all').trim();
   return {
     query: (searchParams.get('query') || '').trim(),
     status: statusRaw === 'all' || VALID_STATUSES.includes(statusRaw as ComplaintStatus) ? (statusRaw as ComplaintStatus | 'all') : 'all',
@@ -91,6 +110,15 @@ export function parseComplaintFilters(searchParams: URLSearchParams): ComplaintF
       : 'all',
     firm: (searchParams.get('firm') || '').trim(),
     product: (searchParams.get('product') || '').trim(),
+    assignedTo: (searchParams.get('assignedTo') || '').trim(),
+    reviewer: (searchParams.get('reviewer') || '').trim(),
+    letterStatus: letterStatusRaw === 'all' || VALID_LETTER_STATUSES.includes(letterStatusRaw as ComplaintLetterStatus)
+      ? (letterStatusRaw as ComplaintLetterStatus | 'all')
+      : 'all',
+    hasEvidence: ['yes', 'no', 'all'].includes(hasEvidenceRaw) ? (hasEvidenceRaw as 'all' | 'yes' | 'no') : 'all',
+    slaState: ['all', 'on_track', 'due_soon', 'overdue', 'closed'].includes(slaStateRaw)
+      ? (slaStateRaw as ComplaintSlaState | 'all')
+      : 'all',
     fosReferred: ['yes', 'no', 'all'].includes(fosReferredRaw) ? (fosReferredRaw as 'all' | 'yes' | 'no') : 'all',
     page: clamp(parsePositiveInt(searchParams.get('page'), DEFAULT_PAGE), 1, 10_000),
     pageSize: clamp(parsePositiveInt(searchParams.get('pageSize'), DEFAULT_PAGE_SIZE), 5, MAX_PAGE_SIZE),
@@ -174,7 +202,51 @@ export async function listComplaints(filters: ComplaintFilters): Promise<Complai
   const [rows, totalRow, statsRow] = await Promise.all([
     DatabaseClient.query<Record<string, unknown>>(
       `
-        SELECT *
+        SELECT
+          complaints_records.*,
+          (
+            SELECT COUNT(*)::INT
+            FROM complaint_actions
+            WHERE complaint_actions.complaint_id = complaints_records.id
+              AND complaint_actions.status IN ('open', 'in_progress')
+          ) AS open_action_count,
+          (
+            SELECT COUNT(*)::INT
+            FROM complaint_actions
+            WHERE complaint_actions.complaint_id = complaints_records.id
+              AND complaint_actions.status IN ('open', 'in_progress')
+              AND complaint_actions.due_date IS NOT NULL
+              AND complaint_actions.due_date < CURRENT_DATE
+          ) AS overdue_action_count,
+          (
+            SELECT COUNT(*)::INT
+            FROM complaint_actions
+            WHERE complaint_actions.complaint_id = complaints_records.id
+              AND complaint_actions.status IN ('open', 'in_progress')
+              AND complaint_actions.due_date IS NOT NULL
+              AND complaint_actions.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+          ) AS due_soon_action_count
+          ,
+          (
+            SELECT COUNT(*)::INT
+            FROM complaint_evidence
+            WHERE complaint_evidence.complaint_id = complaints_records.id
+              AND complaint_evidence.archived_at IS NULL
+          ) AS evidence_count,
+          (
+            SELECT status
+            FROM complaint_letters
+            WHERE complaint_letters.complaint_id = complaints_records.id
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+          ) AS latest_letter_status,
+          (
+            SELECT reviewed_by
+            FROM complaint_letters
+            WHERE complaint_letters.complaint_id = complaints_records.id
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+          ) AS latest_reviewed_by
         FROM complaints_records
         ${where.whereSql}
         ORDER BY received_date DESC, created_at DESC
@@ -189,6 +261,11 @@ export async function listComplaints(filters: ComplaintFilters): Promise<Complai
     ),
     DatabaseClient.queryOne<Record<string, unknown>>(
       `
+        WITH filtered AS (
+          SELECT *
+          FROM complaints_records
+          ${where.whereSql}
+        )
         SELECT
           COUNT(*)::INT AS total_complaints,
           COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed'))::INT AS open_complaints,
@@ -198,9 +275,27 @@ export async function listComplaints(filters: ComplaintFilters): Promise<Complai
               AND eight_week_due_date IS NOT NULL
               AND eight_week_due_date < CURRENT_DATE
           )::INT AS overdue_complaints,
-          COUNT(*) FILTER (WHERE priority = 'urgent')::INT AS urgent_complaints
-        FROM complaints_records
-        ${where.whereSql}
+          COUNT(*) FILTER (
+            WHERE status NOT IN ('resolved', 'closed')
+              AND eight_week_due_date IS NOT NULL
+              AND eight_week_due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+          )::INT AS due_soon_complaints,
+          COUNT(*) FILTER (WHERE priority = 'urgent')::INT AS urgent_complaints,
+          (
+            SELECT COUNT(*)::INT
+            FROM complaint_actions
+            WHERE complaint_id IN (SELECT id FROM filtered)
+              AND status IN ('open', 'in_progress')
+          ) AS open_actions,
+          (
+            SELECT COUNT(*)::INT
+            FROM complaint_actions
+            WHERE complaint_id IN (SELECT id FROM filtered)
+              AND status IN ('open', 'in_progress')
+              AND due_date IS NOT NULL
+              AND due_date < CURRENT_DATE
+          ) AS overdue_actions
+        FROM filtered
       `,
       where.params
     ),
@@ -217,6 +312,104 @@ export async function listComplaints(filters: ComplaintFilters): Promise<Complai
     totalPages,
     stats: mapComplaintStats(statsRow),
   };
+}
+
+export async function exportComplaints(filters: ComplaintFilters): Promise<string> {
+  await ensureComplaintsWorkspaceSchema();
+  const where = buildComplaintWhereClause(filters, 1);
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT
+        complaints_records.*,
+        (
+          SELECT COUNT(*)::INT
+          FROM complaint_evidence
+          WHERE complaint_evidence.complaint_id = complaints_records.id
+            AND complaint_evidence.archived_at IS NULL
+        ) AS evidence_count,
+        (
+          SELECT status
+          FROM complaint_letters
+          WHERE complaint_letters.complaint_id = complaints_records.id
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT 1
+        ) AS latest_letter_status,
+        (
+          SELECT reviewed_by
+          FROM complaint_letters
+          WHERE complaint_letters.complaint_id = complaints_records.id
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT 1
+        ) AS latest_reviewed_by,
+        (
+          SELECT COUNT(*)::INT
+          FROM complaint_actions
+          WHERE complaint_actions.complaint_id = complaints_records.id
+            AND complaint_actions.status IN ('open', 'in_progress')
+        ) AS open_action_count,
+        (
+          SELECT COUNT(*)::INT
+          FROM complaint_actions
+          WHERE complaint_actions.complaint_id = complaints_records.id
+            AND complaint_actions.status IN ('open', 'in_progress')
+            AND complaint_actions.due_date IS NOT NULL
+            AND complaint_actions.due_date < CURRENT_DATE
+        ) AS overdue_action_count
+      FROM complaints_records
+      ${where.whereSql}
+      ORDER BY received_date DESC, created_at DESC
+      LIMIT 5000
+    `,
+    where.params
+  );
+
+  const records = rows.map(mapComplaintRecord);
+  const header = [
+    'Complaint reference',
+    'Complainant',
+    'Firm',
+    'Product',
+    'Status',
+    'Priority',
+    'Received date',
+    '8-week due date',
+    'SLA state',
+    'FOS referred',
+    'Assigned to',
+    'Latest letter status',
+    'Latest reviewer',
+    'Evidence count',
+    'Open actions',
+    'Overdue actions',
+    'Root cause',
+    'Description',
+    'Notes',
+  ];
+  const lines = [
+    header.join(','),
+    ...records.map((record) => ([
+      record.complaintReference,
+      record.complainantName,
+      record.firmName,
+      record.product || '',
+      record.status,
+      record.priority,
+      record.receivedDate,
+      record.eightWeekDueDate || '',
+      record.slaSummary?.state || '',
+      record.fosReferred ? 'Yes' : 'No',
+      record.assignedTo || '',
+      record.latestLetterStatus || '',
+      record.latestReviewedBy || '',
+      String(record.evidenceCount || 0),
+      String(record.openActionCount || 0),
+      String(record.overdueActionCount || 0),
+      record.rootCause || '',
+      record.description || '',
+      record.notes || '',
+    ].map(csvEscape).join(','))),
+  ];
+  return lines.join('\n');
 }
 
 export async function getComplaintById(id: string): Promise<ComplaintRecord | null> {
@@ -240,6 +433,238 @@ export async function listComplaintActivities(complaintId: string): Promise<Comp
     [complaintId]
   );
   return rows.map(mapComplaintActivity);
+}
+
+export async function listComplaintActions(complaintId: string): Promise<ComplaintAction[]> {
+  await ensureComplaintsWorkspaceSchema();
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT *
+      FROM complaint_actions
+      WHERE complaint_id = $1
+      ORDER BY
+        CASE WHEN source = 'system' THEN 0 ELSE 1 END,
+        CASE status
+          WHEN 'open' THEN 0
+          WHEN 'in_progress' THEN 1
+          WHEN 'completed' THEN 2
+          ELSE 3
+        END,
+        due_date NULLS LAST,
+        created_at DESC
+    `,
+    [complaintId]
+  );
+
+  return rows.map(mapComplaintAction);
+}
+
+export async function createComplaintAction(
+  input: {
+    complaintId: string;
+    actionType?: ComplaintActionType | null;
+    title: string;
+    description?: string | null;
+    owner?: string | null;
+    dueDate?: string | null;
+    status?: ComplaintActionStatus | null;
+    source?: ComplaintActionSource | null;
+  },
+  performedBy?: string | null
+): Promise<ComplaintAction> {
+  await ensureComplaintsWorkspaceSchema();
+  const title = sanitizeText(input.title);
+  if (!title) throw new Error('Action title is required.');
+  const actionType = VALID_ACTION_TYPES.includes(String(input.actionType) as ComplaintActionType)
+    ? (String(input.actionType) as ComplaintActionType)
+    : 'custom';
+  const status = VALID_ACTION_STATUSES.includes(String(input.status) as ComplaintActionStatus)
+    ? (String(input.status) as ComplaintActionStatus)
+    : 'open';
+  const source: ComplaintActionSource = input.source === 'system' ? 'system' : 'manual';
+  const dueDate = toDateOnly(input.dueDate);
+  const owner = sanitizeNullable(input.owner);
+  const description = sanitizeNullable(input.description);
+  const completedAt = status === 'completed' ? new Date().toISOString() : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query<Record<string, unknown>>(
+      `
+        INSERT INTO complaint_actions (
+          complaint_id,
+          action_type,
+          source,
+          status,
+          title,
+          description,
+          owner,
+          due_date,
+          completed_at,
+          completed_by,
+          created_by,
+          updated_by
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10
+        )
+        RETURNING *
+      `,
+      [
+        input.complaintId,
+        actionType,
+        source,
+        status,
+        title,
+        description,
+        owner,
+        dueDate,
+        completedAt,
+        sanitizeNullable(performedBy),
+      ]
+    );
+    const action = mapComplaintAction(inserted.rows[0]);
+    await insertComplaintActivityTx(client, {
+      complaintId: input.complaintId,
+      activityType: status === 'completed' ? 'action_completed' : 'action_created',
+      description: `${action.title} ${status === 'completed' ? 'completed' : 'created'}.`,
+      performedBy,
+      metadata: {
+        actionId: action.id,
+        actionType: action.actionType,
+        source: action.source,
+        dueDate: action.dueDate,
+      },
+    });
+    await client.query('COMMIT');
+    return action;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateComplaintAction(
+  actionId: string,
+  input: ComplaintActionMutationInput,
+  performedBy?: string | null
+): Promise<ComplaintAction | null> {
+  await ensureComplaintsWorkspaceSchema();
+  const existing = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `SELECT * FROM complaint_actions WHERE id = $1`,
+    [actionId]
+  );
+  if (!existing) return null;
+  const current = mapComplaintAction(existing);
+  const title = sanitizeText(input.title) || current.title;
+  const status = VALID_ACTION_STATUSES.includes(String(input.status) as ComplaintActionStatus)
+    ? (String(input.status) as ComplaintActionStatus)
+    : current.status;
+  const owner = input.owner !== undefined ? sanitizeNullable(input.owner) : current.owner;
+  const description = input.description !== undefined ? sanitizeNullable(input.description) : current.description;
+  const dueDate = input.dueDate !== undefined ? toDateOnly(input.dueDate) : current.dueDate;
+  const completedAt = status === 'completed'
+    ? (current.completedAt || new Date().toISOString())
+    : null;
+  const completedBy = status === 'completed'
+    ? (current.completedBy || sanitizeNullable(performedBy))
+    : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query<Record<string, unknown>>(
+      `
+        UPDATE complaint_actions
+        SET
+          title = $2,
+          description = $3,
+          owner = $4,
+          due_date = $5,
+          status = $6,
+          completed_at = $7,
+          completed_by = $8,
+          updated_by = $9
+        WHERE id = $1
+        RETURNING *
+      `,
+      [
+        actionId,
+        title,
+        description,
+        owner,
+        dueDate,
+        status,
+        completedAt,
+        completedBy,
+        sanitizeNullable(performedBy),
+      ]
+    );
+
+    const next = mapComplaintAction(updated.rows[0]);
+    if (current.status !== next.status && next.status === 'completed') {
+      await insertComplaintActivityTx(client, {
+        complaintId: next.complaintId,
+        activityType: 'action_completed',
+        description: `${next.title} completed.`,
+        oldValue: current.status,
+        newValue: next.status,
+        performedBy,
+        metadata: { actionId: next.id, source: next.source },
+      });
+    } else {
+      await insertComplaintActivityTx(client, {
+        complaintId: next.complaintId,
+        activityType: 'action_updated',
+        description: `${next.title} updated.`,
+        oldValue: current.status,
+        newValue: next.status,
+        performedBy,
+        metadata: { actionId: next.id, source: next.source, dueDate: next.dueDate },
+      });
+    }
+
+    await client.query('COMMIT');
+    return next;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteComplaintAction(actionId: string, performedBy?: string | null): Promise<boolean> {
+  await ensureComplaintsWorkspaceSchema();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const deleted = await client.query<Record<string, unknown>>(
+      `DELETE FROM complaint_actions WHERE id = $1 RETURNING *`,
+      [actionId]
+    );
+    if (deleted.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    const action = mapComplaintAction(deleted.rows[0]);
+    await insertComplaintActivityTx(client, {
+      complaintId: action.complaintId,
+      activityType: 'action_deleted',
+      description: `${action.title} deleted.`,
+      performedBy,
+      metadata: { actionId: action.id, source: action.source },
+    });
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function listComplaintEvidence(
@@ -1161,6 +1586,7 @@ export async function createComplaint(input: ComplaintMutationInput, performedBy
         firmName: payload.firmName,
       },
     });
+    await syncComplaintSlaActionsTx(client, mapComplaintRecord(row), performedBy || payload.updatedBy);
 
     await client.query('COMMIT');
     return mapComplaintRecord(row);
@@ -1250,6 +1676,7 @@ export async function updateComplaint(id: string, input: ComplaintMutationInput,
     );
 
     await insertChangeActivities(client, existing, payload, performedBy || payload.updatedBy);
+    await syncComplaintSlaActionsTx(client, mapComplaintRecord(updated.rows[0]), performedBy || payload.updatedBy);
     await client.query('COMMIT');
     return mapComplaintRecord(updated.rows[0]);
   } catch (error) {
@@ -1518,6 +1945,75 @@ export async function commitComplaintImport(params: {
   }
 }
 
+export async function listBoardPackDefinitions(limit = 20): Promise<BoardPackDefinition[]> {
+  await ensureComplaintsWorkspaceSchema();
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT *
+      FROM board_pack_saved_definitions
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT $1
+    `,
+    [clamp(limit, 1, 100)]
+  );
+
+  return rows.map(mapBoardPackDefinition);
+}
+
+export async function saveBoardPackDefinition(input: {
+  id?: string | null;
+  name: string;
+  templateKey?: BoardPackTemplateKey | null;
+  request: Omit<BoardPackRequest, 'format'>;
+  performedBy?: string | null;
+}): Promise<BoardPackDefinition> {
+  await ensureComplaintsWorkspaceSchema();
+  const name = sanitizeText(input.name);
+  if (!name) throw new Error('Board pack definition name is required.');
+  const templateKey = normalizeBoardPackTemplateKey(input.templateKey);
+  const requestPayload = sanitizeBoardPackRequestPayload(input.request);
+
+  const row = input.id
+    ? await DatabaseClient.queryOne<Record<string, unknown>>(
+      `
+        UPDATE board_pack_saved_definitions
+        SET
+          name = $2,
+          template_key = $3,
+          request_payload = $4::jsonb,
+          updated_by = $5
+        WHERE id = $1
+        RETURNING *
+      `,
+      [input.id, name, templateKey, JSON.stringify(requestPayload), sanitizeNullable(input.performedBy)]
+    )
+    : await DatabaseClient.queryOne<Record<string, unknown>>(
+      `
+        INSERT INTO board_pack_saved_definitions (
+          name,
+          template_key,
+          request_payload,
+          created_by,
+          updated_by
+        ) VALUES ($1, $2, $3::jsonb, $4, $4)
+        RETURNING *
+      `,
+      [name, templateKey, JSON.stringify(requestPayload), sanitizeNullable(input.performedBy)]
+    );
+
+  if (!row) throw new Error('Failed to save board pack definition.');
+  return mapBoardPackDefinition(row);
+}
+
+export async function deleteBoardPackDefinition(id: string): Promise<boolean> {
+  await ensureComplaintsWorkspaceSchema();
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `DELETE FROM board_pack_saved_definitions WHERE id = $1 RETURNING id`,
+    [id]
+  );
+  return rows.length > 0;
+}
+
 export async function listBoardPackRuns(limit = 10): Promise<Array<{
   id: string;
   format: 'pdf' | 'pptx';
@@ -1557,6 +2053,22 @@ export async function listComplaintAppendixArtifacts(dateFrom?: string | null, d
     category: ComplaintEvidenceCategory;
     summary: string | null;
     createdAt: string;
+  }>;
+  recentActions: Array<{
+    id: string;
+    complaintReference: string;
+    title: string;
+    status: ComplaintActionStatus;
+    owner: string | null;
+    dueDate: string | null;
+    createdAt: string;
+  }>;
+  overdueComplaints: Array<{
+    complaintReference: string;
+    firmName: string;
+    owner: string | null;
+    eightWeekDueDate: string | null;
+    daysOverdue: number;
   }>;
 }> {
   await ensureComplaintsWorkspaceSchema();
@@ -1598,6 +2110,44 @@ export async function listComplaintAppendixArtifacts(dateFrom?: string | null, d
     params
   );
 
+  const actionRows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT
+        a.id,
+        c.complaint_reference,
+        a.title,
+        a.status,
+        a.owner,
+        a.due_date,
+        a.created_at
+      FROM complaint_actions a
+      INNER JOIN complaints_records c ON c.id = a.complaint_id
+      ${whereSql}
+      ORDER BY a.created_at DESC
+      LIMIT 6
+    `,
+    params
+  );
+
+  const overdueComplaintRows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT
+        complaint_reference,
+        firm_name,
+        assigned_to,
+        eight_week_due_date,
+        (CURRENT_DATE - eight_week_due_date)::INT AS days_overdue
+      FROM complaints_records c
+      ${whereSql ? `${whereSql} AND` : 'WHERE'}
+        status NOT IN ('resolved', 'closed')
+        AND eight_week_due_date IS NOT NULL
+        AND eight_week_due_date < CURRENT_DATE
+      ORDER BY eight_week_due_date ASC
+      LIMIT 6
+    `,
+    params
+  );
+
   return {
     recentLetters: letterRows.map((row) => ({
       id: String(row.id || ''),
@@ -1614,6 +2164,22 @@ export async function listComplaintAppendixArtifacts(dateFrom?: string | null, d
       category: normalizeEvidenceCategory(row.category),
       summary: sanitizeNullable(row.summary),
       createdAt: toIsoDateTime(row.created_at),
+    })),
+    recentActions: actionRows.map((row) => ({
+      id: String(row.id || ''),
+      complaintReference: String(row.complaint_reference || ''),
+      title: String(row.title || 'Complaint action'),
+      status: normalizeActionStatus(row.status),
+      owner: sanitizeNullable(row.owner),
+      dueDate: toDateOnly(row.due_date),
+      createdAt: toIsoDateTime(row.created_at),
+    })),
+    overdueComplaints: overdueComplaintRows.map((row) => ({
+      complaintReference: String(row.complaint_reference || ''),
+      firmName: String(row.firm_name || 'Unknown firm'),
+      owner: sanitizeNullable(row.assigned_to),
+      eightWeekDueDate: toDateOnly(row.eight_week_due_date),
+      daysOverdue: toInt(row.days_overdue),
     })),
   };
 }
@@ -1745,6 +2311,8 @@ export async function getComplaintOperationsSummary(dateFrom?: string | null, da
   referredToFos: number;
   overdue: number;
   urgent: number;
+  openActions: number;
+  overdueActions: number;
   topRootCauses: Array<{ label: string; count: number }>;
 }> {
   await ensureComplaintsWorkspaceSchema();
@@ -1757,7 +2325,29 @@ export async function getComplaintOperationsSummary(dateFrom?: string | null, da
         COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed'))::INT AS open,
         COUNT(*) FILTER (WHERE fos_referred = TRUE)::INT AS referred_to_fos,
         COUNT(*) FILTER (WHERE status NOT IN ('resolved', 'closed') AND eight_week_due_date < CURRENT_DATE)::INT AS overdue,
-        COUNT(*) FILTER (WHERE priority = 'urgent')::INT AS urgent
+        COUNT(*) FILTER (WHERE priority = 'urgent')::INT AS urgent,
+        (
+          SELECT COUNT(*)::INT
+          FROM complaint_actions a
+          WHERE a.complaint_id IN (
+            SELECT id
+            FROM complaints_records
+            ${whereSql}
+          )
+            AND a.status IN ('open', 'in_progress')
+        ) AS open_actions,
+        (
+          SELECT COUNT(*)::INT
+          FROM complaint_actions a
+          WHERE a.complaint_id IN (
+            SELECT id
+            FROM complaints_records
+            ${whereSql}
+          )
+            AND a.status IN ('open', 'in_progress')
+            AND a.due_date IS NOT NULL
+            AND a.due_date < CURRENT_DATE
+        ) AS overdue_actions
       FROM complaints_records
       ${whereSql}
     `,
@@ -1782,6 +2372,8 @@ export async function getComplaintOperationsSummary(dateFrom?: string | null, da
     referredToFos: toInt(summaryRow?.referred_to_fos),
     overdue: toInt(summaryRow?.overdue),
     urgent: toInt(summaryRow?.urgent),
+    openActions: toInt(summaryRow?.open_actions),
+    overdueActions: toInt(summaryRow?.overdue_actions),
     topRootCauses: rootCauseRows.map((row) => ({ label: String(row.label || 'Unspecified'), count: toInt(row.count) })),
   };
 }
@@ -1811,20 +2403,110 @@ function buildComplaintWhereClause(filters: ComplaintFilters, startIndex: number
     params.push(filters.product);
     nextIndex += 1;
   }
+  if (filters.assignedTo) {
+    conditions.push(`COALESCE(assigned_to, '') ILIKE $${nextIndex} ESCAPE '\\'`);
+    params.push(`%${filters.assignedTo.replace(/[%_\\]/g, '\\$&')}%`);
+    nextIndex += 1;
+  }
+  if (filters.reviewer) {
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM complaint_letters reviewer_filter
+      WHERE reviewer_filter.complaint_id = complaints_records.id
+        AND COALESCE(reviewer_filter.reviewed_by, '') ILIKE $${nextIndex} ESCAPE '\\'
+    )`);
+    params.push(`%${filters.reviewer.replace(/[%_\\]/g, '\\$&')}%`);
+    nextIndex += 1;
+  }
+  if (filters.letterStatus !== 'all') {
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM complaint_letters letter_status_filter
+      WHERE letter_status_filter.complaint_id = complaints_records.id
+        AND letter_status_filter.status = $${nextIndex}
+    )`);
+    params.push(filters.letterStatus);
+    nextIndex += 1;
+  }
+  if (filters.hasEvidence === 'yes') {
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM complaint_evidence evidence_filter
+      WHERE evidence_filter.complaint_id = complaints_records.id
+        AND evidence_filter.archived_at IS NULL
+    )`);
+  } else if (filters.hasEvidence === 'no') {
+    conditions.push(`NOT EXISTS (
+      SELECT 1
+      FROM complaint_evidence evidence_filter
+      WHERE evidence_filter.complaint_id = complaints_records.id
+        AND evidence_filter.archived_at IS NULL
+    )`);
+  }
   if (filters.fosReferred === 'yes') {
     conditions.push(`fos_referred = TRUE`);
   } else if (filters.fosReferred === 'no') {
     conditions.push(`fos_referred = FALSE`);
   }
+  if (filters.slaState === 'closed') {
+    conditions.push(`(
+      final_response_date IS NOT NULL
+      OR resolved_date IS NOT NULL
+      OR status IN ('resolved', 'closed')
+    )`);
+  } else if (filters.slaState === 'overdue') {
+    conditions.push(`(
+      status NOT IN ('resolved', 'closed')
+      AND eight_week_due_date IS NOT NULL
+      AND eight_week_due_date < CURRENT_DATE
+    )`);
+  } else if (filters.slaState === 'due_soon') {
+    conditions.push(`(
+      status NOT IN ('resolved', 'closed')
+      AND eight_week_due_date IS NOT NULL
+      AND eight_week_due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+    )`);
+  } else if (filters.slaState === 'on_track') {
+    conditions.push(`(
+      status NOT IN ('resolved', 'closed')
+      AND (
+        eight_week_due_date IS NULL
+        OR eight_week_due_date > CURRENT_DATE + 7
+      )
+    )`);
+  }
   if (filters.query) {
     const safeQuery = `%${filters.query.replace(/[%_\\]/g, '\\$&')}%`;
     conditions.push(`(
-      complaint_reference ILIKE $${nextIndex}
-      OR complainant_name ILIKE $${nextIndex}
-      OR firm_name ILIKE $${nextIndex}
-      OR COALESCE(product, '') ILIKE $${nextIndex}
-      OR COALESCE(description, '') ILIKE $${nextIndex}
-      OR COALESCE(root_cause, '') ILIKE $${nextIndex}
+      complaint_reference ILIKE $${nextIndex} ESCAPE '\\'
+      OR complainant_name ILIKE $${nextIndex} ESCAPE '\\'
+      OR firm_name ILIKE $${nextIndex} ESCAPE '\\'
+      OR COALESCE(product, '') ILIKE $${nextIndex} ESCAPE '\\'
+      OR COALESCE(description, '') ILIKE $${nextIndex} ESCAPE '\\'
+      OR COALESCE(root_cause, '') ILIKE $${nextIndex} ESCAPE '\\'
+      OR COALESCE(notes, '') ILIKE $${nextIndex} ESCAPE '\\'
+      OR COALESCE(assigned_to, '') ILIKE $${nextIndex} ESCAPE '\\'
+      OR EXISTS (
+        SELECT 1
+        FROM complaint_letters search_letters
+        WHERE search_letters.complaint_id = complaints_records.id
+          AND (
+            search_letters.subject ILIKE $${nextIndex} ESCAPE '\\'
+            OR search_letters.body_text ILIKE $${nextIndex} ESCAPE '\\'
+            OR COALESCE(search_letters.reviewer_notes, '') ILIKE $${nextIndex} ESCAPE '\\'
+          )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM complaint_evidence search_evidence
+        WHERE search_evidence.complaint_id = complaints_records.id
+          AND search_evidence.archived_at IS NULL
+          AND (
+            search_evidence.file_name ILIKE $${nextIndex} ESCAPE '\\'
+            OR COALESCE(search_evidence.summary, '') ILIKE $${nextIndex} ESCAPE '\\'
+            OR COALESCE(search_evidence.preview_text, '') ILIKE $${nextIndex} ESCAPE '\\'
+          )
+      )
     )`);
     params.push(safeQuery);
     nextIndex += 1;
@@ -1925,6 +2607,147 @@ async function insertChangeActivities(
   }
 }
 
+async function syncComplaintSlaActionsTx(
+  client: PoolClient,
+  complaint: ComplaintRecord,
+  performedBy?: string | null
+) {
+  const closed = Boolean(complaint.finalResponseDate || complaint.resolvedDate || complaint.status === 'resolved' || complaint.status === 'closed');
+  const actions: Array<{
+    actionType: ComplaintActionType;
+    title: string;
+    description: string;
+    dueDate: string | null;
+  }> = [
+    {
+      actionType: 'four_week_progress',
+      title: 'Issue 4-week progress update',
+      description: 'Prepare and issue a four-week progress update if the complaint remains unresolved.',
+      dueDate: complaint.fourWeekDueDate,
+    },
+    {
+      actionType: 'eight_week_final_response',
+      title: 'Issue 8-week final response',
+      description: 'Prepare and issue the eight-week final response, including Ombudsman rights wording where required.',
+      dueDate: complaint.eightWeekDueDate,
+    },
+  ];
+
+  for (const definition of actions) {
+    const existingRow = await client.query<Record<string, unknown>>(
+      `
+        SELECT *
+        FROM complaint_actions
+        WHERE complaint_id = $1
+          AND action_type = $2
+          AND source = 'system'
+        LIMIT 1
+      `,
+      [complaint.id, definition.actionType]
+    );
+
+    const existing = existingRow.rows[0] ? mapComplaintAction(existingRow.rows[0]) : null;
+    const nextStatus: ComplaintActionStatus = closed ? 'completed' : 'open';
+    const completedAt = closed ? (existing?.completedAt || new Date().toISOString()) : null;
+    const completedBy = closed ? (existing?.completedBy || sanitizeNullable(performedBy)) : null;
+
+    if (!existing) {
+      if (!definition.dueDate && !closed) continue;
+      const inserted = await client.query<Record<string, unknown>>(
+        `
+          INSERT INTO complaint_actions (
+            complaint_id,
+            action_type,
+            source,
+            status,
+            title,
+            description,
+            owner,
+            due_date,
+            completed_at,
+            completed_by,
+            created_by,
+            updated_by
+          ) VALUES (
+            $1, $2, 'system', $3, $4, $5, $6, $7, $8, $9, $10, $10
+          )
+          RETURNING *
+        `,
+        [
+          complaint.id,
+          definition.actionType,
+          nextStatus,
+          definition.title,
+          definition.description,
+          complaint.assignedTo,
+          definition.dueDate,
+          completedAt,
+          completedBy,
+          sanitizeNullable(performedBy),
+        ]
+      );
+      const createdAction = mapComplaintAction(inserted.rows[0]);
+      await insertComplaintActivityTx(client, {
+        complaintId: complaint.id,
+        activityType: nextStatus === 'completed' ? 'action_completed' : 'action_created',
+        description: `${createdAction.title} ${nextStatus === 'completed' ? 'completed automatically.' : 'created automatically.'}`,
+        performedBy,
+        metadata: { actionId: createdAction.id, actionType: createdAction.actionType, source: 'system' },
+      });
+      continue;
+    }
+
+    const needsUpdate = (
+      existing.status !== nextStatus
+      || existing.title !== definition.title
+      || (existing.description || null) !== definition.description
+      || (existing.owner || null) !== (complaint.assignedTo || null)
+      || (existing.dueDate || null) !== (definition.dueDate || null)
+      || (existing.completedAt || null) !== completedAt
+      || (existing.completedBy || null) !== completedBy
+    );
+    if (!needsUpdate) continue;
+
+    const updated = await client.query<Record<string, unknown>>(
+      `
+        UPDATE complaint_actions
+        SET
+          status = $2,
+          title = $3,
+          description = $4,
+          owner = $5,
+          due_date = $6,
+          completed_at = $7,
+          completed_by = $8,
+          updated_by = $9
+        WHERE id = $1
+        RETURNING *
+      `,
+      [
+        existing.id,
+        nextStatus,
+        definition.title,
+        definition.description,
+        complaint.assignedTo,
+        definition.dueDate,
+        completedAt,
+        completedBy,
+        sanitizeNullable(performedBy),
+      ]
+    );
+    const next = mapComplaintAction(updated.rows[0]);
+    await insertComplaintActivityTx(client, {
+      complaintId: complaint.id,
+      activityType: next.status === 'completed' && existing.status !== 'completed' ? 'action_completed' : 'action_updated',
+      description: `${next.title} ${next.status === 'completed' && existing.status !== 'completed' ? 'completed automatically.' : 'updated automatically.'}`,
+      oldValue: existing.status,
+      newValue: next.status,
+      performedBy,
+      metadata: { actionId: next.id, actionType: next.actionType, source: 'system', dueDate: next.dueDate },
+    });
+  }
+}
+
 async function insertComplaintActivityTx(
   client: PoolClient,
   input: {
@@ -2014,7 +2837,7 @@ function normalizeComplaintMutationInput(
 }
 
 function mapComplaintRecord(row: Record<string, unknown>): ComplaintRecord {
-  return {
+  const record: ComplaintRecord = {
     id: String(row.id || ''),
     complaintReference: String(row.complaint_reference || ''),
     linkedFosCaseId: sanitizeNullable(row.linked_fos_case_id),
@@ -2043,11 +2866,26 @@ function mapComplaintRecord(row: Record<string, unknown>): ComplaintRecord {
     priority: normalizePriority(row.priority),
     assignedTo: sanitizeNullable(row.assigned_to),
     notes: sanitizeNullable(row.notes),
+    evidenceCount: toInt(row.evidence_count),
+    latestLetterStatus: sanitizeNullable(row.latest_letter_status) ? normalizeLetterStatus(row.latest_letter_status) : null,
+    latestReviewedBy: sanitizeNullable(row.latest_reviewed_by),
+    openActionCount: toInt(row.open_action_count),
+    overdueActionCount: toInt(row.overdue_action_count),
+    dueSoonActionCount: toInt(row.due_soon_action_count),
     createdBy: sanitizeNullable(row.created_by),
     updatedBy: sanitizeNullable(row.updated_by),
     createdAt: toIsoDateTime(row.created_at),
     updatedAt: toIsoDateTime(row.updated_at),
   };
+  record.slaSummary = buildComplaintSlaSummary(record);
+  return record;
+}
+
+function csvEscape(value: string): string {
+  if (!/[",\n]/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function mapComplaintActivity(row: Record<string, unknown>): ComplaintActivity {
@@ -2061,6 +2899,60 @@ function mapComplaintActivity(row: Record<string, unknown>): ComplaintActivity {
     metadata: isPlainObject(row.metadata) ? (row.metadata as Record<string, unknown>) : null,
     performedBy: sanitizeNullable(row.performed_by),
     createdAt: toIsoDateTime(row.created_at),
+  };
+}
+
+function mapComplaintAction(row: Record<string, unknown>): ComplaintAction {
+  return {
+    id: String(row.id || ''),
+    complaintId: String(row.complaint_id || ''),
+    actionType: normalizeActionType(row.action_type),
+    source: normalizeActionSource(row.source),
+    status: normalizeActionStatus(row.status),
+    title: String(row.title || ''),
+    description: sanitizeNullable(row.description),
+    owner: sanitizeNullable(row.owner),
+    dueDate: toDateOnly(row.due_date),
+    completedAt: row.completed_at ? toIsoDateTime(row.completed_at) : null,
+    completedBy: sanitizeNullable(row.completed_by),
+    createdBy: sanitizeNullable(row.created_by),
+    updatedBy: sanitizeNullable(row.updated_by),
+    createdAt: toIsoDateTime(row.created_at),
+    updatedAt: toIsoDateTime(row.updated_at),
+  };
+}
+
+function buildComplaintSlaSummary(complaint: ComplaintRecord): ComplaintSlaSummary {
+  const received = new Date(complaint.receivedDate);
+  const now = new Date();
+  const daysElapsed = Number.isNaN(received.getTime())
+    ? 0
+    : Math.max(0, Math.floor((now.getTime() - received.getTime()) / (1000 * 60 * 60 * 24)));
+  const daysToFourWeekDue = complaint.fourWeekDueDate ? diffDays(complaint.fourWeekDueDate, now) : null;
+  const daysToEightWeekDue = complaint.eightWeekDueDate ? diffDays(complaint.eightWeekDueDate, now) : null;
+  const closed = Boolean(complaint.finalResponseDate || complaint.resolvedDate || complaint.status === 'resolved' || complaint.status === 'closed');
+  const overdue = !closed && daysToEightWeekDue != null && daysToEightWeekDue < 0;
+  const dueSoon = !closed && !overdue && daysToEightWeekDue != null && daysToEightWeekDue <= 7;
+
+  let nextMilestoneLabel: string | null = null;
+  let nextMilestoneDate: string | null = null;
+  if (!closed && daysToFourWeekDue != null && daysToFourWeekDue >= 0) {
+    nextMilestoneLabel = '4-week progress update';
+    nextMilestoneDate = complaint.fourWeekDueDate;
+  } else if (!closed && daysToEightWeekDue != null) {
+    nextMilestoneLabel = '8-week final response';
+    nextMilestoneDate = complaint.eightWeekDueDate;
+  }
+
+  return {
+    state: closed ? 'closed' : overdue ? 'overdue' : dueSoon ? 'due_soon' : 'on_track',
+    daysElapsed,
+    daysToFourWeekDue,
+    daysToEightWeekDue,
+    nextMilestoneLabel,
+    nextMilestoneDate,
+    atRisk: dueSoon,
+    overdue,
   };
 }
 
@@ -2178,7 +3070,23 @@ function mapComplaintStats(row: Record<string, unknown> | null | undefined): Com
     openComplaints: toInt(row?.open_complaints),
     referredToFos: toInt(row?.referred_to_fos),
     overdueComplaints: toInt(row?.overdue_complaints),
+    dueSoonComplaints: toInt(row?.due_soon_complaints),
     urgentComplaints: toInt(row?.urgent_complaints),
+    openActions: toInt(row?.open_actions),
+    overdueActions: toInt(row?.overdue_actions),
+  };
+}
+
+function mapBoardPackDefinition(row: Record<string, unknown>): BoardPackDefinition {
+  return {
+    id: String(row.id || ''),
+    name: String(row.name || 'Board pack definition'),
+    templateKey: normalizeBoardPackTemplateKey(row.template_key),
+    request: sanitizeBoardPackRequestPayload(isPlainObject(row.request_payload) ? row.request_payload as Omit<BoardPackRequest, 'format'> : {}),
+    createdBy: sanitizeNullable(row.created_by),
+    updatedBy: sanitizeNullable(row.updated_by),
+    createdAt: toIsoDateTime(row.created_at),
+    updatedAt: toIsoDateTime(row.updated_at),
   };
 }
 
@@ -2188,6 +3096,34 @@ function normalizeStatus(value: unknown): ComplaintStatus {
 
 function normalizePriority(value: unknown): ComplaintPriority {
   return VALID_PRIORITIES.includes(String(value) as ComplaintPriority) ? (String(value) as ComplaintPriority) : 'medium';
+}
+
+function normalizeActionStatus(value: unknown): ComplaintActionStatus {
+  return VALID_ACTION_STATUSES.includes(String(value) as ComplaintActionStatus)
+    ? (String(value) as ComplaintActionStatus)
+    : 'open';
+}
+
+function normalizeActionType(value: unknown): ComplaintActionType {
+  return VALID_ACTION_TYPES.includes(String(value) as ComplaintActionType)
+    ? (String(value) as ComplaintActionType)
+    : 'custom';
+}
+
+function normalizeActionSource(value: unknown): ComplaintActionSource {
+  return String(value) === 'system' ? 'system' : 'manual';
+}
+
+function normalizeBoardPackTemplateKey(value: unknown): BoardPackTemplateKey | null {
+  switch (String(value || '')) {
+    case 'board':
+    case 'risk_committee':
+    case 'exco':
+    case 'complaints_mi':
+      return String(value) as BoardPackTemplateKey;
+    default:
+      return null;
+  }
 }
 
 function normalizeActivityType(value: unknown): ComplaintActivityType {
@@ -2405,6 +3341,14 @@ function addDays(dateText: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+function diffDays(dateText: string, fromDate: Date): number | null {
+  const target = new Date(dateText);
+  if (Number.isNaN(target.getTime())) return null;
+  const start = Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate());
+  const end = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+  return Math.round((end - start) / (1000 * 60 * 60 * 24));
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -2422,4 +3366,25 @@ function parseJsonStringArray(value: unknown): string[] {
     }
   }
   return [];
+}
+
+function sanitizeBoardPackRequestPayload(
+  value: Partial<Omit<BoardPackRequest, 'format'>> | null | undefined
+): Omit<BoardPackRequest, 'format'> {
+  return {
+    title: sanitizeText(value?.title) || 'FOS Complaints Board Pack',
+    templateKey: normalizeBoardPackTemplateKey(value?.templateKey),
+    dateFrom: sanitizeText(value?.dateFrom) || '',
+    dateTo: sanitizeText(value?.dateTo) || '',
+    firms: Array.isArray(value?.firms) ? value!.firms.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
+    products: Array.isArray(value?.products) ? value!.products.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
+    outcomes: Array.isArray(value?.outcomes) ? value!.outcomes.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
+    includeOperationalComplaints: value?.includeOperationalComplaints !== false,
+    includeComparison: value?.includeComparison === true,
+    includeRootCauseDeepDive: value?.includeRootCauseDeepDive !== false,
+    includeAppendix: value?.includeAppendix !== false,
+    executiveSummaryNote: sanitizeNullable(value?.executiveSummaryNote),
+    boardFocusNote: sanitizeNullable(value?.boardFocusNote),
+    actionSummaryNote: sanitizeNullable(value?.actionSummaryNote),
+  };
 }

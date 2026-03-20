@@ -1,7 +1,10 @@
 import type { ComplaintLetterStatus } from '@/lib/complaints/types';
 
+export type BoardPackTemplateKey = 'board' | 'risk_committee' | 'exco' | 'complaints_mi';
+
 export interface BoardPackRequest {
   title: string;
+  templateKey?: BoardPackTemplateKey | null;
   dateFrom: string;
   dateTo: string;
   firms: string[];
@@ -15,6 +18,17 @@ export interface BoardPackRequest {
   boardFocusNote: string | null;
   actionSummaryNote: string | null;
   format: 'pdf' | 'pptx';
+}
+
+export interface BoardPackDefinition {
+  id: string;
+  name: string;
+  templateKey: BoardPackTemplateKey | null;
+  request: Omit<BoardPackRequest, 'format'>;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BoardPackSection {
@@ -32,13 +46,22 @@ export interface BoardPackPreview {
     complaintsOpen: number;
     overdueComplaints: number;
     fosReferredCount: number;
+    openActions: number;
+    overdueActions: number;
     appendixLetters: number;
     appendixEvidence: number;
+    appendixActions: number;
   };
   branding: {
     organizationName: string;
     subtitle: string | null;
   };
+  templates: Array<{
+    key: BoardPackTemplateKey;
+    label: string;
+    description: string;
+  }>;
+  savedDefinitions: BoardPackDefinition[];
   recentRuns: Array<{
     id: string;
     format: 'pdf' | 'pptx';
@@ -69,6 +92,8 @@ export interface BoardPackData {
     openComplaints: number;
     overdueComplaints: number;
     referredToFos: number;
+    openActions: number;
+    overdueActions: number;
   };
   topFirms: Array<{ firm: string; total: number; upheldRate: number; notUpheldRate: number }>;
   topProducts: Array<{ product: string; total: number; upheldRate: number }>;
@@ -93,6 +118,21 @@ export interface BoardPackData {
       category: string;
       summary: string | null;
       createdAt: string;
+    }>;
+    recentActions: Array<{
+      complaintReference: string;
+      title: string;
+      status: string;
+      owner: string | null;
+      dueDate: string | null;
+      createdAt: string;
+    }>;
+    overdueComplaints: Array<{
+      complaintReference: string;
+      firmName: string;
+      owner: string | null;
+      eightWeekDueDate: string | null;
+      daysOverdue: number;
     }>;
     lateReferralText: string;
   };

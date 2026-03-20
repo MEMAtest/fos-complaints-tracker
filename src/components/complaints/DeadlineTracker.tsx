@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, Clock3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { ComplaintSlaSummary } from '@/lib/complaints/types';
 import { cn, formatDate } from '@/lib/utils';
 
 export function DeadlineTracker({
@@ -10,12 +11,14 @@ export function DeadlineTracker({
   eightWeekDueDate,
   finalResponseDate,
   resolvedDate,
+  slaSummary,
 }: {
   receivedDate: string;
   fourWeekDueDate: string | null;
   eightWeekDueDate: string | null;
   finalResponseDate: string | null;
   resolvedDate: string | null;
+  slaSummary: ComplaintSlaSummary | null;
 }) {
   const now = new Date();
   const received = new Date(receivedDate);
@@ -52,6 +55,12 @@ export function DeadlineTracker({
         <DeadlineRow label="4-week due" value={fourWeekDueDate ? formatDate(fourWeekDueDate) : 'Pending'} done={Boolean(finalResponseDate || resolvedDate || (fourWeekDueDate && new Date(fourWeekDueDate) >= now))} warn={Boolean(fourWeekDueDate && new Date(fourWeekDueDate) < now && !finalResponseDate && !resolvedDate)} />
         <DeadlineRow label="8-week due" value={eightWeekDueDate ? formatDate(eightWeekDueDate) : 'Pending'} done={Boolean(finalResponseDate || resolvedDate)} warn={overdue} />
         <DeadlineRow label="Final response" value={finalResponseDate ? formatDate(finalResponseDate) : resolvedDate ? formatDate(resolvedDate) : 'Pending'} done={Boolean(finalResponseDate || resolvedDate)} />
+        {slaSummary?.nextMilestoneLabel ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Next milestone: <span className="font-semibold text-slate-800">{slaSummary.nextMilestoneLabel}</span>
+            {slaSummary.nextMilestoneDate ? ` by ${formatDate(slaSummary.nextMilestoneDate)}` : ''}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

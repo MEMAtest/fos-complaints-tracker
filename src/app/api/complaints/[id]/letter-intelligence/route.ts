@@ -31,11 +31,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return Response.json(payload, { headers: { 'Cache-Control': 'no-store' } });
     }
 
-    const brief = await getAdvisorBrief({
-      product: complaint.product.trim(),
-      rootCause: complaint.rootCause?.trim() || null,
-      freeText: complaint.description?.trim() || null,
-    });
+    let brief = null;
+    try {
+      brief = await getAdvisorBrief({
+        product: complaint.product.trim(),
+        rootCause: complaint.rootCause?.trim() || null,
+        freeText: complaint.description?.trim() || null,
+      });
+    } catch (error) {
+      if (!isQueryTimeoutError(error)) {
+        throw error;
+      }
+    }
 
     if (!brief) {
       const fallbackIntelligence = await getComplaintLetterIntelligenceFromCorpus(complaint);
@@ -87,4 +94,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { status: 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500 }
     );
   }
+}
+
+function isQueryTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase();
+  return message.includes('query read timeout') || message.includes('statement timeout') || message.includes('timeout');
 }

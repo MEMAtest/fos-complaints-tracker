@@ -5,17 +5,23 @@ import { ensureComplaintsWorkspaceSchema } from '@/lib/complaints/schema';
 import { commitComplaintImport } from '@/lib/complaints/repository';
 import { buildComplaintImportPreview } from '@/lib/complaints/import-preview';
 import { buildComplaintImportRows, parseComplaintImportFile } from '@/lib/complaints/import-parser';
+import { clientKeyFromRequest, RateLimitError, rateLimitOrThrow } from '@/lib/server/rate-limit';
+import { logRouteMetric } from '@/lib/server/route-metrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
+  let actor: string | null = null;
   try {
     const user = await requireAuthenticatedUser(request, 'operator');
+    actor = user.email;
     const formData = await request.formData();
     const file = formData.get('file');
     const previewRaw = String(formData.get('preview') || 'true').toLowerCase();
     const preview = ['1', 'true', 'yes'].includes(previewRaw);
+    rateLimitOrThrow(clientKeyFromRequest(request, `complaints-import:${user.email}`), preview ? 30 : 10, preview ? 60_000 : 300_000);
 
     if (!file || typeof File === 'undefined' || !(file instanceof File)) {
       return Response.json({ success: false, error: 'A CSV or Excel file is required.' }, { status: 400 });
@@ -48,6 +54,14 @@ export async function POST(request: NextRequest) {
     const previewPayload = buildComplaintImportPreview({ fileName: parsed.fileName, rows: previewRows, warnings: parsed.warnings });
 
     if (preview) {
+      logRouteMetric({
+        route: '/api/complaints/import',
+        method: 'POST',
+        status: 200,
+        durationMs: Date.now() - startedAt,
+        actor,
+        detail: { preview: true, fileName: parsed.fileName, rows: previewRows.length },
+      });
       return Response.json(previewPayload);
     }
 
@@ -58,6 +72,14 @@ export async function POST(request: NextRequest) {
       createdBy: user.fullName,
     });
 
+    logRouteMetric({
+      route: '/api/complaints/import',
+      method: 'POST',
+      status: 200,
+      durationMs: Date.now() - startedAt,
+      actor,
+      detail: { preview: false, fileName: parsed.fileName, importedCount: result.importedCount, overwrittenCount: result.overwrittenCount },
+    });
     return Response.json({
       success: true,
       preview: false,
@@ -72,6 +94,17 @@ export async function POST(request: NextRequest) {
     const status = 'status' in (error as object)
       ? Number((error as { status?: number }).status || 500)
       : ((message.toLowerCase().includes('worksheet') || message.toLowerCase().includes('required')) ? 400 : 500);
+    logRouteMetric({
+      route: '/api/complaints/import',
+      method: 'POST',
+      status,
+      durationMs: Date.now() - startedAt,
+      actor,
+      detail: { error: message },
+    });
+    if (error instanceof RateLimitError) {
+      return Response.json({ success: false, error: message }, { status, headers: { 'Retry-After': String(error.retryAfterSeconds) } });
+    }
     return Response.json({ success: false, error: message }, { status });
   }
 }

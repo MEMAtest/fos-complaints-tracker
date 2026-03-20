@@ -6,6 +6,10 @@ export type ComplaintLetterStatus = 'draft' | 'generated' | 'under_review' | 'ap
 export type ComplaintLateReferralPosition = 'review_required' | 'consent' | 'do_not_consent' | 'custom';
 export type ComplaintLetterIntelligenceSourceScope = 'product_root_cause' | 'product_only' | 'none';
 export type ComplaintWorkspaceActorRole = 'operator' | 'reviewer' | 'manager' | 'admin';
+export type ComplaintActionStatus = 'open' | 'in_progress' | 'completed' | 'cancelled';
+export type ComplaintActionType = 'custom' | 'four_week_progress' | 'eight_week_final_response';
+export type ComplaintActionSource = 'manual' | 'system';
+export type ComplaintSlaState = 'on_track' | 'due_soon' | 'overdue' | 'closed';
 export type ComplaintLetterReviewDecisionCode =
   | 'ready_to_issue'
   | 'reasoning_strengthened'
@@ -28,11 +32,44 @@ export type ComplaintActivityType =
   | 'letter_sent'
   | 'letter_superseded'
   | 'note_added'
+  | 'action_created'
+  | 'action_updated'
+  | 'action_completed'
+  | 'action_deleted'
   | 'assigned'
   | 'priority_change'
   | 'fos_referred'
   | 'resolved'
   | 'closed';
+
+export interface ComplaintAction {
+  id: string;
+  complaintId: string;
+  actionType: ComplaintActionType;
+  source: ComplaintActionSource;
+  status: ComplaintActionStatus;
+  title: string;
+  description: string | null;
+  owner: string | null;
+  dueDate: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ComplaintSlaSummary {
+  state: ComplaintSlaState;
+  daysElapsed: number;
+  daysToFourWeekDue: number | null;
+  daysToEightWeekDue: number | null;
+  nextMilestoneLabel: string | null;
+  nextMilestoneDate: string | null;
+  atRisk: boolean;
+  overdue: boolean;
+}
 
 export interface ComplaintRecord {
   id: string;
@@ -63,6 +100,13 @@ export interface ComplaintRecord {
   priority: ComplaintPriority;
   assignedTo: string | null;
   notes: string | null;
+  evidenceCount?: number;
+  latestLetterStatus?: ComplaintLetterStatus | null;
+  latestReviewedBy?: string | null;
+  openActionCount?: number;
+  overdueActionCount?: number;
+  dueSoonActionCount?: number;
+  slaSummary?: ComplaintSlaSummary;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
@@ -265,6 +309,11 @@ export interface ComplaintFilters {
   priority: ComplaintPriority | 'all';
   firm: string;
   product: string;
+  assignedTo: string;
+  reviewer: string;
+  letterStatus: ComplaintLetterStatus | 'all';
+  hasEvidence: 'all' | 'yes' | 'no';
+  slaState: ComplaintSlaState | 'all';
   fosReferred: 'all' | 'yes' | 'no';
   page: number;
   pageSize: number;
@@ -275,7 +324,10 @@ export interface ComplaintStats {
   openComplaints: number;
   referredToFos: number;
   overdueComplaints: number;
+  dueSoonComplaints: number;
   urgentComplaints: number;
+  openActions: number;
+  overdueActions: number;
 }
 
 export interface ComplaintListResult {
@@ -336,6 +388,11 @@ export interface ComplaintImportRun {
 
 export type ComplaintWorkspaceSettingsInput = Partial<Omit<ComplaintWorkspaceSettings, 'updatedAt'>>;
 
+export type ComplaintActionMutationInput = Partial<Omit<ComplaintAction, 'id' | 'complaintId' | 'source' | 'createdAt' | 'updatedAt'>> & {
+  title?: string;
+  source?: ComplaintActionSource;
+};
+
 export type ComplaintMutationInput = Partial<Omit<ComplaintRecord, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>> & {
   complaintReference?: string;
   createdBy?: string | null;
@@ -357,6 +414,19 @@ export const COMPLAINT_WORKSPACE_ACTOR_ROLES: ComplaintWorkspaceActorRole[] = [
   'reviewer',
   'manager',
   'admin',
+];
+
+export const COMPLAINT_ACTION_STATUSES: ComplaintActionStatus[] = [
+  'open',
+  'in_progress',
+  'completed',
+  'cancelled',
+];
+
+export const COMPLAINT_ACTION_TYPES: ComplaintActionType[] = [
+  'custom',
+  'four_week_progress',
+  'eight_week_final_response',
 ];
 
 export const COMPLAINT_LETTER_REVIEW_DECISION_CODES: ComplaintLetterReviewDecisionCode[] = [

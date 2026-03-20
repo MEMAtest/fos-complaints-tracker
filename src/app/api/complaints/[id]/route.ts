@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth/session';
-import { deleteComplaint, getComplaintById, listComplaintActivities, listComplaintEvidence, listComplaintLetters, updateComplaint } from '@/lib/complaints/repository';
+import { deleteComplaint, getComplaintById, listComplaintActions, listComplaintActivities, listComplaintEvidence, listComplaintLetters, updateComplaint } from '@/lib/complaints/repository';
 import type { ComplaintMutationInput } from '@/lib/complaints/types';
 
 export const dynamic = 'force-dynamic';
@@ -14,12 +14,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!complaint) {
       return Response.json({ success: false, error: 'Complaint not found.' }, { status: 404 });
     }
-    const [activities, evidence, letters] = await Promise.all([
+    const [activities, evidence, letters, actions] = await Promise.all([
       listComplaintActivities(id),
       listComplaintEvidence(id),
       listComplaintLetters(id),
+      listComplaintActions(id),
     ]);
-    return Response.json({ success: true, complaint: { ...complaint, activities, evidence, letters } });
+    return Response.json({ success: true, complaint: { ...complaint, activities, evidence, letters, actions } });
   } catch (error) {
     const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
     return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to fetch complaint.' }, { status });

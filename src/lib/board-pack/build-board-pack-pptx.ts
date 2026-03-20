@@ -229,18 +229,42 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
         fit: 'shrink',
       }
     );
-    addPanel(appendix, 0.7, 5.1, 11.9, 0.92, 'Presentation and policy note', palette.warm, palette.border);
+    addPanel(appendix, 0.7, 5.02, 11.9, 1.12, 'Presentation and policy note', palette.warm, palette.border);
     appendix.addText('Use the board pack alongside the complaint register, remediation actions, and supporting complaint correspondence. Management commentary should explain any material data gaps before circulation.', {
       x: 0.95,
-      y: 5.42,
+      y: 5.32,
       w: 11.35,
       h: 0.22,
       fontSize: 10,
       color: palette.slate,
     });
+    appendix.addText(
+      `Recent actions: ${data.appendix.recentActions.length > 0 ? data.appendix.recentActions.slice(0, 3).map((item) => `${item.complaintReference} · ${item.title} · ${item.status}`).join(' | ') : 'No recent management actions are currently available for the selected reporting scope.'}`,
+      {
+        x: 0.95,
+        y: 5.58,
+        w: 11.35,
+        h: 0.18,
+        fontSize: 9,
+        color: palette.slate,
+        fit: 'shrink',
+      }
+    );
+    appendix.addText(
+      `Most overdue complaints: ${data.appendix.overdueComplaints.length > 0 ? data.appendix.overdueComplaints.slice(0, 3).map((item) => `${item.complaintReference} (${item.daysOverdue} days)`).join(' | ') : 'No overdue complaints are currently present in the selected reporting scope.'}`,
+      {
+        x: 0.95,
+        y: 5.78,
+        w: 11.35,
+        h: 0.16,
+        fontSize: 8.5,
+        color: palette.slate,
+        fit: 'shrink',
+      }
+    );
     appendix.addText(data.appendix.lateReferralText, {
       x: 0.95,
-      y: 5.69,
+      y: 5.96,
       w: 11.35,
       h: 0.18,
       fontSize: 9,

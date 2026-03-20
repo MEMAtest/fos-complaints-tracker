@@ -197,10 +197,18 @@ function drawAppendixPage(page: PDFPage, data: BoardPackData, regular: PDFFont, 
     });
   }
 
-  drawRoundedPanel(page, MARGIN, 54, PAGE_WIDTH - MARGIN * 2, 96, theme.panelWarm, theme.border);
+  drawRoundedPanel(page, MARGIN, 40, PAGE_WIDTH - MARGIN * 2, 110, theme.panelWarm, theme.border);
   page.drawText('Presentation and policy note', { x: MARGIN + 18, y: 126, size: 12, font: bold, color: theme.ink });
   drawWrappedText(page, 'This board pack is designed to support oversight discussions. It should be read alongside the underlying complaint register, remediation plans, and any complaint correspondence referenced in committee papers.', MARGIN + 18, 100, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.slate, 13);
-  drawWrappedText(page, data.appendix.lateReferralText, MARGIN + 18, 74, PAGE_WIDTH - MARGIN * 2 - 36, 9.5, regular, theme.muted, 12);
+  const actionsText = data.appendix.recentActions.length > 0
+    ? data.appendix.recentActions.slice(0, 3).map((item) => `${item.complaintReference}: ${item.title} (${item.status})`).join(' • ')
+    : 'No recent management actions are currently available for the selected reporting scope.';
+  drawWrappedText(page, `Recent actions: ${actionsText}`, MARGIN + 18, 74, PAGE_WIDTH - MARGIN * 2 - 36, 9.5, regular, theme.slate, 12);
+  const overdueText = data.appendix.overdueComplaints.length > 0
+    ? data.appendix.overdueComplaints.slice(0, 3).map((item) => `${item.complaintReference} (${item.daysOverdue} days overdue)`).join(' • ')
+    : 'No overdue complaints are currently present in the selected reporting scope.';
+  drawWrappedText(page, `Most overdue complaints: ${overdueText}`, MARGIN + 18, 58, PAGE_WIDTH - MARGIN * 2 - 36, 9.5, regular, theme.slate, 12);
+  drawWrappedText(page, data.appendix.lateReferralText, MARGIN + 18, 44, PAGE_WIDTH - MARGIN * 2 - 36, 9, regular, theme.muted, 11);
 }
 
 function drawPageTitle(page: PDFPage, title: string, subtitle: string, regular: PDFFont, bold: PDFFont) {

@@ -20,6 +20,10 @@ const ICONS: Record<ComplaintActivityType, React.ComponentType<{ className?: str
   letter_sent: Mail,
   letter_superseded: FileText,
   note_added: MessageSquare,
+  action_created: CheckCircle2,
+  action_updated: FileText,
+  action_completed: CheckCircle2,
+  action_deleted: AlertCircle,
   assigned: UserRound,
   priority_change: Flag,
   fos_referred: Scale,
@@ -119,6 +123,14 @@ function labelForActivity(activity: ComplaintActivity): string {
       return 'Letter Superseded';
     case 'note_added':
       return 'Note Added';
+    case 'action_created':
+      return 'Action Created';
+    case 'action_updated':
+      return 'Action Updated';
+    case 'action_completed':
+      return 'Action Completed';
+    case 'action_deleted':
+      return 'Action Deleted';
     case 'assigned':
       return 'Assignment Updated';
     case 'priority_change':

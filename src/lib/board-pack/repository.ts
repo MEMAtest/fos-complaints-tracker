@@ -1,17 +1,26 @@
 import { INITIAL_FILTERS } from '@/lib/fos/constants';
 import type { FOSDashboardFilters } from '@/lib/fos/types';
 import { getDashboardSnapshot, getAnalysisSnapshot, getRootCauseSnapshot } from '@/lib/fos/repository';
-import { getComplaintOperationsSummary, getComplaintWorkspaceSettings, listBoardPackRuns, listComplaintAppendixArtifacts } from '@/lib/complaints/repository';
-import type { BoardPackData, BoardPackPreview, BoardPackRequest, BoardPackSection } from './types';
+import { getComplaintOperationsSummary, getComplaintWorkspaceSettings, listBoardPackDefinitions, listBoardPackRuns, listComplaintAppendixArtifacts } from '@/lib/complaints/repository';
+import type { BoardPackData, BoardPackDefinition, BoardPackPreview, BoardPackRequest, BoardPackSection, BoardPackTemplateKey } from './types';
+
+const BOARD_PACK_TEMPLATES: Array<{ key: BoardPackTemplateKey; label: string; description: string }> = [
+  { key: 'board', label: 'Board', description: 'Balanced board pack with outcomes, concentrations, operations, and appendix.' },
+  { key: 'risk_committee', label: 'Risk Committee', description: 'Risk-focused pack with root-cause depth and operational posture.' },
+  { key: 'exco', label: 'ExCo', description: 'Executive pack with concise narrative and management-action emphasis.' },
+  { key: 'complaints_mi', label: 'Complaints MI', description: 'Operational MI pack with appendix and complaint-performance detail.' },
+];
 
 export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Promise<BoardPackPreview> {
-  const filters = filtersFromBoardPackInput(input);
-  const sections = buildBoardPackSections(input);
+  const effectiveInput = resolveBoardPackInput(input);
+  const filters = filtersFromBoardPackInput(effectiveInput);
+  const sections = buildBoardPackSections(effectiveInput);
   const dashboard = await getDashboardSnapshot(filters, { includeCases: false });
-  const complaintSummary = await getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null);
+  const complaintSummary = await getComplaintOperationsSummary(effectiveInput.dateFrom || null, effectiveInput.dateTo || null);
   const recentRuns = await listBoardPackRuns(8);
+  const savedDefinitions = await listBoardPackDefinitions(12);
   const settings = await getComplaintWorkspaceSettings();
-  const appendix = await listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null);
+  const appendix = await listComplaintAppendixArtifacts(effectiveInput.dateFrom || null, effectiveInput.dateTo || null);
 
   return {
     success: true,
@@ -22,26 +31,32 @@ export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Pro
       complaintsOpen: complaintSummary.open,
       overdueComplaints: complaintSummary.overdue,
       fosReferredCount: complaintSummary.referredToFos,
+      openActions: complaintSummary.openActions,
+      overdueActions: complaintSummary.overdueActions,
       appendixLetters: appendix.recentLetters.length,
       appendixEvidence: appendix.recentEvidence.length,
+      appendixActions: appendix.recentActions.length,
     },
     branding: {
       organizationName: settings.organizationName,
       subtitle: settings.boardPackSubtitle,
     },
+    templates: BOARD_PACK_TEMPLATES,
+    savedDefinitions,
     recentRuns,
   };
 }
 
 export async function buildBoardPackData(input: BoardPackRequest): Promise<BoardPackData> {
-  const filters = filtersFromBoardPackInput(input);
-  const sections = buildBoardPackSections(input);
+  const effectiveInput = resolveBoardPackInput(input);
+  const filters = filtersFromBoardPackInput(effectiveInput);
+  const sections = buildBoardPackSections(effectiveInput);
   const dashboard = await getDashboardSnapshot(filters, { includeCases: false });
   const analysis = await getAnalysisSnapshot(filters);
   const rootCauseSnapshot = await getRootCauseSnapshot(filters);
-  const complaintSummary = await getComplaintOperationsSummary(input.dateFrom || null, input.dateTo || null);
+  const complaintSummary = await getComplaintOperationsSummary(effectiveInput.dateFrom || null, effectiveInput.dateTo || null);
   const settings = await getComplaintWorkspaceSettings();
-  const appendix = await listComplaintAppendixArtifacts(input.dateFrom || null, input.dateTo || null);
+  const appendix = await listComplaintAppendixArtifacts(effectiveInput.dateFrom || null, effectiveInput.dateTo || null);
 
   const topFirms = dashboard.firms.slice(0, 8).map((firm) => ({
     firm: firm.firm,
@@ -56,8 +71,8 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
     upheldRate: product.upheldRate,
   }));
 
-  const topRootCauses = (input.includeRootCauseDeepDive ? rootCauseSnapshot.frequency : dashboard.rootCauses)
-    .slice(0, input.includeRootCauseDeepDive ? 8 : 4)
+  const topRootCauses = (effectiveInput.includeRootCauseDeepDive ? rootCauseSnapshot.frequency : dashboard.rootCauses)
+    .slice(0, effectiveInput.includeRootCauseDeepDive ? 8 : 4)
     .map((row) => ({ label: row.label, count: row.count }));
 
   const trends = dashboard.trends.map((trend) => ({
@@ -67,10 +82,10 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
     notUpheld: trend.notUpheld,
   }));
 
-  const periodLabel = buildPeriodLabel(input.dateFrom, input.dateTo, filters.years);
+  const periodLabel = buildPeriodLabel(effectiveInput.dateFrom, effectiveInput.dateTo, filters.years);
 
   return {
-    title: input.title || 'FOS Complaints Board Pack',
+    title: effectiveInput.title || 'FOS Complaints Board Pack',
     generatedAt: new Date().toISOString(),
     periodLabel,
     branding: {
@@ -89,6 +104,8 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
       openComplaints: complaintSummary.open,
       overdueComplaints: complaintSummary.overdue,
       referredToFos: complaintSummary.referredToFos,
+      openActions: complaintSummary.openActions,
+      overdueActions: complaintSummary.overdueActions,
     },
     topFirms,
     topProducts,
@@ -97,17 +114,23 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
       ? analysis.yearNarratives.map((row) => ({ year: row.year, total: row.total, upheld: Math.round((row.upheldRate / 100) * row.total), notUpheld: row.total - Math.round((row.upheldRate / 100) * row.total) }))
       : trends,
     boardNotes: {
-      executiveSummaryNote: sanitizeText(input.executiveSummaryNote),
-      boardFocusNote: sanitizeText(input.boardFocusNote),
-      actionSummaryNote: sanitizeText(input.actionSummaryNote),
+      executiveSummaryNote: sanitizeText(effectiveInput.executiveSummaryNote),
+      boardFocusNote: sanitizeText(effectiveInput.boardFocusNote),
+      actionSummaryNote: sanitizeText(effectiveInput.actionSummaryNote),
     },
     appendix: {
       recentLetters: appendix.recentLetters,
       recentEvidence: appendix.recentEvidence,
+      recentActions: appendix.recentActions,
+      overdueComplaints: appendix.overdueComplaints,
       lateReferralText: lateReferralPolicyText(settings),
     },
     sections,
   };
+}
+
+export function getBoardPackTemplates() {
+  return BOARD_PACK_TEMPLATES;
 }
 
 export function buildBoardPackSections(input: Partial<BoardPackRequest>): BoardPackSection[] {
@@ -122,6 +145,15 @@ export function buildBoardPackSections(input: Partial<BoardPackRequest>): BoardP
     { key: 'actions', title: 'Management actions', status: 'included' },
     { key: 'appendix', title: 'Appendix', status: input.includeAppendix === false ? 'excluded' : 'included' },
   ];
+}
+
+function resolveBoardPackInput(input: Partial<BoardPackRequest>): Partial<BoardPackRequest> {
+  const templateDefaults = getTemplateDefaults(normalizeTemplateKey(input.templateKey));
+  return {
+    ...templateDefaults,
+    ...input,
+    templateKey: normalizeTemplateKey(input.templateKey) || templateDefaults.templateKey || null,
+  };
 }
 
 function filtersFromBoardPackInput(input: Partial<BoardPackRequest>): FOSDashboardFilters {
@@ -168,6 +200,60 @@ function buildPeriodLabel(dateFrom?: string | null, dateTo?: string | null, year
 function sanitizeText(value?: string | null): string | null {
   const text = typeof value === 'string' ? value.trim() : '';
   return text ? text : null;
+}
+
+function normalizeTemplateKey(value?: BoardPackTemplateKey | null): BoardPackTemplateKey | null {
+  switch (value) {
+    case 'board':
+    case 'risk_committee':
+    case 'exco':
+    case 'complaints_mi':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function getTemplateDefaults(templateKey: BoardPackTemplateKey | null): Partial<BoardPackRequest> {
+  switch (templateKey) {
+    case 'risk_committee':
+      return {
+        templateKey,
+        title: 'Risk Committee Complaints Pack',
+        includeOperationalComplaints: true,
+        includeComparison: false,
+        includeRootCauseDeepDive: true,
+        includeAppendix: true,
+      };
+    case 'exco':
+      return {
+        templateKey,
+        title: 'Executive Complaints Pack',
+        includeOperationalComplaints: true,
+        includeComparison: true,
+        includeRootCauseDeepDive: false,
+        includeAppendix: true,
+      };
+    case 'complaints_mi':
+      return {
+        templateKey,
+        title: 'Complaints MI Pack',
+        includeOperationalComplaints: true,
+        includeComparison: false,
+        includeRootCauseDeepDive: true,
+        includeAppendix: true,
+      };
+    case 'board':
+    default:
+      return {
+        templateKey: templateKey || 'board',
+        title: 'FOS Complaints Board Pack',
+        includeOperationalComplaints: true,
+        includeComparison: true,
+        includeRootCauseDeepDive: true,
+        includeAppendix: true,
+      };
+  }
 }
 
 function lateReferralPolicyText(settings: Awaited<ReturnType<typeof getComplaintWorkspaceSettings>>): string {

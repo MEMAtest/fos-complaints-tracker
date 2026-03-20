@@ -259,20 +259,31 @@ export async function getComplaintLetterIntelligenceFromCorpus(
     sourceScope: complaint.rootCause?.trim() ? 'product_root_cause' : 'product_only',
   };
 
-  const scopedBrief = await queryCorpusBrief(initialScope);
+  const scopedBrief = await queryCorpusBriefWithFallback(initialScope);
   if (scopedBrief) {
     return buildComplaintLetterIntelligence(complaint, scopedBrief, initialScope.sourceScope);
   }
 
   if (initialScope.rootCause) {
     const fallbackScope: QueryScope = { product, rootCause: null, sourceScope: 'product_only' };
-    const fallbackBrief = await queryCorpusBrief(fallbackScope);
+    const fallbackBrief = await queryCorpusBriefWithFallback(fallbackScope);
     if (fallbackBrief) {
       return buildComplaintLetterIntelligence(complaint, fallbackBrief, fallbackScope.sourceScope);
     }
   }
 
   return null;
+}
+
+async function queryCorpusBriefWithFallback(scope: QueryScope): Promise<AdvisorBriefLike | null> {
+  try {
+    return await queryCorpusBrief(scope);
+  } catch (error) {
+    if (!isQueryTimeoutError(error)) {
+      throw error;
+    }
+    return queryCorpusBriefLightweight(scope);
+  }
 }
 
 function describeComplaint(complaint: ComplaintRecord): string {
@@ -477,6 +488,104 @@ async function queryCorpusBrief(scope: QueryScope): Promise<AdvisorBriefLike | n
   };
 }
 
+async function queryCorpusBriefLightweight(scope: QueryScope): Promise<AdvisorBriefLike | null> {
+  const scopeSql = buildScopeSql(scope);
+  const [statsRow, overallRow, sampleRows] = await Promise.all([
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `
+        SELECT
+          COUNT(*)::INT AS total_cases,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld') / NULLIF(COUNT(*), 0), 2) AS not_upheld_rate
+        FROM fos_decisions d
+        ${scopeSql.whereSql}
+      `,
+      scopeSql.params
+    ),
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `
+        SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS rate
+        FROM fos_decisions d
+      `
+    ),
+    DatabaseClient.query<Record<string, unknown>>(
+      `
+        SELECT
+          ${caseIdExpression('d')} AS case_id,
+          d.decision_reference,
+          d.decision_date,
+          COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm_name,
+          ${outcomeExpression('d')} AS outcome,
+          d.decision_summary
+        FROM fos_decisions d
+        ${scopeSql.whereSql}
+        ORDER BY d.decision_date DESC NULLS LAST
+        LIMIT 5
+      `,
+      scopeSql.params
+    ),
+  ]);
+
+  const totalCases = toInt(statsRow?.total_cases);
+  if (totalCases === 0) return null;
+
+  const upheldRate = toNumber(statsRow?.upheld_rate);
+  const notUpheldRate = toNumber(statsRow?.not_upheld_rate);
+  const overallUpheldRate = toNumber(overallRow?.rate);
+  const riskLevel = deriveRiskLevel(upheldRate);
+  const genericActions: ComplaintLetterIntelligenceAction[] = dedupeActions([
+    {
+      item: `Stress-test the draft against the ${scope.product} upheld rate before issue.`,
+      source: 'theme',
+      priority: upheldRate >= 45 ? 'critical' : 'important',
+    },
+    {
+      item: 'Confirm the chronology, evidence pack, and explanation of outcome are internally consistent.',
+      source: 'theme',
+      priority: 'important',
+    },
+    ...(scope.rootCause
+      ? [{
+          item: `Address ${scope.rootCause} explicitly in the review, reasoning, and remediation sections.`,
+          source: 'root_cause' as const,
+          priority: 'important' as const,
+        }]
+      : []),
+  ]);
+
+  return {
+    query: {
+      product: scope.product,
+      rootCause: scope.rootCause,
+    },
+    generatedAt: new Date().toISOString(),
+    riskAssessment: {
+      totalCases,
+      upheldRate,
+      notUpheldRate,
+      overallUpheldRate,
+      riskLevel,
+      trendDirection: 'stable',
+    },
+    keyPrecedents: [],
+    rootCausePatterns: scope.rootCause
+      ? [{ label: normalizeTagLabel(scope.rootCause), count: totalCases, upheldRate }]
+      : [],
+    whatWins: [],
+    whatLoses: [],
+    sampleCases: sampleRows.map((row) => ({
+      caseId: String(row.case_id || ''),
+      decisionReference: String(row.decision_reference || ''),
+      decisionDate: toIsoDate(row.decision_date),
+      firmName: row.firm_name == null ? null : String(row.firm_name),
+      outcome: String(row.outcome || 'unknown'),
+      decisionSummary: row.decision_summary == null ? null : String(row.decision_summary),
+    })),
+    recommendedActions: genericActions,
+    aiGuidance: null,
+  };
+}
+
 async function queryOutcomeThemeRows(
   scopeSql: { whereSql: string; params: unknown[] },
   outcome: 'upheld' | 'not_upheld'
@@ -579,4 +688,9 @@ function buildScopeSql(scope: { product: string; rootCause: string | null }): { 
     whereSql: `WHERE ${conditions.join(' AND ')}`,
     params,
   };
+}
+
+function isQueryTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase();
+  return message.includes('query read timeout') || message.includes('statement timeout') || message.includes('timeout');
 }

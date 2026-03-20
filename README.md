@@ -48,11 +48,53 @@ Required env var:
 Optional DB runtime env vars:
 
 - `DB_SSL_MODE` (`disable`, `require`, `verify-ca`, `verify-full`) to force TLS mode
+- `DB_POOL_MAX` (default `8`) max pool size
+- `DB_QUERY_TIMEOUT_MS` (default `15000`) per-query statement timeout
+- `DB_IDLE_IN_TX_TIMEOUT_MS` (default `10000`) idle transaction timeout
+- `DB_MAX_USES` (default `7500`) recycle long-lived connections
+- `DB_APPLICATION_NAME` (default `fos-complaints-tracker`) Postgres application name
 - `DB_CONNECT_RETRIES` (default `3` for scripts, `2` for app runtime) connection retry count
 - `DB_RETRY_BASE_MS` (default `350` for scripts, `200` for app runtime) initial retry delay
 - `DB_RETRY_MAX_MS` (default `4000` for scripts, `2000` for app runtime) max retry delay
 - `DEBUG_API_SECRET` (required for `/api/debug-*` endpoints, bearer token)
 - `CRON_SECRET` (recommended in production for `/api/fos/keepalive`)
+
+## Local auth users
+
+In non-production, the app bootstraps local workspace users automatically:
+
+- `viewer@local.test` / `ViewerPass123!`
+- `operator@local.test` / `OperatorPass123!`
+- `reviewer@local.test` / `ReviewerPass123!`
+- `manager@local.test` / `ManagerPass123!`
+- `admin@local.test` / `AdminPass123!`
+
+Override these with `APP_BOOTSTRAP_USERS_JSON` if needed.
+
+## Rate limiting and route metrics
+
+Heavier routes now use in-memory fixed-window limits:
+
+- `/api/fos/board-pack` preview
+- `/api/fos/board-pack/generate`
+- `/api/complaints/import`
+- `/api/complaints/export`
+
+When a limit is hit, the API returns `429` with `Retry-After`.
+
+Operational route timings are logged as structured lines prefixed with:
+
+```text
+[route-metric]
+```
+
+Watch these in local logs or Vercel runtime logs to trace:
+
+- route
+- status
+- duration
+- actor
+- request detail such as template key or export scope
 
 ## Debug endpoint access
 

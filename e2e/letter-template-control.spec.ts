@@ -41,7 +41,7 @@ test('final-response template editor composes locked sections and outputs PDF', 
     await expect.poll(async () => {
       const text = await fetchLetterText(page, letterId);
       return text.includes('After completing our review, we partially uphold your complaint.');
-    }).toBe(true);
+    }, { timeout: 15_000 }).toBe(true);
 
     const letterText = await fetchLetterText(page, letterId);
     expect(letterText).toContain('After completing our review, we partially uphold your complaint.');

@@ -8,15 +8,17 @@ import { Badge } from '@/components/ui/badge';
 import { ComplaintTimeline } from './ComplaintTimeline';
 import { DeadlineTracker } from './DeadlineTracker';
 import { QuickActions } from './QuickActions';
+import { ComplaintActionsPanel } from './ComplaintActionsPanel';
 import { ComplaintEvidencePanel } from './ComplaintEvidencePanel';
 import { ComplaintLettersPanel } from './ComplaintLettersPanel';
-import type { ComplaintActivity, ComplaintEvidence, ComplaintLetter, ComplaintRecord } from '@/lib/complaints/types';
+import type { ComplaintAction, ComplaintActivity, ComplaintEvidence, ComplaintLetter, ComplaintRecord } from '@/lib/complaints/types';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/utils';
 
 interface ComplaintPayload extends ComplaintRecord {
   activities?: ComplaintActivity[];
   evidence?: ComplaintEvidence[];
   letters?: ComplaintLetter[];
+  actions?: ComplaintAction[];
 }
 
 export function ComplaintDetailView({ complaintId }: { complaintId: string }) {
@@ -156,7 +158,9 @@ export function ComplaintDetailView({ complaintId }: { complaintId: string }) {
             eightWeekDueDate={complaint.eightWeekDueDate}
             finalResponseDate={complaint.finalResponseDate}
             resolvedDate={complaint.resolvedDate}
+            slaSummary={complaint.slaSummary || null}
           />
+          <ComplaintActionsPanel complaintId={complaint.id} actions={complaint.actions || []} slaSummary={complaint.slaSummary || null} onRefresh={fetchComplaint} />
           <QuickActions complaint={complaint} onRefresh={fetchComplaint} />
         </div>
       </div>
