@@ -55,6 +55,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       recipientName: typeof (body as { recipientName?: string }).recipientName === 'string' ? (body as { recipientName?: string }).recipientName : null,
       recipientEmail: typeof (body as { recipientEmail?: string }).recipientEmail === 'string' ? (body as { recipientEmail?: string }).recipientEmail : null,
       status: typeof (body as { status?: string }).status === 'string' ? (body as { status?: string }).status as ComplaintLetterStatus : null,
+      approvalNote: typeof (body as { approvalNote?: string }).approvalNote === 'string' ? (body as { approvalNote?: string }).approvalNote : null,
       performedBy: 'MEMA user',
     });
 

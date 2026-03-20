@@ -11,6 +11,7 @@ import {
   ComplaintImportRun,
   ComplaintLateReferralPosition,
   ComplaintLetter,
+  ComplaintLetterVersion,
   ComplaintLetterStatus,
   ComplaintLetterTemplateKey,
   ComplaintListResult,
@@ -33,13 +34,15 @@ const VALID_STATUSES: ComplaintStatus[] = ['open', 'investigating', 'resolved', 
 const VALID_PRIORITIES: ComplaintPriority[] = ['low', 'medium', 'high', 'urgent'];
 const VALID_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [...COMPLAINT_EVIDENCE_CATEGORIES];
 const VALID_LETTER_TEMPLATE_KEYS: ComplaintLetterTemplateKey[] = ['acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom'];
-const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'sent'];
+const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'approved', 'sent', 'superseded'];
 const VALID_LATE_REFERRAL_POSITIONS: ComplaintLateReferralPosition[] = ['review_required', 'consent', 'do_not_consent', 'custom'];
 const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'complaint_created',
   'status_change',
   'letter_generated',
+  'letter_approved',
   'letter_sent',
+  'letter_superseded',
   'note_added',
   'assigned',
   'priority_change',
@@ -344,6 +347,21 @@ export async function listComplaintLetters(complaintId: string): Promise<Complai
   return rows.map(mapComplaintLetter);
 }
 
+export async function listComplaintLetterVersions(letterId: string): Promise<ComplaintLetterVersion[]> {
+  await ensureComplaintsWorkspaceSchema();
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+      SELECT *
+      FROM complaint_letter_versions
+      WHERE letter_id = $1
+      ORDER BY version_number DESC, created_at DESC
+    `,
+    [letterId]
+  );
+
+  return rows.map(mapComplaintLetterVersion);
+}
+
 export async function getComplaintLetterContext(letterId: string): Promise<{
   complaint: ComplaintRecord;
   letter: ComplaintLetter;
@@ -476,14 +494,17 @@ export async function createComplaintLetter(input: {
           complaint_id,
           template_key,
           status,
+          version_number,
           subject,
           recipient_name,
           recipient_email,
           body_text,
           generated_by,
+          approved_at,
+          approved_by,
           sent_at,
           updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NOW())
+        ) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, NULL, NULL, NULL, NOW())
         RETURNING *
       `,
       [
@@ -499,6 +520,12 @@ export async function createComplaintLetter(input: {
     );
 
     const row = inserted.rows[0];
+    await insertComplaintLetterVersionTx(client, {
+      letter: row,
+      complaintId: input.complaintId,
+      snapshotReason: templateKey === 'custom' ? 'Initial custom draft created.' : `${labelForLetterTemplate(templateKey)} generated.`,
+      snapshotBy: input.generatedBy,
+    });
     await insertComplaintActivityTx(client, {
       complaintId: input.complaintId,
       activityType: 'letter_generated',
@@ -528,6 +555,7 @@ export async function updateComplaintLetter(input: {
   recipientName?: string | null;
   recipientEmail?: string | null;
   status?: ComplaintLetterStatus | null;
+  approvalNote?: string | null;
   performedBy?: string | null;
 }): Promise<ComplaintLetter | null> {
   await ensureComplaintsWorkspaceSchema();
@@ -545,8 +573,44 @@ export async function updateComplaintLetter(input: {
       return null;
     }
 
-    const nextStatus = normalizeLetterStatus(input.status ?? existing.status);
-    const sentAt = nextStatus === 'sent' ? toIsoDateTime(input.status === 'sent' ? new Date().toISOString() : existing.sent_at) : null;
+    const nextSubject = sanitizeText(input.subject ?? existing.subject) || String(existing.subject || 'Complaint correspondence');
+    const nextRecipientName = sanitizeNullable(input.recipientName ?? existing.recipient_name);
+    const nextRecipientEmail = sanitizeNullable(input.recipientEmail ?? existing.recipient_email);
+    const nextBody = sanitizeText(input.bodyText ?? existing.body_text);
+    const contentChanged =
+      nextSubject !== String(existing.subject || 'Complaint correspondence')
+      || nextRecipientName !== sanitizeNullable(existing.recipient_name)
+      || nextRecipientEmail !== sanitizeNullable(existing.recipient_email)
+      || nextBody !== String(existing.body_text || '');
+
+    const existingStatus = normalizeLetterStatus(existing.status);
+    const requestedStatus = input.status == null ? null : normalizeLetterStatus(input.status);
+    if (requestedStatus === 'sent' && !['approved', 'sent'].includes(existingStatus)) {
+      throw new Error('Letter must be approved before it can be marked as sent.');
+    }
+    if (requestedStatus === 'sent' && contentChanged) {
+      throw new Error('Edited letter content must be approved again before it can be marked as sent.');
+    }
+
+    let nextStatus = requestedStatus ?? existingStatus;
+    if (contentChanged && ['approved', 'sent'].includes(existingStatus) && requestedStatus == null) {
+      nextStatus = 'draft';
+    }
+
+    const nextVersionNumber = contentChanged || requestedStatus !== null
+      ? Math.max(1, toInt(existing.version_number) + 1)
+      : Math.max(1, toInt(existing.version_number) || 1);
+    const approvedAt =
+      nextStatus === 'approved'
+        ? toIsoDateTime(existingStatus === 'approved' && existing.approved_at ? existing.approved_at : new Date().toISOString())
+        : (nextStatus === 'sent' ? toIsoDateTime(existing.approved_at || new Date().toISOString()) : null);
+    const approvedBy =
+      nextStatus === 'approved' || nextStatus === 'sent'
+        ? sanitizeNullable(input.performedBy) || sanitizeNullable(existing.approved_by)
+        : null;
+    const sentAt = nextStatus === 'sent'
+      ? toIsoDateTime(existingStatus === 'sent' && existing.sent_at ? existing.sent_at : new Date().toISOString())
+      : null;
     const updatedResult = await client.query<Record<string, unknown>>(
       `
         UPDATE complaint_letters
@@ -556,24 +620,76 @@ export async function updateComplaintLetter(input: {
           recipient_email = $4,
           body_text = $5,
           status = $6,
-          sent_at = $7,
+          version_number = $7,
+          approved_at = $8,
+          approved_by = $9,
+          sent_at = $10,
           updated_at = NOW()
         WHERE id = $1
         RETURNING *
       `,
       [
         input.letterId,
-        sanitizeText(input.subject ?? existing.subject) || String(existing.subject || 'Complaint correspondence'),
-        sanitizeNullable(input.recipientName ?? existing.recipient_name),
-        sanitizeNullable(input.recipientEmail ?? existing.recipient_email),
-        sanitizeText(input.bodyText ?? existing.body_text),
+        nextSubject,
+        nextRecipientName,
+        nextRecipientEmail,
+        nextBody,
         nextStatus,
+        nextVersionNumber,
+        approvedAt,
+        approvedBy,
         sentAt,
       ]
     );
 
     const updated = updatedResult.rows[0];
-    if (String(existing.status || 'draft') !== nextStatus && nextStatus === 'sent') {
+    if (contentChanged || requestedStatus !== null) {
+      await insertComplaintLetterVersionTx(client, {
+        letter: updated,
+        complaintId: String(existing.complaint_id || ''),
+        snapshotReason: deriveLetterSnapshotReason({
+          previousStatus: existingStatus,
+          nextStatus,
+          contentChanged,
+          approvalNote: input.approvalNote,
+        }),
+        snapshotBy: input.performedBy,
+      });
+    }
+
+    if (contentChanged && ['approved', 'sent'].includes(existingStatus)) {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'letter_superseded',
+        description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} content changed and a new draft version was created.`,
+        oldValue: existingStatus,
+        newValue: nextStatus,
+        performedBy: input.performedBy,
+        metadata: {
+          letterId: String(existing.id || ''),
+          priorVersion: toInt(existing.version_number),
+          nextVersion: nextVersionNumber,
+        },
+      });
+    }
+
+    if (existingStatus !== nextStatus && nextStatus === 'approved') {
+      await insertComplaintActivityTx(client, {
+        complaintId: String(existing.complaint_id || ''),
+        activityType: 'letter_approved',
+        description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} approved.`,
+        oldValue: existingStatus,
+        newValue: nextStatus,
+        performedBy: input.performedBy,
+        metadata: {
+          letterId: String(existing.id || ''),
+          versionNumber: nextVersionNumber,
+          approvalNote: sanitizeNullable(input.approvalNote),
+        },
+      });
+    }
+
+    if (existingStatus !== nextStatus && nextStatus === 'sent') {
       await insertComplaintActivityTx(client, {
         complaintId: String(existing.complaint_id || ''),
         activityType: 'letter_sent',
@@ -1170,6 +1286,71 @@ export async function recordBoardPackRun(params: {
   );
 }
 
+async function insertComplaintLetterVersionTx(
+  client: PoolClient,
+  input: {
+    letter: Record<string, unknown>;
+    complaintId: string;
+    snapshotReason?: string | null;
+    snapshotBy?: string | null;
+  }
+) {
+  await client.query(
+    `
+      INSERT INTO complaint_letter_versions (
+        letter_id,
+        complaint_id,
+        version_number,
+        status,
+        subject,
+        recipient_name,
+        recipient_email,
+        body_text,
+        snapshot_reason,
+        snapshot_by,
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      ON CONFLICT (letter_id, version_number) DO NOTHING
+    `,
+    [
+      String(input.letter.id || ''),
+      input.complaintId,
+      Math.max(1, toInt(input.letter.version_number) || 1),
+      normalizeLetterStatus(input.letter.status),
+      String(input.letter.subject || 'Complaint correspondence'),
+      sanitizeNullable(input.letter.recipient_name),
+      sanitizeNullable(input.letter.recipient_email),
+      String(input.letter.body_text || ''),
+      sanitizeNullable(input.snapshotReason),
+      sanitizeNullable(input.snapshotBy),
+    ]
+  );
+}
+
+function deriveLetterSnapshotReason(input: {
+  previousStatus: ComplaintLetterStatus;
+  nextStatus: ComplaintLetterStatus;
+  contentChanged: boolean;
+  approvalNote?: string | null;
+}): string {
+  if (input.nextStatus === 'approved') {
+    return sanitizeText(input.approvalNote) || 'Approved version saved.';
+  }
+  if (input.nextStatus === 'sent') {
+    return 'Sent version recorded.';
+  }
+  if (input.contentChanged && ['approved', 'sent'].includes(input.previousStatus)) {
+    return 'Content changed after approval/sending; new draft version created.';
+  }
+  if (input.contentChanged) {
+    return 'Draft content updated.';
+  }
+  if (input.previousStatus !== input.nextStatus) {
+    return `Status changed from ${input.previousStatus} to ${input.nextStatus}.`;
+  }
+  return 'Letter version saved.';
+}
+
 export async function getComplaintOperationsSummary(dateFrom?: string | null, dateTo?: string | null): Promise<{
   total: number;
   open: number;
@@ -1515,14 +1696,34 @@ function mapComplaintLetter(row: Record<string, unknown>): ComplaintLetter {
     complaintId: String(row.complaint_id || ''),
     templateKey: normalizeLetterTemplateKey(row.template_key),
     status: normalizeLetterStatus(row.status),
+    versionNumber: Math.max(1, toInt(row.version_number) || 1),
     subject: String(row.subject || 'Complaint correspondence'),
     recipientName: sanitizeNullable(row.recipient_name),
     recipientEmail: sanitizeNullable(row.recipient_email),
     bodyText: String(row.body_text || ''),
     generatedBy: sanitizeNullable(row.generated_by),
+    approvedAt: row.approved_at ? toIsoDateTime(row.approved_at) : null,
+    approvedBy: sanitizeNullable(row.approved_by),
     sentAt: row.sent_at ? toIsoDateTime(row.sent_at) : null,
     createdAt: toIsoDateTime(row.created_at),
     updatedAt: toIsoDateTime(row.updated_at),
+  };
+}
+
+function mapComplaintLetterVersion(row: Record<string, unknown>): ComplaintLetterVersion {
+  return {
+    id: String(row.id || ''),
+    letterId: String(row.letter_id || ''),
+    complaintId: String(row.complaint_id || ''),
+    versionNumber: Math.max(1, toInt(row.version_number) || 1),
+    status: normalizeLetterStatus(row.status),
+    subject: String(row.subject || 'Complaint correspondence'),
+    recipientName: sanitizeNullable(row.recipient_name),
+    recipientEmail: sanitizeNullable(row.recipient_email),
+    bodyText: String(row.body_text || ''),
+    snapshotReason: sanitizeNullable(row.snapshot_reason),
+    snapshotBy: sanitizeNullable(row.snapshot_by),
+    createdAt: toIsoDateTime(row.created_at),
   };
 }
 

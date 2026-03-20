@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { AlertCircle, CheckCircle2, Clock3, Flag, Mail, MessageSquare, Paperclip, Scale, UserRound } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, FileText, Flag, Mail, MessageSquare, Paperclip, Scale, UserRound } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ComplaintActivity, ComplaintActivityType } from '@/lib/complaints/types';
 import { formatDateTime } from '@/lib/utils';
@@ -10,7 +10,9 @@ const ICONS: Record<ComplaintActivityType, React.ComponentType<{ className?: str
   complaint_created: CheckCircle2,
   status_change: AlertCircle,
   letter_generated: Mail,
+  letter_approved: CheckCircle2,
   letter_sent: Mail,
+  letter_superseded: FileText,
   note_added: MessageSquare,
   assigned: UserRound,
   priority_change: Flag,
@@ -95,8 +97,12 @@ function labelForActivity(activity: ComplaintActivity): string {
       return 'Status Change';
     case 'letter_generated':
       return 'Letter Generated';
+    case 'letter_approved':
+      return 'Letter Approved';
     case 'letter_sent':
       return 'Letter Sent';
+    case 'letter_superseded':
+      return 'Letter Superseded';
     case 'note_added':
       return 'Note Added';
     case 'assigned':

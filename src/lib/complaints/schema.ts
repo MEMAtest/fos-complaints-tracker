@@ -153,19 +153,60 @@ CREATE TABLE IF NOT EXISTS complaint_letters (
   complaint_id UUID NOT NULL REFERENCES complaints_records(id) ON DELETE CASCADE,
   template_key TEXT NOT NULL DEFAULT 'custom',
   status TEXT NOT NULL DEFAULT 'draft',
+  version_number INTEGER NOT NULL DEFAULT 1,
   subject TEXT NOT NULL,
   recipient_name TEXT,
   recipient_email TEXT,
   body_text TEXT NOT NULL,
   generated_by TEXT,
+  approved_at TIMESTAMPTZ,
+  approved_by TEXT,
   sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT complaint_letters_template_key_check CHECK (template_key IN ('acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom')),
-  CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'sent'))
+  CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'approved', 'sent', 'superseded'))
 );
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_complaint_created_at ON complaint_letters (complaint_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_complaint_letters_status ON complaint_letters (status);
+`;
+
+const COMPLAINTS_WORKSPACE_LETTER_VERSIONING_SQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS version_number INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE complaint_letters ADD COLUMN IF NOT EXISTS approved_by TEXT;
+
+ALTER TABLE complaint_letters DROP CONSTRAINT IF EXISTS complaint_letters_status_check;
+ALTER TABLE complaint_letters
+  ADD CONSTRAINT complaint_letters_status_check CHECK (status IN ('draft', 'generated', 'approved', 'sent', 'superseded'));
+
+ALTER TABLE complaint_activities DROP CONSTRAINT IF EXISTS complaint_activities_activity_type_check;
+ALTER TABLE complaint_activities
+  ADD CONSTRAINT complaint_activities_activity_type_check CHECK (
+    activity_type IN ('complaint_created', 'status_change', 'letter_generated', 'letter_approved', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
+  );
+
+CREATE TABLE IF NOT EXISTS complaint_letter_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  letter_id UUID NOT NULL REFERENCES complaint_letters(id) ON DELETE CASCADE,
+  complaint_id UUID NOT NULL REFERENCES complaints_records(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  recipient_name TEXT,
+  recipient_email TEXT,
+  body_text TEXT NOT NULL,
+  snapshot_reason TEXT,
+  snapshot_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT complaint_letter_versions_status_check CHECK (status IN ('draft', 'generated', 'approved', 'sent', 'superseded')),
+  CONSTRAINT complaint_letter_versions_unique UNIQUE (letter_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_complaint_letter_versions_letter_version ON complaint_letter_versions (letter_id, version_number DESC);
+CREATE INDEX IF NOT EXISTS idx_complaint_letter_versions_complaint_created_at ON complaint_letter_versions (complaint_id, created_at DESC);
 `;
 
 const COMPLAINTS_WORKSPACE_SETTINGS_SQL = `
@@ -221,6 +262,10 @@ const SETTINGS_TABLES = [
   'complaints_workspace_settings',
 ];
 
+const LETTER_VERSIONING_TABLES = [
+  'complaint_letter_versions',
+];
+
 export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
   if (schemaReady) return;
   const hasBaseTables = await hasComplaintsWorkspaceTables(BASE_TABLES);
@@ -238,10 +283,16 @@ export async function ensureComplaintsWorkspaceSchema(): Promise<void> {
     await ensureSchemaSql(COMPLAINTS_WORKSPACE_SETTINGS_SQL, SETTINGS_TABLES);
   }
 
+  const hasLetterVersioningTables = await hasComplaintsWorkspaceTables(LETTER_VERSIONING_TABLES);
+  if (!hasLetterVersioningTables) {
+    await ensureSchemaSql(COMPLAINTS_WORKSPACE_LETTER_VERSIONING_SQL, LETTER_VERSIONING_TABLES);
+  }
+
   if (
     await hasComplaintsWorkspaceTables(BASE_TABLES)
     && await hasComplaintsWorkspaceTables(EXTENSION_TABLES)
     && await hasComplaintsWorkspaceTables(SETTINGS_TABLES)
+    && await hasComplaintsWorkspaceTables(LETTER_VERSIONING_TABLES)
   ) {
     schemaReady = true;
     return;

@@ -2,14 +2,16 @@ export type ComplaintStatus = 'open' | 'investigating' | 'resolved' | 'closed' |
 export type ComplaintPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type ComplaintEvidenceCategory = 'email' | 'statement' | 'screenshot' | 'call_recording' | 'policy_document' | 'letter' | 'other';
 export type ComplaintLetterTemplateKey = 'acknowledgement' | 'holding_response' | 'final_response' | 'fos_referral' | 'custom';
-export type ComplaintLetterStatus = 'draft' | 'generated' | 'sent';
+export type ComplaintLetterStatus = 'draft' | 'generated' | 'approved' | 'sent' | 'superseded';
 export type ComplaintLateReferralPosition = 'review_required' | 'consent' | 'do_not_consent' | 'custom';
 export type ComplaintLetterIntelligenceSourceScope = 'product_root_cause' | 'product_only' | 'none';
 export type ComplaintActivityType =
   | 'complaint_created'
   | 'status_change'
   | 'letter_generated'
+  | 'letter_approved'
   | 'letter_sent'
+  | 'letter_superseded'
   | 'note_added'
   | 'assigned'
   | 'priority_change'
@@ -81,14 +83,32 @@ export interface ComplaintLetter {
   complaintId: string;
   templateKey: ComplaintLetterTemplateKey;
   status: ComplaintLetterStatus;
+  versionNumber: number;
   subject: string;
   recipientName: string | null;
   recipientEmail: string | null;
   bodyText: string;
   generatedBy: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
   sentAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ComplaintLetterVersion {
+  id: string;
+  letterId: string;
+  complaintId: string;
+  versionNumber: number;
+  status: ComplaintLetterStatus;
+  subject: string;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  bodyText: string;
+  snapshotReason: string | null;
+  snapshotBy: string | null;
+  createdAt: string;
 }
 
 export interface ComplaintWorkspaceSettings {

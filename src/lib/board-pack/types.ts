@@ -1,3 +1,5 @@
+import type { ComplaintLetterStatus } from '@/lib/complaints/types';
+
 export interface BoardPackRequest {
   title: string;
   dateFrom: string;
@@ -81,7 +83,7 @@ export interface BoardPackData {
     recentLetters: Array<{
       complaintReference: string;
       subject: string;
-      status: 'draft' | 'generated' | 'sent';
+      status: ComplaintLetterStatus;
       recipientName: string | null;
       createdAt: string;
     }>;

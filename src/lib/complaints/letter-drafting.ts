@@ -59,6 +59,26 @@ export function buildComparableCaseNoteBlock(sampleCase: ComplaintLetterIntellig
   return buildDraftAssistBlock('comparable-case note', lines);
 }
 
+export function buildRiskSnapshotBlock(intelligence: ComplaintLetterIntelligence): string {
+  const lines = [
+    `Scope used: ${intelligence.sourceScope === 'product_root_cause' ? 'product and root cause' : 'product only'}.`,
+    `Similar cases reviewed: ${intelligence.riskSnapshot.totalCases}.`,
+    `Upheld rate: ${intelligence.riskSnapshot.upheldRate.toFixed(1)}%.`,
+    `Not upheld rate: ${intelligence.riskSnapshot.notUpheldRate.toFixed(1)}%.`,
+    `Overall upheld benchmark: ${intelligence.riskSnapshot.overallUpheldRate.toFixed(1)}%.`,
+    `Risk level: ${intelligence.riskSnapshot.riskLevel.replace(/_/g, ' ')}.`,
+    `Trend direction: ${intelligence.riskSnapshot.trendDirection}.`,
+  ];
+  return buildDraftAssistBlock('risk snapshot', lines);
+}
+
+export function buildPrecedentReviewBlock(intelligence: ComplaintLetterIntelligence): string {
+  const lines = intelligence.keyPrecedents.map((item) => (
+    `Review ${item.label} internally (${item.count} cases, ${item.percentOfCases.toFixed(1)}% of the similar-case set).`
+  ));
+  return buildDraftAssistBlock('precedent review note', lines);
+}
+
 function buildDraftAssistBlock(title: string, lines: string[]): string {
   const content = lines.filter((line) => line.trim().length > 0);
   if (content.length === 0) return `Drafting support - ${title}`;

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Download, FileText, Loader2, Mail, Save, Send } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, Download, FileText, Loader2, Mail, Save, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ComplaintLetterIntelligencePanel } from '@/components/complaints/ComplaintLetterIntelligencePanel';
 import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/ComplaintWorkspaceSettingsPanel';
-import { COMPLAINT_LETTER_TEMPLATES, type ComplaintLetter, type ComplaintRecord } from '@/lib/complaints/types';
+import { COMPLAINT_LETTER_TEMPLATES, type ComplaintLetter, type ComplaintLetterVersion, type ComplaintRecord } from '@/lib/complaints/types';
 import { formatDateTime } from '@/lib/utils';
 
 export function ComplaintLettersPanel({
@@ -32,6 +32,10 @@ export function ComplaintLettersPanel({
   const [editorRecipientName, setEditorRecipientName] = useState('');
   const [editorRecipientEmail, setEditorRecipientEmail] = useState('');
   const [editorBody, setEditorBody] = useState('');
+  const [approvalNote, setApprovalNote] = useState('');
+  const [versions, setVersions] = useState<ComplaintLetterVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedLetter && letters[0]) {
@@ -44,7 +48,57 @@ export function ComplaintLettersPanel({
     setEditorRecipientName(selectedLetter?.recipientName || '');
     setEditorRecipientEmail(selectedLetter?.recipientEmail || '');
     setEditorBody(selectedLetter?.bodyText || '');
+    setApprovalNote('');
   }, [selectedLetter?.id, selectedLetter?.subject, selectedLetter?.recipientName, selectedLetter?.recipientEmail, selectedLetter?.bodyText]);
+
+  const loadVersions = useCallback(async (letterId: string | null) => {
+    if (!letterId) {
+      setVersions([]);
+      setVersionsError(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadVersionsForLetter() {
+      setVersionsLoading(true);
+      setVersionsError(null);
+      try {
+        const response = await fetch(`/api/complaints/letters/${letterId}/versions`, { cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || 'Failed to load letter history.');
+        }
+        if (!cancelled) setVersions(Array.isArray(payload.versions) ? payload.versions : []);
+      } catch (err) {
+        if (!cancelled) setVersionsError(err instanceof Error ? err.message : 'Failed to load letter history.');
+      } finally {
+        if (!cancelled) setVersionsLoading(false);
+      }
+    }
+
+    await loadVersionsForLetter();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let dispose: (() => void) | void;
+    void (async () => {
+      dispose = await loadVersions(selectedLetterId);
+    })();
+    return () => {
+      dispose?.();
+    };
+  }, [loadVersions, selectedLetterId]);
+
+  const hasEditorChanges = useMemo(() => {
+    if (!selectedLetter) return false;
+    return (
+      editorSubject !== selectedLetter.subject
+      || editorRecipientName !== (selectedLetter.recipientName || '')
+      || editorRecipientEmail !== (selectedLetter.recipientEmail || '')
+      || editorBody !== selectedLetter.bodyText
+    );
+  }, [editorBody, editorRecipientEmail, editorRecipientName, editorSubject, selectedLetter]);
 
   async function generateTemplate(templateKey: string) {
     setCreating(templateKey);
@@ -93,7 +147,7 @@ export function ComplaintLettersPanel({
     }
   }
 
-  async function saveLetter(nextStatus?: 'draft' | 'generated' | 'sent') {
+  async function saveLetter(nextStatus?: 'draft' | 'generated' | 'approved' | 'sent') {
     if (!selectedLetter) return;
     setSaving(true);
     setError(null);
@@ -107,12 +161,15 @@ export function ComplaintLettersPanel({
           recipientEmail: editorRecipientEmail,
           bodyText: editorBody,
           status: nextStatus || selectedLetter.status,
+          approvalNote,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Failed to update complaint letter.');
       setSelectedLetterId(payload.letter?.id || selectedLetter.id);
       await onRefresh();
+      await loadVersions(payload.letter?.id || selectedLetter.id);
+      setApprovalNote('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update complaint letter.');
     } finally {
@@ -258,9 +315,22 @@ export function ComplaintLettersPanel({
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Body</span>
                   <textarea value={editorBody} onChange={(event) => setEditorBody(event.target.value)} rows={14} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
                 </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Approval note</span>
+                  <textarea
+                    value={approvalNote}
+                    onChange={(event) => setApprovalNote(event.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    placeholder="Optional internal approval note or rationale for this version."
+                  />
+                </label>
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
                   <div className="flex flex-wrap gap-2">
                     <span>Template: {selectedLetter.templateKey.replace(/_/g, ' ')}</span>
+                    <span>Version: v{selectedLetter.versionNumber}</span>
+                    {selectedLetter.approvedAt ? <span>Approved: {formatDateTime(selectedLetter.approvedAt)}</span> : null}
+                    {selectedLetter.approvedBy ? <span>Approved by: {selectedLetter.approvedBy}</span> : null}
                     {selectedLetter.sentAt ? <span>Sent: {formatDateTime(selectedLetter.sentAt)}</span> : null}
                     <span>Updated: {formatDateTime(selectedLetter.updatedAt)}</span>
                   </div>
@@ -276,16 +346,62 @@ export function ComplaintLettersPanel({
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => downloadDraft({ ...selectedLetter, subject: editorSubject, recipientName: editorRecipientName || null, recipientEmail: editorRecipientEmail || null, bodyText: editorBody })}>
                       <Download className="h-3.5 w-3.5" /> TXT
                     </Button>
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => void saveLetter(selectedLetter.status)} disabled={saving}>
+                    <Button size="sm" variant="outline" className="gap-2" onClick={() => void saveLetter('draft')} disabled={saving || !hasEditorChanges}>
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                      Save draft
+                      {selectedLetter.status === 'approved' || selectedLetter.status === 'sent' ? 'Create new draft' : 'Save draft'}
                     </Button>
-                    <Button size="sm" className="gap-2" onClick={() => void saveLetter('sent')} disabled={saving || selectedLetter.status === 'sent'}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => void saveLetter('approved')}
+                      disabled={saving || selectedLetter.status === 'approved' || selectedLetter.status === 'sent'}
+                    >
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => void saveLetter('sent')}
+                      disabled={saving || selectedLetter.status === 'sent' || selectedLetter.status !== 'approved' || hasEditorChanges}
+                    >
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       Mark sent
                     </Button>
                   </div>
                 </div>
+
+                <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Version history</p>
+                      <p className="mt-1 text-xs text-slate-500">Every save, approval, and send event is recorded as a new version snapshot.</p>
+                    </div>
+                    {versionsLoading ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : null}
+                  </div>
+                  {versionsError ? <p className="mt-3 text-sm text-rose-600">{versionsError}</p> : null}
+                  {!versionsLoading && versions.length === 0 ? (
+                    <p className="mt-3 text-sm text-slate-500">No saved versions yet.</p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {versions.map((version) => (
+                        <div key={version.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-900">v{version.versionNumber}</span>
+                              <Badge variant={version.status === 'sent' ? 'default' : 'outline'}>{version.status}</Badge>
+                            </div>
+                            <span className="text-xs text-slate-500">{formatDateTime(version.createdAt)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-700">{version.subject}</p>
+                          {version.snapshotReason ? <p className="mt-1 text-xs text-slate-500">{version.snapshotReason}</p> : null}
+                          {version.snapshotBy ? <p className="mt-1 text-xs text-slate-500">By {version.snapshotBy}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </>
             )}
           </CardContent>

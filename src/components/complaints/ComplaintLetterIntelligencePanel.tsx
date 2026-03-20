@@ -21,9 +21,11 @@ import {
   buildFinalResponseRedressBlock,
   buildFinalResponseReviewBlock,
   buildHoldingResponseScaffoldBlock,
+  buildPrecedentReviewBlock,
   buildReferralChecklistBlock,
   buildReferralResponseScaffoldBlock,
   buildRemediationPromptsBlock,
+  buildRiskSnapshotBlock,
   buildResponseStrengthsBlock,
   buildReviewPointsBlock,
 } from '@/lib/complaints/letter-drafting';
@@ -38,6 +40,7 @@ const ACTIONS_BY_TEMPLATE: Record<ComplaintLetterTemplateKey, Array<{ key: strin
     { key: 'holdingScaffold', label: 'Insert holding scaffold' },
     { key: 'reviewPoints', label: 'Insert review points' },
     { key: 'challengeAreas', label: 'Insert challenge areas' },
+    { key: 'riskSnapshot', label: 'Insert risk snapshot' },
   ],
   final_response: [
     { key: 'finalReview', label: 'Insert review scaffold' },
@@ -46,6 +49,8 @@ const ACTIONS_BY_TEMPLATE: Record<ComplaintLetterTemplateKey, Array<{ key: strin
     { key: 'challengeAreas', label: 'Insert challenge areas' },
     { key: 'responseStrengths', label: 'Insert response strengths' },
     { key: 'remediationPrompts', label: 'Insert remediation prompts' },
+    { key: 'riskSnapshot', label: 'Insert risk snapshot' },
+    { key: 'precedentNote', label: 'Insert precedent note' },
     { key: 'caseSummary', label: 'Insert comparable-case summary' },
   ],
   fos_referral: [
@@ -61,6 +66,8 @@ const ACTIONS_BY_TEMPLATE: Record<ComplaintLetterTemplateKey, Array<{ key: strin
     { key: 'challengeAreas', label: 'Insert challenge areas' },
     { key: 'responseStrengths', label: 'Insert response strengths' },
     { key: 'remediationPrompts', label: 'Insert remediation prompts' },
+    { key: 'riskSnapshot', label: 'Insert risk snapshot' },
+    { key: 'precedentNote', label: 'Insert precedent note' },
     { key: 'caseSummary', label: 'Insert comparable-case summary' },
     { key: 'referralChecklist', label: 'Insert referral checklist' },
   ],
@@ -146,6 +153,12 @@ export function ComplaintLetterIntelligencePanel({
         return;
       case 'remediationPrompts':
         onInsert(buildRemediationPromptsBlock(intelligence));
+        return;
+      case 'riskSnapshot':
+        onInsert(buildRiskSnapshotBlock(intelligence));
+        return;
+      case 'precedentNote':
+        onInsert(buildPrecedentReviewBlock(intelligence));
         return;
       case 'referralChecklist':
         onInsert(buildReferralChecklistBlock(intelligence));
