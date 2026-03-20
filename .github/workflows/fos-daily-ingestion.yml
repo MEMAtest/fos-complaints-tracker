@@ -6,7 +6,7 @@ on:
       window_days:
         description: Recent UTC overlap window to scrape
         required: false
-        default: "14"
+        default: "90"
       limit:
         description: Optional cap for parsed decisions
         required: false
@@ -52,7 +52,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DB_SSL_MODE: require
-          WINDOW_DAYS: ${{ github.event.inputs.window_days || '14' }}
+          WINDOW_DAYS: ${{ github.event.inputs.window_days || '90' }}
           LIMIT: ${{ github.event.inputs.limit || '' }}
           SKIP_IMPORT: ${{ github.event.inputs.skip_import || 'false' }}
         run: |
