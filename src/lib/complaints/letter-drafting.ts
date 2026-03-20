@@ -1,4 +1,8 @@
-import type { ComplaintLetterIntelligence, ComplaintLetterIntelligenceSampleCase } from './types';
+import type {
+  ComplaintLetterComparableCaseReview,
+  ComplaintLetterIntelligence,
+  ComplaintLetterIntelligenceSampleCase,
+} from './types';
 
 export function buildReviewPointsBlock(intelligence: ComplaintLetterIntelligence): string {
   return buildDraftAssistBlock('review before issue', intelligence.draftingGuidance.reviewPoints);
@@ -57,6 +61,14 @@ export function buildComparableCaseNoteBlock(sampleCase: ComplaintLetterIntellig
     ...(sampleCase.summary ? [`Summary: ${sampleCase.summary}`] : []),
   ];
   return buildDraftAssistBlock('comparable-case note', lines);
+}
+
+export function buildComparableCaseChallengeBlock(review: ComplaintLetterComparableCaseReview): string {
+  return buildDraftAssistBlock(`comparable-case challenge summary (${review.decisionReference})`, review.challengeSummary);
+}
+
+export function buildComparableCaseReviewerNoteBlock(review: ComplaintLetterComparableCaseReview): string {
+  return buildDraftAssistBlock(`reviewer note (${review.decisionReference})`, review.internalReviewNote);
 }
 
 export function buildRiskSnapshotBlock(intelligence: ComplaintLetterIntelligence): string {

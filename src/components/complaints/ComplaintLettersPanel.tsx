@@ -1,14 +1,37 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, FileText, Loader2, Mail, Save, Send } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, FileText, Loader2, LockKeyhole, Mail, Save, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ComplaintLetterIntelligencePanel } from '@/components/complaints/ComplaintLetterIntelligencePanel';
 import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/ComplaintWorkspaceSettingsPanel';
-import { COMPLAINT_LETTER_TEMPLATES, type ComplaintLetter, type ComplaintLetterVersion, type ComplaintRecord } from '@/lib/complaints/types';
+import {
+  COMPLAINT_LETTER_TEMPLATES,
+  type ComplaintLetter,
+  type ComplaintLetterVersion,
+  type ComplaintRecord,
+  type ComplaintWorkspaceActorRole,
+  type ComplaintWorkspaceSettings,
+} from '@/lib/complaints/types';
 import { formatDateTime } from '@/lib/utils';
+
+const DEFAULT_SETTINGS: ComplaintWorkspaceSettings = {
+  organizationName: 'MEMA Consultants',
+  complaintsTeamName: 'Complaints Team',
+  complaintsEmail: '',
+  complaintsPhone: '',
+  complaintsAddress: '',
+  boardPackSubtitle: 'Board-ready complaints and ombudsman intelligence pack',
+  lateReferralPosition: 'review_required',
+  lateReferralCustomText: '',
+  currentActorName: 'MEMA reviewer',
+  currentActorRole: 'reviewer',
+  letterApprovalRole: 'reviewer',
+  requireIndependentReviewer: false,
+  updatedAt: new Date(0).toISOString(),
+};
 
 export function ComplaintLettersPanel({
   complaint,
@@ -32,10 +55,12 @@ export function ComplaintLettersPanel({
   const [editorRecipientName, setEditorRecipientName] = useState('');
   const [editorRecipientEmail, setEditorRecipientEmail] = useState('');
   const [editorBody, setEditorBody] = useState('');
+  const [reviewerNotes, setReviewerNotes] = useState('');
   const [approvalNote, setApprovalNote] = useState('');
   const [versions, setVersions] = useState<ComplaintLetterVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<ComplaintWorkspaceSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     if (!selectedLetter && letters[0]) {
@@ -48,8 +73,9 @@ export function ComplaintLettersPanel({
     setEditorRecipientName(selectedLetter?.recipientName || '');
     setEditorRecipientEmail(selectedLetter?.recipientEmail || '');
     setEditorBody(selectedLetter?.bodyText || '');
+    setReviewerNotes(selectedLetter?.reviewerNotes || '');
     setApprovalNote('');
-  }, [selectedLetter?.id, selectedLetter?.subject, selectedLetter?.recipientName, selectedLetter?.recipientEmail, selectedLetter?.bodyText]);
+  }, [selectedLetter?.id, selectedLetter?.subject, selectedLetter?.recipientName, selectedLetter?.recipientEmail, selectedLetter?.bodyText, selectedLetter?.reviewerNotes]);
 
   const loadVersions = useCallback(async (letterId: string | null) => {
     if (!letterId) {
@@ -97,8 +123,9 @@ export function ComplaintLettersPanel({
       || editorRecipientName !== (selectedLetter.recipientName || '')
       || editorRecipientEmail !== (selectedLetter.recipientEmail || '')
       || editorBody !== selectedLetter.bodyText
+      || reviewerNotes !== (selectedLetter.reviewerNotes || '')
     );
-  }, [editorBody, editorRecipientEmail, editorRecipientName, editorSubject, selectedLetter]);
+  }, [editorBody, editorRecipientEmail, editorRecipientName, editorSubject, reviewerNotes, selectedLetter]);
 
   async function generateTemplate(templateKey: string) {
     setCreating(templateKey);
@@ -107,7 +134,12 @@ export function ComplaintLettersPanel({
       const response = await fetch(`/api/complaints/${complaint.id}/letters`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateKey }),
+        body: JSON.stringify({
+          templateKey,
+          actorName: settings.currentActorName,
+          actorRole: settings.currentActorRole,
+          approvalRoleRequired: settings.letterApprovalRole,
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Failed to generate complaint letter.');
@@ -133,6 +165,9 @@ export function ComplaintLettersPanel({
           recipientName: customRecipientName,
           recipientEmail: customRecipientEmail,
           bodyText: customBody,
+          actorName: settings.currentActorName,
+          actorRole: settings.currentActorRole,
+          approvalRoleRequired: settings.letterApprovalRole,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -160,8 +195,11 @@ export function ComplaintLettersPanel({
           recipientName: editorRecipientName,
           recipientEmail: editorRecipientEmail,
           bodyText: editorBody,
+          reviewerNotes,
           status: nextStatus || selectedLetter.status,
           approvalNote,
+          actorName: settings.currentActorName,
+          actorRole: settings.currentActorRole,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -193,6 +231,32 @@ export function ComplaintLettersPanel({
     setEditorBody((current) => (current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text));
   }
 
+  function appendReviewerNote(text: string) {
+    setReviewerNotes((current) => (current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text));
+  }
+
+  const canApprove = useMemo(() => {
+    return actorRoleRank(settings.currentActorRole) >= actorRoleRank(selectedLetter?.approvalRoleRequired || settings.letterApprovalRole);
+  }, [selectedLetter?.approvalRoleRequired, settings.currentActorRole, settings.letterApprovalRole]);
+
+  const independentReviewerBlocked = Boolean(
+    selectedLetter
+    && settings.requireIndependentReviewer
+    && settings.currentActorName.trim()
+    && settings.currentActorName.trim() === (selectedLetter.updatedBy || '').trim()
+  );
+
+  const approvalBlockReason = useMemo(() => {
+    if (!selectedLetter) return null;
+    if (!canApprove) {
+      return `Approval requires ${selectedLetter.approvalRoleRequired} role or higher.`;
+    }
+    if (independentReviewerBlocked) {
+      return 'Independent reviewer is required before approval.';
+    }
+    return null;
+  }, [canApprove, independentReviewerBlocked, selectedLetter]);
+
   return (
     <div className="space-y-5">
       <Card>
@@ -217,13 +281,14 @@ export function ComplaintLettersPanel({
         </CardContent>
       </Card>
 
-      <ComplaintWorkspaceSettingsPanel title="Correspondence profile" compact />
+      <ComplaintWorkspaceSettingsPanel title="Correspondence profile" compact onSaved={setSettings} />
 
       <ComplaintLetterIntelligencePanel
         complaint={complaint}
         activeTemplateKey={selectedLetter?.templateKey || null}
         hasActiveLetter={Boolean(selectedLetter)}
-        onInsert={appendDraftingText}
+        onInsertDraft={appendDraftingText}
+        onInsertReviewerNote={appendReviewerNote}
       />
 
       <Card>
@@ -316,6 +381,19 @@ export function ComplaintLettersPanel({
                   <textarea value={editorBody} onChange={(event) => setEditorBody(event.target.value)} rows={14} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
                 </label>
                 <label className="block text-sm">
+                  <span className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <LockKeyhole className="h-3.5 w-3.5" />
+                    Internal reviewer notes
+                  </span>
+                  <textarea
+                    value={reviewerNotes}
+                    onChange={(event) => setReviewerNotes(event.target.value)}
+                    rows={6}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                    placeholder="Internal-only reviewer guidance, precedent checks, and comparable-case notes."
+                  />
+                </label>
+                <label className="block text-sm">
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Approval note</span>
                   <textarea
                     value={approvalNote}
@@ -325,12 +403,28 @@ export function ComplaintLettersPanel({
                     placeholder="Optional internal approval note or rationale for this version."
                   />
                 </label>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">Actor {settings.currentActorName}</Badge>
+                    <Badge variant="outline">Role {settings.currentActorRole}</Badge>
+                    <Badge variant="outline">Approval role {selectedLetter.approvalRoleRequired}</Badge>
+                    {settings.requireIndependentReviewer ? <Badge variant="outline">Independent reviewer on</Badge> : null}
+                  </div>
+                  {approvalBlockReason ? (
+                    <div className="mt-3 flex items-start gap-2 text-amber-700">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5" />
+                      <span>{approvalBlockReason}</span>
+                    </div>
+                  ) : null}
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
                   <div className="flex flex-wrap gap-2">
                     <span>Template: {selectedLetter.templateKey.replace(/_/g, ' ')}</span>
                     <span>Version: v{selectedLetter.versionNumber}</span>
+                    <span>Updated by: {selectedLetter.updatedBy || 'Unrecorded'}</span>
                     {selectedLetter.approvedAt ? <span>Approved: {formatDateTime(selectedLetter.approvedAt)}</span> : null}
                     {selectedLetter.approvedBy ? <span>Approved by: {selectedLetter.approvedBy}</span> : null}
+                    {selectedLetter.approvedRole ? <span>Approved role: {selectedLetter.approvedRole}</span> : null}
                     {selectedLetter.sentAt ? <span>Sent: {formatDateTime(selectedLetter.sentAt)}</span> : null}
                     <span>Updated: {formatDateTime(selectedLetter.updatedAt)}</span>
                   </div>
@@ -355,7 +449,7 @@ export function ComplaintLettersPanel({
                       variant="outline"
                       className="gap-2"
                       onClick={() => void saveLetter('approved')}
-                      disabled={saving || selectedLetter.status === 'approved' || selectedLetter.status === 'sent'}
+                      disabled={saving || selectedLetter.status === 'approved' || selectedLetter.status === 'sent' || Boolean(approvalBlockReason)}
                     >
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                       Approve
@@ -364,7 +458,7 @@ export function ComplaintLettersPanel({
                       size="sm"
                       className="gap-2"
                       onClick={() => void saveLetter('sent')}
-                      disabled={saving || selectedLetter.status === 'sent' || selectedLetter.status !== 'approved' || hasEditorChanges}
+                      disabled={saving || selectedLetter.status === 'sent' || selectedLetter.status !== 'approved' || hasEditorChanges || !canApprove}
                     >
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       Mark sent
@@ -396,7 +490,8 @@ export function ComplaintLettersPanel({
                           </div>
                           <p className="mt-2 text-sm text-slate-700">{version.subject}</p>
                           {version.snapshotReason ? <p className="mt-1 text-xs text-slate-500">{version.snapshotReason}</p> : null}
-                          {version.snapshotBy ? <p className="mt-1 text-xs text-slate-500">By {version.snapshotBy}</p> : null}
+                          {version.snapshotBy || version.snapshotByRole ? <p className="mt-1 text-xs text-slate-500">By {version.snapshotBy || 'Unknown'}{version.snapshotByRole ? ` · ${version.snapshotByRole}` : ''}</p> : null}
+                          {version.reviewerNotes ? <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white px-2 py-2 text-xs text-slate-600">{version.reviewerNotes}</p> : null}
                         </div>
                       ))}
                     </div>
@@ -409,4 +504,18 @@ export function ComplaintLettersPanel({
       </div>
     </div>
   );
+}
+
+function actorRoleRank(role: ComplaintWorkspaceActorRole): number {
+  switch (role) {
+    case 'admin':
+      return 4;
+    case 'manager':
+      return 3;
+    case 'reviewer':
+      return 2;
+    case 'operator':
+    default:
+      return 1;
+  }
 }

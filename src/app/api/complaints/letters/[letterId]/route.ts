@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { buildComplaintLetterPdf } from '@/lib/complaints/build-letter-pdf';
 import { getComplaintLetterContext, updateComplaintLetter } from '@/lib/complaints/repository';
-import type { ComplaintLetterStatus } from '@/lib/complaints/types';
+import type { ComplaintLetterStatus, ComplaintWorkspaceActorRole } from '@/lib/complaints/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,7 +56,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       recipientEmail: typeof (body as { recipientEmail?: string }).recipientEmail === 'string' ? (body as { recipientEmail?: string }).recipientEmail : null,
       status: typeof (body as { status?: string }).status === 'string' ? (body as { status?: string }).status as ComplaintLetterStatus : null,
       approvalNote: typeof (body as { approvalNote?: string }).approvalNote === 'string' ? (body as { approvalNote?: string }).approvalNote : null,
-      performedBy: 'MEMA user',
+      reviewerNotes: typeof (body as { reviewerNotes?: string }).reviewerNotes === 'string' ? (body as { reviewerNotes?: string }).reviewerNotes : null,
+      performedBy: typeof (body as { actorName?: string }).actorName === 'string' ? (body as { actorName?: string }).actorName : null,
+      performedByRole: typeof (body as { actorRole?: string }).actorRole === 'string' ? (body as { actorRole?: string }).actorRole as ComplaintWorkspaceActorRole : null,
     });
 
     if (!letter) {

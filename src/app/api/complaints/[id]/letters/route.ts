@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createComplaintLetter, getComplaintById, listComplaintLetters } from '@/lib/complaints/repository';
-import type { ComplaintLetterTemplateKey } from '@/lib/complaints/types';
+import type { ComplaintLetterTemplateKey, ComplaintWorkspaceActorRole } from '@/lib/complaints/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,7 +39,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       bodyText: typeof (body as { bodyText?: string }).bodyText === 'string' ? (body as { bodyText?: string }).bodyText : null,
       recipientName: typeof (body as { recipientName?: string }).recipientName === 'string' ? (body as { recipientName?: string }).recipientName : null,
       recipientEmail: typeof (body as { recipientEmail?: string }).recipientEmail === 'string' ? (body as { recipientEmail?: string }).recipientEmail : null,
-      generatedBy: 'MEMA user',
+      generatedBy: typeof (body as { actorName?: string }).actorName === 'string' ? (body as { actorName?: string }).actorName : null,
+      generatedByRole: typeof (body as { actorRole?: string }).actorRole === 'string' ? (body as { actorRole?: string }).actorRole as ComplaintWorkspaceActorRole : null,
+      reviewerNotes: typeof (body as { reviewerNotes?: string }).reviewerNotes === 'string' ? (body as { reviewerNotes?: string }).reviewerNotes : null,
+      approvalRoleRequired: typeof (body as { approvalRoleRequired?: string }).approvalRoleRequired === 'string'
+        ? (body as { approvalRoleRequired?: string }).approvalRoleRequired as ComplaintWorkspaceActorRole
+        : null,
     });
 
     return Response.json({ success: true, letter }, { status: 201 });

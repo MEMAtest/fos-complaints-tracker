@@ -5,6 +5,7 @@ export type ComplaintLetterTemplateKey = 'acknowledgement' | 'holding_response' 
 export type ComplaintLetterStatus = 'draft' | 'generated' | 'approved' | 'sent' | 'superseded';
 export type ComplaintLateReferralPosition = 'review_required' | 'consent' | 'do_not_consent' | 'custom';
 export type ComplaintLetterIntelligenceSourceScope = 'product_root_cause' | 'product_only' | 'none';
+export type ComplaintWorkspaceActorRole = 'operator' | 'reviewer' | 'manager' | 'admin';
 export type ComplaintActivityType =
   | 'complaint_created'
   | 'status_change'
@@ -89,8 +90,14 @@ export interface ComplaintLetter {
   recipientEmail: string | null;
   bodyText: string;
   generatedBy: string | null;
+  generatedByRole: ComplaintWorkspaceActorRole;
+  updatedBy: string | null;
+  updatedByRole: ComplaintWorkspaceActorRole;
+  reviewerNotes: string | null;
+  approvalRoleRequired: ComplaintWorkspaceActorRole;
   approvedAt: string | null;
   approvedBy: string | null;
+  approvedRole: ComplaintWorkspaceActorRole | null;
   sentAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -106,8 +113,12 @@ export interface ComplaintLetterVersion {
   recipientName: string | null;
   recipientEmail: string | null;
   bodyText: string;
+  reviewerNotes: string | null;
+  approvalRoleRequired: ComplaintWorkspaceActorRole;
+  approvedRole: ComplaintWorkspaceActorRole | null;
   snapshotReason: string | null;
   snapshotBy: string | null;
+  snapshotByRole: ComplaintWorkspaceActorRole | null;
   createdAt: string;
 }
 
@@ -120,6 +131,10 @@ export interface ComplaintWorkspaceSettings {
   boardPackSubtitle: string | null;
   lateReferralPosition: ComplaintLateReferralPosition;
   lateReferralCustomText: string | null;
+  currentActorName: string;
+  currentActorRole: ComplaintWorkspaceActorRole;
+  letterApprovalRole: ComplaintWorkspaceActorRole;
+  requireIndependentReviewer: boolean;
   updatedAt: string;
 }
 
@@ -141,6 +156,13 @@ export interface ComplaintLetterIntelligenceSampleCase {
   firmName: string | null;
   outcome: string;
   summary: string | null;
+}
+
+export interface ComplaintLetterComparableCaseReview {
+  caseId: string;
+  decisionReference: string;
+  internalReviewNote: string[];
+  challengeSummary: string[];
 }
 
 export interface ComplaintLetterIntelligenceAction {
@@ -178,6 +200,7 @@ export interface ComplaintLetterIntelligence {
       referralResponse: string[];
     };
     comparableCaseSummary: string[];
+    comparableCaseReviews: ComplaintLetterComparableCaseReview[];
   };
   keyPrecedents: ComplaintLetterIntelligencePrecedent[];
   sampleCases: ComplaintLetterIntelligenceSampleCase[];
@@ -291,6 +314,13 @@ export const COMPLAINT_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [
   'policy_document',
   'letter',
   'other',
+];
+
+export const COMPLAINT_WORKSPACE_ACTOR_ROLES: ComplaintWorkspaceActorRole[] = [
+  'operator',
+  'reviewer',
+  'manager',
+  'admin',
 ];
 
 export const COMPLAINT_LETTER_TEMPLATES: Array<{ key: ComplaintLetterTemplateKey; label: string; description: string }> = [

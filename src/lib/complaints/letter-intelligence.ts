@@ -172,6 +172,23 @@ export function buildComplaintLetterIntelligence(
     ...brief.whatLoses.slice(0, 2).map((item) => `Repeated challenge theme across comparable cases: ${formatTheme(item.theme)}.`),
   ]);
 
+  const comparableCaseReviews = brief.sampleCases.slice(0, 5).map((item) => ({
+    caseId: item.caseId,
+    decisionReference: item.decisionReference,
+    internalReviewNote: dedupeLines([
+      `Compare the complaint chronology against ${item.decisionReference} before final approval.`,
+      `Outcome to consider internally: ${formatOutcomeLabel(item.outcome)}${item.decisionDate ? ` on ${formatDateLabel(item.decisionDate)}` : ''}.`,
+      ...(item.decisionSummary?.trim() ? [`Published summary: ${stripTrailingPunctuation(item.decisionSummary)}.`] : []),
+      ...(brief.whatLoses[0] ? [`Test whether the same challenge theme appears here: ${formatTheme(brief.whatLoses[0].theme)}.`] : []),
+      'If this file reaches a different conclusion, record why the evidence or chronology is materially different.',
+    ]),
+    challengeSummary: dedupeLines([
+      ...(item.decisionSummary?.trim() ? [`Key comparable-case takeaway: ${stripTrailingPunctuation(item.decisionSummary)}.`] : []),
+      ...(brief.whatLoses.slice(0, 2).map((theme) => `Challenge theme to test: ${formatTheme(theme.theme)}.`)),
+      ...(brief.whatWins[0] ? [`Check whether any balancing strength is present here: ${formatTheme(brief.whatWins[0].theme)}.`] : []),
+    ]),
+  }));
+
   return {
     complaintId: complaint.id,
     sourceScope,
@@ -201,6 +218,7 @@ export function buildComplaintLetterIntelligence(
         referralResponse: referralResponseScaffold,
       },
       comparableCaseSummary,
+      comparableCaseReviews,
     },
     keyPrecedents: brief.keyPrecedents.slice(0, 6).map((item) => ({
       label: normalizeSentence(item.label),

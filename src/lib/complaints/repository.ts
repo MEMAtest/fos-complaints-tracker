@@ -20,9 +20,11 @@ import {
   ComplaintRecord,
   ComplaintStatus,
   ComplaintStats,
+  ComplaintWorkspaceActorRole,
   ComplaintWorkspaceSettings,
   ComplaintWorkspaceSettingsInput,
   COMPLAINT_EVIDENCE_CATEGORIES,
+  COMPLAINT_WORKSPACE_ACTOR_ROLES,
 } from './types';
 import { buildComplaintLetterDraft } from './letter-templates';
 import { ensureComplaintsWorkspaceSchema } from './schema';
@@ -36,6 +38,7 @@ const VALID_EVIDENCE_CATEGORIES: ComplaintEvidenceCategory[] = [...COMPLAINT_EVI
 const VALID_LETTER_TEMPLATE_KEYS: ComplaintLetterTemplateKey[] = ['acknowledgement', 'holding_response', 'final_response', 'fos_referral', 'custom'];
 const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'approved', 'sent', 'superseded'];
 const VALID_LATE_REFERRAL_POSITIONS: ComplaintLateReferralPosition[] = ['review_required', 'consent', 'do_not_consent', 'custom'];
+const VALID_ACTOR_ROLES: ComplaintWorkspaceActorRole[] = [...COMPLAINT_WORKSPACE_ACTOR_ROLES];
 const VALID_ACTIVITY_TYPES: ComplaintActivityType[] = [
   'complaint_created',
   'status_change',
@@ -60,6 +63,10 @@ const DEFAULT_COMPLAINT_WORKSPACE_SETTINGS: ComplaintWorkspaceSettings = {
   boardPackSubtitle: 'Board-ready complaints and ombudsman intelligence pack',
   lateReferralPosition: 'review_required',
   lateReferralCustomText: null,
+  currentActorName: 'MEMA reviewer',
+  currentActorRole: 'reviewer',
+  letterApprovalRole: 'reviewer',
+  requireIndependentReviewer: false,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -106,9 +113,13 @@ export async function updateComplaintWorkspaceSettings(input: ComplaintWorkspace
         board_pack_subtitle,
         late_referral_position,
         late_referral_custom_text,
+        current_actor_name,
+        current_actor_role,
+        letter_approval_role,
+        require_independent_reviewer,
         updated_at
       ) VALUES (
-        TRUE, $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+        TRUE, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()
       )
       ON CONFLICT (singleton)
       DO UPDATE SET
@@ -120,6 +131,10 @@ export async function updateComplaintWorkspaceSettings(input: ComplaintWorkspace
         board_pack_subtitle = EXCLUDED.board_pack_subtitle,
         late_referral_position = EXCLUDED.late_referral_position,
         late_referral_custom_text = EXCLUDED.late_referral_custom_text,
+        current_actor_name = EXCLUDED.current_actor_name,
+        current_actor_role = EXCLUDED.current_actor_role,
+        letter_approval_role = EXCLUDED.letter_approval_role,
+        require_independent_reviewer = EXCLUDED.require_independent_reviewer,
         updated_at = NOW()
       RETURNING *
     `,
@@ -132,6 +147,10 @@ export async function updateComplaintWorkspaceSettings(input: ComplaintWorkspace
       payload.boardPackSubtitle,
       payload.lateReferralPosition,
       payload.lateReferralCustomText,
+      payload.currentActorName,
+      payload.currentActorRole,
+      payload.letterApprovalRole,
+      payload.requireIndependentReviewer,
     ]
   );
 
@@ -466,6 +485,9 @@ export async function createComplaintLetter(input: {
   recipientName?: string | null;
   recipientEmail?: string | null;
   generatedBy?: string | null;
+  generatedByRole?: ComplaintWorkspaceActorRole | null;
+  reviewerNotes?: string | null;
+  approvalRoleRequired?: ComplaintWorkspaceActorRole | null;
 }): Promise<ComplaintLetter> {
   await ensureComplaintsWorkspaceSchema();
   const [complaint, settings] = await Promise.all([
@@ -484,6 +506,8 @@ export async function createComplaintLetter(input: {
     recipientEmail: input.recipientEmail,
   });
   const status: ComplaintLetterStatus = templateKey === 'custom' ? 'draft' : 'generated';
+  const actor = resolveComplaintWorkspaceActor(settings, input.generatedBy, input.generatedByRole);
+  const approvalRoleRequired = normalizeActorRole(input.approvalRoleRequired ?? settings.letterApprovalRole);
   const client = await pool.connect();
 
   try {
@@ -495,16 +519,22 @@ export async function createComplaintLetter(input: {
           template_key,
           status,
           version_number,
-          subject,
-          recipient_name,
-          recipient_email,
-          body_text,
-          generated_by,
-          approved_at,
-          approved_by,
-          sent_at,
-          updated_at
-        ) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, NULL, NULL, NULL, NOW())
+        subject,
+        recipient_name,
+        recipient_email,
+        body_text,
+        generated_by,
+        generated_by_role,
+        updated_by,
+        updated_by_role,
+        reviewer_notes,
+        approval_role_required,
+        approved_at,
+        approved_by,
+        approved_role,
+        sent_at,
+        updated_at
+        ) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, NULL, NULL, NULL, NOW())
         RETURNING *
       `,
       [
@@ -515,7 +545,12 @@ export async function createComplaintLetter(input: {
         draft.recipientName,
         draft.recipientEmail,
         draft.bodyText,
-        sanitizeNullable(input.generatedBy),
+        actor.name,
+        actor.role,
+        actor.name,
+        actor.role,
+        sanitizeNullable(input.reviewerNotes),
+        approvalRoleRequired,
       ]
     );
 
@@ -524,17 +559,20 @@ export async function createComplaintLetter(input: {
       letter: row,
       complaintId: input.complaintId,
       snapshotReason: templateKey === 'custom' ? 'Initial custom draft created.' : `${labelForLetterTemplate(templateKey)} generated.`,
-      snapshotBy: input.generatedBy,
+      snapshotBy: actor.name,
+      snapshotByRole: actor.role,
     });
     await insertComplaintActivityTx(client, {
       complaintId: input.complaintId,
       activityType: 'letter_generated',
       description: `${labelForLetterTemplate(templateKey)} generated.`,
-      performedBy: input.generatedBy,
+      performedBy: actor.name,
       metadata: {
         letterId: String(row.id),
         templateKey,
         subject: draft.subject,
+        actorRole: actor.role,
+        approvalRoleRequired,
       },
     });
 
@@ -556,9 +594,12 @@ export async function updateComplaintLetter(input: {
   recipientEmail?: string | null;
   status?: ComplaintLetterStatus | null;
   approvalNote?: string | null;
+  reviewerNotes?: string | null;
   performedBy?: string | null;
+  performedByRole?: ComplaintWorkspaceActorRole | null;
 }): Promise<ComplaintLetter | null> {
   await ensureComplaintsWorkspaceSchema();
+  const settings = await getComplaintWorkspaceSettings();
   const client = await pool.connect();
 
   try {
@@ -577,19 +618,34 @@ export async function updateComplaintLetter(input: {
     const nextRecipientName = sanitizeNullable(input.recipientName ?? existing.recipient_name);
     const nextRecipientEmail = sanitizeNullable(input.recipientEmail ?? existing.recipient_email);
     const nextBody = sanitizeText(input.bodyText ?? existing.body_text);
+    const nextReviewerNotes = sanitizeNullable(input.reviewerNotes ?? existing.reviewer_notes);
     const contentChanged =
       nextSubject !== String(existing.subject || 'Complaint correspondence')
       || nextRecipientName !== sanitizeNullable(existing.recipient_name)
       || nextRecipientEmail !== sanitizeNullable(existing.recipient_email)
       || nextBody !== String(existing.body_text || '');
+    const reviewerNotesChanged = nextReviewerNotes !== sanitizeNullable(existing.reviewer_notes);
 
     const existingStatus = normalizeLetterStatus(existing.status);
     const requestedStatus = input.status == null ? null : normalizeLetterStatus(input.status);
+    const actor = resolveComplaintWorkspaceActor(settings, input.performedBy, input.performedByRole);
+    const requiredApprovalRole = normalizeActorRole(existing.approval_role_required || settings.letterApprovalRole);
     if (requestedStatus === 'sent' && !['approved', 'sent'].includes(existingStatus)) {
       throw new Error('Letter must be approved before it can be marked as sent.');
     }
     if (requestedStatus === 'sent' && contentChanged) {
       throw new Error('Edited letter content must be approved again before it can be marked as sent.');
+    }
+    if ((requestedStatus === 'approved' || requestedStatus === 'sent') && !canMeetApprovalRole(actor.role, requiredApprovalRole)) {
+      throw new Error(`A ${requiredApprovalRole} role is required before this letter can be ${requestedStatus === 'approved' ? 'approved' : 'sent'}.`);
+    }
+    if (
+      requestedStatus === 'approved'
+      && settings.requireIndependentReviewer
+      && actor.name
+      && actor.name === sanitizeNullable(existing.updated_by)
+    ) {
+      throw new Error('Independent reviewer is required before approval.');
     }
 
     let nextStatus = requestedStatus ?? existingStatus;
@@ -597,7 +653,7 @@ export async function updateComplaintLetter(input: {
       nextStatus = 'draft';
     }
 
-    const nextVersionNumber = contentChanged || requestedStatus !== null
+    const nextVersionNumber = contentChanged || reviewerNotesChanged || requestedStatus !== null
       ? Math.max(1, toInt(existing.version_number) + 1)
       : Math.max(1, toInt(existing.version_number) || 1);
     const approvedAt =
@@ -606,7 +662,11 @@ export async function updateComplaintLetter(input: {
         : (nextStatus === 'sent' ? toIsoDateTime(existing.approved_at || new Date().toISOString()) : null);
     const approvedBy =
       nextStatus === 'approved' || nextStatus === 'sent'
-        ? sanitizeNullable(input.performedBy) || sanitizeNullable(existing.approved_by)
+        ? actor.name || sanitizeNullable(existing.approved_by)
+        : null;
+    const approvedRole =
+      nextStatus === 'approved' || nextStatus === 'sent'
+        ? actor.role
         : null;
     const sentAt = nextStatus === 'sent'
       ? toIsoDateTime(existingStatus === 'sent' && existing.sent_at ? existing.sent_at : new Date().toISOString())
@@ -621,9 +681,13 @@ export async function updateComplaintLetter(input: {
           body_text = $5,
           status = $6,
           version_number = $7,
-          approved_at = $8,
-          approved_by = $9,
-          sent_at = $10,
+          reviewer_notes = $8,
+          updated_by = $9,
+          updated_by_role = $10,
+          approved_at = $11,
+          approved_by = $12,
+          approved_role = $13,
+          sent_at = $14,
           updated_at = NOW()
         WHERE id = $1
         RETURNING *
@@ -636,14 +700,18 @@ export async function updateComplaintLetter(input: {
         nextBody,
         nextStatus,
         nextVersionNumber,
+        nextReviewerNotes,
+        actor.name,
+        actor.role,
         approvedAt,
         approvedBy,
+        approvedRole,
         sentAt,
       ]
     );
 
     const updated = updatedResult.rows[0];
-    if (contentChanged || requestedStatus !== null) {
+    if (contentChanged || reviewerNotesChanged || requestedStatus !== null) {
       await insertComplaintLetterVersionTx(client, {
         letter: updated,
         complaintId: String(existing.complaint_id || ''),
@@ -651,9 +719,11 @@ export async function updateComplaintLetter(input: {
           previousStatus: existingStatus,
           nextStatus,
           contentChanged,
+          reviewerNotesChanged,
           approvalNote: input.approvalNote,
         }),
-        snapshotBy: input.performedBy,
+        snapshotBy: actor.name,
+        snapshotByRole: actor.role,
       });
     }
 
@@ -664,11 +734,12 @@ export async function updateComplaintLetter(input: {
         description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} content changed and a new draft version was created.`,
         oldValue: existingStatus,
         newValue: nextStatus,
-        performedBy: input.performedBy,
+        performedBy: actor.name,
         metadata: {
           letterId: String(existing.id || ''),
           priorVersion: toInt(existing.version_number),
           nextVersion: nextVersionNumber,
+          actorRole: actor.role,
         },
       });
     }
@@ -680,11 +751,13 @@ export async function updateComplaintLetter(input: {
         description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} approved.`,
         oldValue: existingStatus,
         newValue: nextStatus,
-        performedBy: input.performedBy,
+        performedBy: actor.name,
         metadata: {
           letterId: String(existing.id || ''),
           versionNumber: nextVersionNumber,
           approvalNote: sanitizeNullable(input.approvalNote),
+          actorRole: actor.role,
+          requiredApprovalRole,
         },
       });
     }
@@ -696,10 +769,11 @@ export async function updateComplaintLetter(input: {
         description: `${labelForLetterTemplate(normalizeLetterTemplateKey(existing.template_key))} marked as sent.`,
         oldValue: String(existing.status || 'draft'),
         newValue: nextStatus,
-        performedBy: input.performedBy,
+        performedBy: actor.name,
         metadata: {
           letterId: String(existing.id || ''),
           subject: String(updated.subject || ''),
+          actorRole: actor.role,
         },
       });
     }
@@ -1293,6 +1367,7 @@ async function insertComplaintLetterVersionTx(
     complaintId: string;
     snapshotReason?: string | null;
     snapshotBy?: string | null;
+    snapshotByRole?: ComplaintWorkspaceActorRole | null;
   }
 ) {
   await client.query(
@@ -1306,10 +1381,14 @@ async function insertComplaintLetterVersionTx(
         recipient_name,
         recipient_email,
         body_text,
+        reviewer_notes,
+        approval_role_required,
+        approved_role,
         snapshot_reason,
         snapshot_by,
+        snapshot_by_role,
         created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
       ON CONFLICT (letter_id, version_number) DO NOTHING
     `,
     [
@@ -1321,8 +1400,12 @@ async function insertComplaintLetterVersionTx(
       sanitizeNullable(input.letter.recipient_name),
       sanitizeNullable(input.letter.recipient_email),
       String(input.letter.body_text || ''),
+      sanitizeNullable(input.letter.reviewer_notes),
+      normalizeActorRole(input.letter.approval_role_required),
+      sanitizeNullable(input.letter.approved_role) ? normalizeActorRole(input.letter.approved_role) : null,
       sanitizeNullable(input.snapshotReason),
       sanitizeNullable(input.snapshotBy),
+      input.snapshotByRole ? normalizeActorRole(input.snapshotByRole) : null,
     ]
   );
 }
@@ -1331,6 +1414,7 @@ function deriveLetterSnapshotReason(input: {
   previousStatus: ComplaintLetterStatus;
   nextStatus: ComplaintLetterStatus;
   contentChanged: boolean;
+  reviewerNotesChanged?: boolean;
   approvalNote?: string | null;
 }): string {
   if (input.nextStatus === 'approved') {
@@ -1341,6 +1425,9 @@ function deriveLetterSnapshotReason(input: {
   }
   if (input.contentChanged && ['approved', 'sent'].includes(input.previousStatus)) {
     return 'Content changed after approval/sending; new draft version created.';
+  }
+  if (input.reviewerNotesChanged) {
+    return 'Internal reviewer notes updated.';
   }
   if (input.contentChanged) {
     return 'Draft content updated.';
@@ -1702,8 +1789,14 @@ function mapComplaintLetter(row: Record<string, unknown>): ComplaintLetter {
     recipientEmail: sanitizeNullable(row.recipient_email),
     bodyText: String(row.body_text || ''),
     generatedBy: sanitizeNullable(row.generated_by),
+    generatedByRole: normalizeActorRole(row.generated_by_role),
+    updatedBy: sanitizeNullable(row.updated_by),
+    updatedByRole: normalizeActorRole(row.updated_by_role),
+    reviewerNotes: sanitizeNullable(row.reviewer_notes),
+    approvalRoleRequired: normalizeActorRole(row.approval_role_required),
     approvedAt: row.approved_at ? toIsoDateTime(row.approved_at) : null,
     approvedBy: sanitizeNullable(row.approved_by),
+    approvedRole: sanitizeNullable(row.approved_role) ? normalizeActorRole(row.approved_role) : null,
     sentAt: row.sent_at ? toIsoDateTime(row.sent_at) : null,
     createdAt: toIsoDateTime(row.created_at),
     updatedAt: toIsoDateTime(row.updated_at),
@@ -1721,8 +1814,12 @@ function mapComplaintLetterVersion(row: Record<string, unknown>): ComplaintLette
     recipientName: sanitizeNullable(row.recipient_name),
     recipientEmail: sanitizeNullable(row.recipient_email),
     bodyText: String(row.body_text || ''),
+    reviewerNotes: sanitizeNullable(row.reviewer_notes),
+    approvalRoleRequired: normalizeActorRole(row.approval_role_required),
+    approvedRole: sanitizeNullable(row.approved_role) ? normalizeActorRole(row.approved_role) : null,
     snapshotReason: sanitizeNullable(row.snapshot_reason),
     snapshotBy: sanitizeNullable(row.snapshot_by),
+    snapshotByRole: sanitizeNullable(row.snapshot_by_role) ? normalizeActorRole(row.snapshot_by_role) : null,
     createdAt: toIsoDateTime(row.created_at),
   };
 }
@@ -1737,6 +1834,10 @@ function mapComplaintWorkspaceSettings(row: Record<string, unknown>): ComplaintW
     boardPackSubtitle: sanitizeNullable(row.board_pack_subtitle) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.boardPackSubtitle,
     lateReferralPosition: normalizeLateReferralPosition(row.late_referral_position),
     lateReferralCustomText: sanitizeNullable(row.late_referral_custom_text),
+    currentActorName: sanitizeText(row.current_actor_name) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.currentActorName,
+    currentActorRole: normalizeActorRole(row.current_actor_role),
+    letterApprovalRole: normalizeActorRole(row.letter_approval_role),
+    requireIndependentReviewer: toBoolean(row.require_independent_reviewer, DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.requireIndependentReviewer),
     updatedAt: row.updated_at ? toIsoDateTime(row.updated_at) : DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.updatedAt,
   };
 }
@@ -1804,6 +1905,45 @@ function normalizeLateReferralPosition(value: unknown): ComplaintLateReferralPos
     : 'review_required';
 }
 
+function normalizeActorRole(value: unknown): ComplaintWorkspaceActorRole {
+  return VALID_ACTOR_ROLES.includes(String(value) as ComplaintWorkspaceActorRole)
+    ? (String(value) as ComplaintWorkspaceActorRole)
+    : DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.currentActorRole;
+}
+
+function resolveComplaintWorkspaceActor(
+  settings: ComplaintWorkspaceSettings,
+  name?: string | null,
+  role?: ComplaintWorkspaceActorRole | null
+): { name: string; role: ComplaintWorkspaceActorRole } {
+  const resolvedName = sanitizeText(name ?? settings.currentActorName) || settings.currentActorName || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.currentActorName;
+  return {
+    name: resolvedName,
+    role: normalizeActorRole(role ?? settings.currentActorRole),
+  };
+}
+
+function canMeetApprovalRole(
+  actorRole: ComplaintWorkspaceActorRole,
+  requiredRole: ComplaintWorkspaceActorRole
+): boolean {
+  return actorRoleRank(actorRole) >= actorRoleRank(requiredRole);
+}
+
+function actorRoleRank(role: ComplaintWorkspaceActorRole): number {
+  switch (role) {
+    case 'admin':
+      return 4;
+    case 'manager':
+      return 3;
+    case 'reviewer':
+      return 2;
+    case 'operator':
+    default:
+      return 1;
+  }
+}
+
 function normalizeComplaintWorkspaceSettingsInput(
   input: ComplaintWorkspaceSettingsInput,
   fallback: ComplaintWorkspaceSettings
@@ -1826,6 +1966,12 @@ function normalizeComplaintWorkspaceSettingsInput(
     lateReferralCustomText: lateReferralPosition === 'custom'
       ? (has('lateReferralCustomText') ? sanitizeNullable(input.lateReferralCustomText) : sanitizeNullable(fallback.lateReferralCustomText))
       : (has('lateReferralCustomText') ? sanitizeNullable(input.lateReferralCustomText) : null),
+    currentActorName: sanitizeText(input.currentActorName ?? fallback.currentActorName) || DEFAULT_COMPLAINT_WORKSPACE_SETTINGS.currentActorName,
+    currentActorRole: normalizeActorRole(input.currentActorRole ?? fallback.currentActorRole),
+    letterApprovalRole: normalizeActorRole(input.letterApprovalRole ?? fallback.letterApprovalRole),
+    requireIndependentReviewer: has('requireIndependentReviewer')
+      ? Boolean(input.requireIndependentReviewer)
+      : Boolean(fallback.requireIndependentReviewer),
     updatedAt: fallback.updatedAt,
   };
 }
@@ -1867,6 +2013,20 @@ function sanitizeText(value: unknown): string {
 function sanitizeNullable(value: unknown): string | null {
   const text = sanitizeText(value);
   return text ? text : null;
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return fallback;
 }
 
 function toNullableNumber(value: unknown): number | null {

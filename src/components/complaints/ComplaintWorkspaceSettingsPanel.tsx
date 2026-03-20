@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { ComplaintWorkspaceSettings } from '@/lib/complaints/types';
+import { COMPLAINT_WORKSPACE_ACTOR_ROLES, type ComplaintWorkspaceSettings } from '@/lib/complaints/types';
 
 const DEFAULT_SETTINGS: ComplaintWorkspaceSettings = {
   organizationName: 'MEMA Consultants',
@@ -15,15 +15,21 @@ const DEFAULT_SETTINGS: ComplaintWorkspaceSettings = {
   boardPackSubtitle: 'Board-ready complaints and ombudsman intelligence pack',
   lateReferralPosition: 'review_required',
   lateReferralCustomText: '',
+  currentActorName: 'MEMA reviewer',
+  currentActorRole: 'reviewer',
+  letterApprovalRole: 'reviewer',
+  requireIndependentReviewer: false,
   updatedAt: new Date(0).toISOString(),
 };
 
 export function ComplaintWorkspaceSettingsPanel({
   title = 'Brand and correspondence policy',
   compact = false,
+  onSaved,
 }: {
   title?: string;
   compact?: boolean;
+  onSaved?: (settings: ComplaintWorkspaceSettings) => void;
 }) {
   const [settings, setSettings] = useState<ComplaintWorkspaceSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -40,8 +46,10 @@ export function ComplaintWorkspaceSettingsPanel({
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'Failed to load settings.');
         if (!cancelled) {
-          setSettings({ ...DEFAULT_SETTINGS, ...(payload.settings || {}) });
+          const nextSettings = { ...DEFAULT_SETTINGS, ...(payload.settings || {}) };
+          setSettings(nextSettings);
           setMessage(null);
+          onSaved?.(nextSettings);
         }
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : 'Failed to load settings.');
@@ -54,7 +62,7 @@ export function ComplaintWorkspaceSettingsPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onSaved]);
 
   async function save() {
     setSaving(true);
@@ -67,7 +75,9 @@ export function ComplaintWorkspaceSettingsPanel({
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Failed to save settings.');
-      setSettings({ ...DEFAULT_SETTINGS, ...(payload.settings || {}) });
+      const nextSettings = { ...DEFAULT_SETTINGS, ...(payload.settings || {}) };
+      setSettings(nextSettings);
+      onSaved?.(nextSettings);
       setMessage('Saved brand and policy settings.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to save settings.');
@@ -93,6 +103,42 @@ export function ComplaintWorkspaceSettingsPanel({
               <Field label="Complaints team name" value={settings.complaintsTeamName} onChange={(value) => setSettings((current) => ({ ...current, complaintsTeamName: value }))} />
               <Field label="Complaints email" value={settings.complaintsEmail || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsEmail: value }))} />
               <Field label="Complaints phone" value={settings.complaintsPhone || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsPhone: value }))} />
+            </div>
+            <div className={`grid gap-4 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-2'}`}>
+              <Field label="Current actor name" value={settings.currentActorName} onChange={(value) => setSettings((current) => ({ ...current, currentActorName: value }))} />
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Current actor role</span>
+                <select
+                  value={settings.currentActorRole}
+                  onChange={(event) => setSettings((current) => ({ ...current, currentActorRole: event.target.value as ComplaintWorkspaceSettings['currentActorRole'] }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {COMPLAINT_WORKSPACE_ACTOR_ROLES.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Required approval role</span>
+                <select
+                  value={settings.letterApprovalRole}
+                  onChange={(event) => setSettings((current) => ({ ...current, letterApprovalRole: event.target.value as ComplaintWorkspaceSettings['letterApprovalRole'] }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {COMPLAINT_WORKSPACE_ACTOR_ROLES.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={settings.requireIndependentReviewer}
+                  onChange={(event) => setSettings((current) => ({ ...current, requireIndependentReviewer: event.target.checked }))}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Independent reviewer required before approval
+              </label>
             </div>
             <Field label="Board pack subtitle" value={settings.boardPackSubtitle || ''} onChange={(value) => setSettings((current) => ({ ...current, boardPackSubtitle: value }))} />
             <label className="block text-sm">

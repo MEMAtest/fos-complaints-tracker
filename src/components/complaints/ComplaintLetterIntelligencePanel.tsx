@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, BrainCircuit, Loader2, Sparkles } from 'lucide-react';
+import { AlertCircle, BrainCircuit, Loader2, Scale, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,8 @@ import {
 import {
   buildAcknowledgementScaffoldBlock,
   buildChallengeAreasBlock,
-  buildComparableCaseNoteBlock,
+  buildComparableCaseChallengeBlock,
+  buildComparableCaseReviewerNoteBlock,
   buildComparableCaseSummaryBlock,
   buildFinalResponseReasoningBlock,
   buildFinalResponseRedressBlock,
@@ -31,45 +32,47 @@ import {
 } from '@/lib/complaints/letter-drafting';
 import { formatDate, formatDateTime, formatNumber, formatPercent, truncate } from '@/lib/utils';
 
-const ACTIONS_BY_TEMPLATE: Record<ComplaintLetterTemplateKey, Array<{ key: string; label: string }>> = {
+type InsertTarget = 'draft' | 'reviewer';
+
+const ACTIONS_BY_TEMPLATE: Record<ComplaintLetterTemplateKey, Array<{ key: string; label: string; target: InsertTarget }>> = {
   acknowledgement: [
-    { key: 'ackScaffold', label: 'Insert acknowledgement scaffold' },
-    { key: 'reviewPoints', label: 'Insert review points' },
+    { key: 'ackScaffold', label: 'Insert acknowledgement scaffold', target: 'draft' },
+    { key: 'reviewPoints', label: 'Add review points', target: 'reviewer' },
   ],
   holding_response: [
-    { key: 'holdingScaffold', label: 'Insert holding scaffold' },
-    { key: 'reviewPoints', label: 'Insert review points' },
-    { key: 'challengeAreas', label: 'Insert challenge areas' },
-    { key: 'riskSnapshot', label: 'Insert risk snapshot' },
+    { key: 'holdingScaffold', label: 'Insert holding scaffold', target: 'draft' },
+    { key: 'reviewPoints', label: 'Add review points', target: 'reviewer' },
+    { key: 'challengeAreas', label: 'Add challenge areas', target: 'reviewer' },
+    { key: 'riskSnapshot', label: 'Add risk snapshot', target: 'reviewer' },
   ],
   final_response: [
-    { key: 'finalReview', label: 'Insert review scaffold' },
-    { key: 'finalReasoning', label: 'Insert reasoning scaffold' },
-    { key: 'finalRedress', label: 'Insert redress scaffold' },
-    { key: 'challengeAreas', label: 'Insert challenge areas' },
-    { key: 'responseStrengths', label: 'Insert response strengths' },
-    { key: 'remediationPrompts', label: 'Insert remediation prompts' },
-    { key: 'riskSnapshot', label: 'Insert risk snapshot' },
-    { key: 'precedentNote', label: 'Insert precedent note' },
-    { key: 'caseSummary', label: 'Insert comparable-case summary' },
+    { key: 'finalReview', label: 'Insert review scaffold', target: 'draft' },
+    { key: 'finalReasoning', label: 'Insert reasoning scaffold', target: 'draft' },
+    { key: 'finalRedress', label: 'Insert redress scaffold', target: 'draft' },
+    { key: 'challengeAreas', label: 'Add challenge areas', target: 'reviewer' },
+    { key: 'responseStrengths', label: 'Add response strengths', target: 'reviewer' },
+    { key: 'remediationPrompts', label: 'Add remediation prompts', target: 'reviewer' },
+    { key: 'riskSnapshot', label: 'Add risk snapshot', target: 'reviewer' },
+    { key: 'precedentNote', label: 'Add precedent note', target: 'reviewer' },
+    { key: 'caseSummary', label: 'Add case summary', target: 'reviewer' },
   ],
   fos_referral: [
-    { key: 'referralScaffold', label: 'Insert referral scaffold' },
-    { key: 'referralChecklist', label: 'Insert referral checklist' },
+    { key: 'referralScaffold', label: 'Insert referral scaffold', target: 'draft' },
+    { key: 'referralChecklist', label: 'Add referral checklist', target: 'reviewer' },
   ],
   custom: [
-    { key: 'ackScaffold', label: 'Insert acknowledgement scaffold' },
-    { key: 'holdingScaffold', label: 'Insert holding scaffold' },
-    { key: 'finalReasoning', label: 'Insert reasoning scaffold' },
-    { key: 'finalRedress', label: 'Insert redress scaffold' },
-    { key: 'reviewPoints', label: 'Insert review points' },
-    { key: 'challengeAreas', label: 'Insert challenge areas' },
-    { key: 'responseStrengths', label: 'Insert response strengths' },
-    { key: 'remediationPrompts', label: 'Insert remediation prompts' },
-    { key: 'riskSnapshot', label: 'Insert risk snapshot' },
-    { key: 'precedentNote', label: 'Insert precedent note' },
-    { key: 'caseSummary', label: 'Insert comparable-case summary' },
-    { key: 'referralChecklist', label: 'Insert referral checklist' },
+    { key: 'ackScaffold', label: 'Insert acknowledgement scaffold', target: 'draft' },
+    { key: 'holdingScaffold', label: 'Insert holding scaffold', target: 'draft' },
+    { key: 'finalReasoning', label: 'Insert reasoning scaffold', target: 'draft' },
+    { key: 'finalRedress', label: 'Insert redress scaffold', target: 'draft' },
+    { key: 'reviewPoints', label: 'Add review points', target: 'reviewer' },
+    { key: 'challengeAreas', label: 'Add challenge areas', target: 'reviewer' },
+    { key: 'responseStrengths', label: 'Add response strengths', target: 'reviewer' },
+    { key: 'remediationPrompts', label: 'Add remediation prompts', target: 'reviewer' },
+    { key: 'riskSnapshot', label: 'Add risk snapshot', target: 'reviewer' },
+    { key: 'precedentNote', label: 'Add precedent note', target: 'reviewer' },
+    { key: 'caseSummary', label: 'Add case summary', target: 'reviewer' },
+    { key: 'referralChecklist', label: 'Add referral checklist', target: 'reviewer' },
   ],
 };
 
@@ -77,16 +80,19 @@ export function ComplaintLetterIntelligencePanel({
   complaint,
   activeTemplateKey,
   hasActiveLetter,
-  onInsert,
+  onInsertDraft,
+  onInsertReviewerNote,
 }: {
   complaint: ComplaintRecord;
   activeTemplateKey: ComplaintLetterTemplateKey | null;
   hasActiveLetter: boolean;
-  onInsert: (text: string) => void;
+  onInsertDraft: (text: string) => void;
+  onInsertReviewerNote: (text: string) => void;
 }) {
   const [payload, setPayload] = useState<ComplaintLetterIntelligenceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedReviewCaseId, setSelectedReviewCaseId] = useState<string | null>(null);
   const { selectedCaseId, setSelectedCaseId, selectedCase, caseLoading, caseError } = useCaseDetail();
 
   useEffect(() => {
@@ -123,51 +129,75 @@ export function ComplaintLetterIntelligencePanel({
 
   const intelligence = payload?.data || null;
   const actions = useMemo(() => ACTIONS_BY_TEMPLATE[activeTemplateKey || 'custom'], [activeTemplateKey]);
+  const activeReview = useMemo(() => {
+    if (!intelligence) return null;
+    return intelligence.draftingGuidance.comparableCaseReviews.find((item) => item.caseId === selectedReviewCaseId)
+      || intelligence.draftingGuidance.comparableCaseReviews[0]
+      || null;
+  }, [intelligence, selectedReviewCaseId]);
 
-  function insertBlock(kind: string) {
+  useEffect(() => {
+    if (!intelligence) {
+      setSelectedReviewCaseId(null);
+      return;
+    }
+    if (!selectedReviewCaseId || !intelligence.draftingGuidance.comparableCaseReviews.some((item) => item.caseId === selectedReviewCaseId)) {
+      setSelectedReviewCaseId(intelligence.draftingGuidance.comparableCaseReviews[0]?.caseId || null);
+    }
+  }, [intelligence, selectedReviewCaseId]);
+
+  function insertText(target: InsertTarget, text: string) {
+    if (target === 'draft') {
+      onInsertDraft(text);
+      return;
+    }
+    onInsertReviewerNote(text);
+  }
+
+  function insertBlock(kind: string, target: InsertTarget) {
     if (!intelligence) return;
     switch (kind) {
       case 'reviewPoints':
-        onInsert(buildReviewPointsBlock(intelligence));
+        insertText(target, buildReviewPointsBlock(intelligence));
         return;
       case 'ackScaffold':
-        onInsert(buildAcknowledgementScaffoldBlock(intelligence));
+        insertText(target, buildAcknowledgementScaffoldBlock(intelligence));
         return;
       case 'holdingScaffold':
-        onInsert(buildHoldingResponseScaffoldBlock(intelligence));
+        insertText(target, buildHoldingResponseScaffoldBlock(intelligence));
         return;
       case 'finalReview':
-        onInsert(buildFinalResponseReviewBlock(intelligence));
+        insertText(target, buildFinalResponseReviewBlock(intelligence));
         return;
       case 'finalReasoning':
-        onInsert(buildFinalResponseReasoningBlock(intelligence));
+        insertText(target, buildFinalResponseReasoningBlock(intelligence));
         return;
       case 'finalRedress':
-        onInsert(buildFinalResponseRedressBlock(intelligence));
+        insertText(target, buildFinalResponseRedressBlock(intelligence));
         return;
       case 'challengeAreas':
-        onInsert(buildChallengeAreasBlock(intelligence));
+        insertText(target, buildChallengeAreasBlock(intelligence));
         return;
       case 'responseStrengths':
-        onInsert(buildResponseStrengthsBlock(intelligence));
+        insertText(target, buildResponseStrengthsBlock(intelligence));
         return;
       case 'remediationPrompts':
-        onInsert(buildRemediationPromptsBlock(intelligence));
+        insertText(target, buildRemediationPromptsBlock(intelligence));
         return;
       case 'riskSnapshot':
-        onInsert(buildRiskSnapshotBlock(intelligence));
+        insertText(target, buildRiskSnapshotBlock(intelligence));
         return;
       case 'precedentNote':
-        onInsert(buildPrecedentReviewBlock(intelligence));
+        insertText(target, buildPrecedentReviewBlock(intelligence));
         return;
       case 'referralChecklist':
-        onInsert(buildReferralChecklistBlock(intelligence));
+        insertText(target, buildReferralChecklistBlock(intelligence));
         return;
       case 'referralScaffold':
-        onInsert(buildReferralResponseScaffoldBlock(intelligence));
+        insertText(target, buildReferralResponseScaffoldBlock(intelligence));
         return;
       case 'caseSummary':
-        onInsert(buildComparableCaseSummaryBlock(intelligence));
+        insertText(target, buildComparableCaseSummaryBlock(intelligence));
         return;
       default:
         return;
@@ -213,7 +243,7 @@ export function ComplaintLetterIntelligencePanel({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Draft assist</p>
-                    <p className="mt-1 text-xs text-slate-500">Insert editable internal drafting support into the active letter. Specific precedent and case references stay on-screen only.</p>
+                    <p className="mt-1 text-xs text-slate-500">Draft scaffolds go into the customer-facing letter body. Review material is added to locked internal reviewer notes.</p>
                   </div>
                   {!hasActiveLetter ? <Badge variant="outline">Select a letter to insert guidance</Badge> : null}
                 </div>
@@ -225,7 +255,7 @@ export function ComplaintLetterIntelligencePanel({
                       size="sm"
                       variant="outline"
                       disabled={!hasActiveLetter}
-                      onClick={() => insertBlock(action.key)}
+                      onClick={() => insertBlock(action.key, action.target)}
                     >
                       <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                       {action.label}
@@ -298,48 +328,89 @@ export function ComplaintLetterIntelligencePanel({
                 </div>
               </section>
 
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Comparable cases</p>
-                  <p className="mt-1 text-xs text-slate-500">Review the underlying published decisions before finalising the reasoning, or insert an internal note based on a selected case.</p>
-                </div>
-                {intelligence.sampleCases.length === 0 ? (
-                  <p className="text-sm text-slate-500">No comparable cases available.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {intelligence.sampleCases.map((item) => (
-                      <div
-                        key={item.caseId}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-900">{item.decisionReference}</p>
-                          <Badge variant="outline">{item.outcome.replace(/_/g, ' ')}</Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.firmName || 'Unknown firm'}
-                          {item.decisionDate ? ` · ${formatDate(item.decisionDate)}` : ''}
-                        </p>
-                        {item.summary ? <p className="mt-2 text-sm text-slate-600">{truncate(item.summary, 220)}</p> : null}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button type="button" size="sm" variant="outline" onClick={() => setSelectedCaseId(item.caseId)}>
-                            Open case
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={!hasActiveLetter}
-                            onClick={() => onInsert(buildComparableCaseNoteBlock(item))}
-                          >
-                            Insert case note
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+              <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+                <section className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Comparable cases</p>
+                    <p className="mt-1 text-xs text-slate-500">Pick a comparable decision and turn it into internal reviewer guidance before final approval.</p>
                   </div>
-                )}
-              </section>
+                  {intelligence.sampleCases.length === 0 ? (
+                    <p className="text-sm text-slate-500">No comparable cases available.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {intelligence.sampleCases.map((item) => (
+                        <button
+                          key={item.caseId}
+                          type="button"
+                          onClick={() => setSelectedReviewCaseId(item.caseId)}
+                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${selectedReviewCaseId === item.caseId ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900">{item.decisionReference}</p>
+                            <Badge variant="outline">{item.outcome.replace(/_/g, ' ')}</Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {item.firmName || 'Unknown firm'}
+                            {item.decisionDate ? ` · ${formatDate(item.decisionDate)}` : ''}
+                          </p>
+                          {item.summary ? <p className="mt-2 text-sm text-slate-600">{truncate(item.summary, 140)}</p> : null}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Case review workspace</p>
+                      <p className="mt-1 text-xs text-slate-500">This workspace produces internal reviewer notes only. It does not alter the outward-facing letter body unless you choose a draft scaffold above.</p>
+                    </div>
+                    <Badge variant="outline">Internal only</Badge>
+                  </div>
+                  {!activeReview ? (
+                    <p className="text-sm text-slate-500">Select a comparable case to build reviewer notes.</p>
+                  ) : (
+                    <>
+                      <InsightList
+                        title={`Reviewer prompts for ${activeReview.decisionReference}`}
+                        emptyLabel="No reviewer prompts are available yet."
+                        items={activeReview.internalReviewNote}
+                      />
+                      <InsightList
+                        title="Challenge summary"
+                        emptyLabel="No challenge summary is available yet."
+                        items={activeReview.challengeSummary}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => setSelectedCaseId(activeReview.caseId)}>
+                          Open case
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!hasActiveLetter}
+                          onClick={() => onInsertReviewerNote(buildComparableCaseReviewerNoteBlock(activeReview))}
+                        >
+                          <Scale className="mr-1.5 h-3.5 w-3.5" />
+                          Add reviewer note
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!hasActiveLetter}
+                          onClick={() => onInsertReviewerNote(buildComparableCaseChallengeBlock(activeReview))}
+                        >
+                          <Scale className="mr-1.5 h-3.5 w-3.5" />
+                          Add challenge summary
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </section>
+              </div>
             </div>
           )}
         </CardContent>
