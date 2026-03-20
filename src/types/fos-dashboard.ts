@@ -1,4 +1,4 @@
-import { FOSAnalysisSnapshot, FOSCaseDetail, FOSDashboardFilters, FOSDashboardSnapshot } from '@/lib/fos/types';
+import { FOSAdvisorBrief, FOSAnalysisSnapshot, FOSCaseDetail, FOSDashboardFilters, FOSDashboardSnapshot } from '@/lib/fos/types';
 
 export interface FOSApiMeta {
   queryMs: number;
@@ -27,5 +27,17 @@ export interface FOSAnalysisApiResponse {
   filters: FOSDashboardFilters;
   data?: FOSAnalysisSnapshot;
   meta?: FOSApiMeta;
+  error?: string;
+}
+
+export interface FOSAdvisorApiResponse {
+  success: boolean;
+  data?: FOSAdvisorBrief;
+  error?: string;
+}
+
+export interface FOSAdvisorOptionsApiResponse {
+  success: boolean;
+  data?: { products: string[]; rootCauses: string[] };
   error?: string;
 }
