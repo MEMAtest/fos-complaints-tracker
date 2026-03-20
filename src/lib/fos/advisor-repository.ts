@@ -8,7 +8,7 @@ import {
   FOSAdvisorSampleCase,
   FOSAdvisorThemeExtract,
   FOSAdvisorVulnerability,
-} from './advisor-types';
+} from './types';
 import {
   caseIdExpression,
   ensureDatabaseConfigured,
