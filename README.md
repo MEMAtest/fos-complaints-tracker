@@ -73,7 +73,7 @@ Override these with `APP_BOOTSTRAP_USERS_JSON` if needed.
 
 ## Rate limiting and route metrics
 
-Heavier routes now use in-memory fixed-window limits:
+Heavier routes now use Postgres-backed fixed-window limits:
 
 - `/api/fos/board-pack` preview
 - `/api/fos/board-pack/generate`
@@ -95,6 +95,18 @@ Watch these in local logs or Vercel runtime logs to trace:
 - duration
 - actor
 - request detail such as template key or export scope
+
+## Public insights section
+
+SEO-friendly public analysis pages are available under:
+
+- `/insights`
+- `/insights/years`
+- `/insights/firms`
+- `/insights/products`
+- `/insights/types`
+
+These pages are generated from the same FOS analytics corpus and publish public year, firm, product, and complaint-theme analysis without requiring sign-in.
 
 ## Debug endpoint access
 

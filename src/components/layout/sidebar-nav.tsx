@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb } from 'lucide-react';
+import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb, Newspaper } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: '/analysis', label: 'Analysis', icon: BarChart3, requiresAuth: false },
   { href: '/root-causes', label: 'Root Causes', icon: Network, requiresAuth: false },
   { href: '/comparison', label: 'Firm Comparison', icon: GitCompare, requiresAuth: false },
+  { href: '/insights', label: 'Public Insights', icon: Newspaper, requiresAuth: false },
   { href: '/complaints', label: 'Complaints', icon: ClipboardList, requiresAuth: true },
   { href: '/imports/complaints', label: 'Imports', icon: Upload, requiresAuth: true },
   { href: '/board-pack', label: 'Board Pack', icon: Briefcase, requiresAuth: true },

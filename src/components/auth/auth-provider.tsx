@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import type { AppUserRole, AuthenticatedAppUser } from '@/lib/auth/types';
 
 interface AuthContextValue {
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthenticatedAppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
 
   async function refresh() {
     setLoading(true);
@@ -34,8 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    if (pathname === '/login' || pathname.startsWith('/insights')) {
+      setLoading(false);
+      return;
+    }
     void refresh();
-  }, []);
+  }, [pathname]);
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
