@@ -110,6 +110,17 @@ SEO-friendly public analysis pages are available under:
 
 These pages are generated from the same FOS analytics corpus and publish public year, firm, product, complaint-theme, and curated cross-section analysis without requiring sign-in.
 
+Admin publication controls are available at:
+
+- `/settings/insights`
+
+Those controls let admins:
+
+- suppress specific public insight pages
+- mark pages as `noindex`
+- set featured rank for archive and landing-page promotion
+- override titles, descriptions, and hero deck copy without code changes
+
 ## Debug endpoint access
 
 Both internal debug endpoints require:

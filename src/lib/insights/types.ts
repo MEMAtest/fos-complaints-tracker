@@ -11,6 +11,8 @@ export type InsightArchiveItem = {
   latestDecisionDate: string | null;
   summary: string;
   highlight: string;
+  featuredRank?: number | null;
+  isNoindex?: boolean;
 };
 
 export type InsightMetric = {
@@ -89,6 +91,7 @@ export type InsightPageData = {
     keywords: string[];
   };
   lastUpdated: string | null;
+  noindex?: boolean;
 };
 
 export type InsightLandingData = {
@@ -110,4 +113,34 @@ export type InsightLandingData = {
     items: InsightArchiveItem[];
   }>;
   lastUpdated: string | null;
+};
+
+export type InsightPublicationOverride = {
+  kind: InsightKind;
+  entityKey: string;
+  isPublished: boolean;
+  isNoindex: boolean;
+  titleOverride: string | null;
+  descriptionOverride: string | null;
+  heroDekOverride: string | null;
+  featuredRank: number | null;
+  updatedAt: string | null;
+};
+
+export type InsightPublicationOverrideInput = {
+  kind: InsightKind;
+  entityKey: string;
+  isPublished: boolean;
+  isNoindex: boolean;
+  titleOverride: string | null;
+  descriptionOverride: string | null;
+  heroDekOverride: string | null;
+  featuredRank: number | null;
+};
+
+export type InsightPublicationCandidate = InsightArchiveItem & {
+  override: InsightPublicationOverride | null;
+  effectivePublished: boolean;
+  effectiveNoindex: boolean;
+  effectiveFeaturedRank: number | null;
 };

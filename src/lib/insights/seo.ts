@@ -23,6 +23,7 @@ export function buildInsightMetadata(page: InsightPageData): Metadata {
     title: page.seo.title,
     description: page.seo.description,
     keywords: page.seo.keywords,
+    robots: page.noindex ? { index: false, follow: true } : undefined,
     alternates: {
       canonical: absoluteUrl(page.canonicalPath),
     },

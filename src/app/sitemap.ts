@@ -37,7 +37,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: path === '' || path === '/insights' ? 1 : 0.8,
   }));
 
-  const insightRoutes = [...years, ...firms, ...products, ...types, ...yearProducts, ...firmProducts].map((item) => ({
+  const insightRoutes = [...years, ...firms, ...products, ...types, ...yearProducts, ...firmProducts]
+    .filter((item) => !item.isNoindex)
+    .map((item) => ({
     url: absoluteUrl(item.href),
     lastModified: item.latestDecisionDate ? new Date(item.latestDecisionDate) : new Date(),
     changeFrequency: 'weekly' as const,

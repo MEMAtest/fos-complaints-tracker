@@ -3,14 +3,23 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb, Newspaper } from 'lucide-react';
+import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb, Newspaper, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
+import type { AppUserRole } from '@/lib/auth/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/layout/settings-dialog';
 import { HelpSheet } from '@/components/layout/help-sheet';
 
-const NAV_ITEMS = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  requiresAuth: boolean;
+  minimumRole?: AppUserRole;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, requiresAuth: false },
   { href: '/analysis', label: 'Analysis', icon: BarChart3, requiresAuth: false },
   { href: '/root-causes', label: 'Root Causes', icon: Network, requiresAuth: false },
@@ -20,14 +29,19 @@ const NAV_ITEMS = [
   { href: '/imports/complaints', label: 'Imports', icon: Upload, requiresAuth: true },
   { href: '/board-pack', label: 'Board Pack', icon: Briefcase, requiresAuth: true },
   { href: '/advisor', label: 'Complaint Advisor', icon: Lightbulb, requiresAuth: false },
-] as const;
+  { href: '/settings/insights', label: 'Insight Controls', icon: SlidersHorizontal, requiresAuth: true, minimumRole: 'admin' },
+];
 
 export function SidebarNav() {
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const { user } = useAuth();
-  const visibleItems = NAV_ITEMS.filter((item) => !item.requiresAuth || Boolean(user));
+  const { user, can } = useAuth();
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (item.requiresAuth && !user) return false;
+    if (item.minimumRole && !can(item.minimumRole)) return false;
+    return true;
+  });
 
   return (
     <>

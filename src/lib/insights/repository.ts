@@ -9,6 +9,7 @@ import { getComparisonSnapshot } from '@/lib/fos/repository';
 import { ensureDatabaseConfigured, ensureFosDecisionsTableExists, normalizeTagLabel, outcomeExpression, caseIdExpression } from '@/lib/fos/repo-helpers';
 import type { FOSDashboardFilters, FOSCaseListItem } from '@/lib/fos/types';
 import { formatDate, formatNumber, formatPercent } from '@/lib/utils';
+import { ensureInsightsSchema } from './schema';
 import { slugify } from './seo';
 import type {
   InsightArchiveItem,
@@ -17,6 +18,9 @@ import type {
   InsightMetric,
   InsightNarrativeSection,
   InsightPageData,
+  InsightPublicationCandidate,
+  InsightPublicationOverride,
+  InsightPublicationOverrideInput,
   InsightRankedItem,
   InsightRelatedLink,
   InsightRepresentativeCase,
@@ -72,21 +76,45 @@ type CompositeArchiveRow = {
   latest_decision_date: string | Date | null;
 };
 
+type InsightOverrideRow = {
+  kind: string | null;
+  entity_key: string | null;
+  is_published: boolean | null;
+  is_noindex: boolean | null;
+  title_override: string | null;
+  description_override: string | null;
+  hero_dek_override: string | null;
+  featured_rank: number | string | null;
+  updated_at: string | Date | null;
+};
+
 const getYearArchive = unstable_cache(async () => queryYearArchive(), ['insights-year-archive'], { revalidate: REVALIDATE_SECONDS });
 const getFirmArchive = unstable_cache(async () => queryFirmArchive(), ['insights-firm-archive'], { revalidate: REVALIDATE_SECONDS });
 const getProductArchive = unstable_cache(async () => queryProductArchive(), ['insights-product-archive'], { revalidate: REVALIDATE_SECONDS });
 const getTypeArchive = unstable_cache(async () => queryTypeArchive(), ['insights-type-archive'], { revalidate: REVALIDATE_SECONDS });
 const getYearProductArchive = unstable_cache(async () => queryYearProductArchive(), ['insights-year-product-archive'], { revalidate: REVALIDATE_SECONDS });
 const getFirmProductArchive = unstable_cache(async () => queryFirmProductArchive(), ['insights-firm-product-archive'], { revalidate: REVALIDATE_SECONDS });
+let publicationOverridesPromise: Promise<InsightPublicationOverride[]> | null = null;
+
+async function getPublicationOverrides(): Promise<InsightPublicationOverride[]> {
+  if (!publicationOverridesPromise) {
+    publicationOverridesPromise = queryPublicationOverrides();
+  }
+  return publicationOverridesPromise;
+}
+
+export function resetInsightPublicationOverridesCache(): void {
+  publicationOverridesPromise = null;
+}
 
 export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLandingData> => {
   const dashboard = await getDashboardSnapshot({ ...EMPTY_FILTERS }, { includeCases: false });
-  const years = await getYearArchive();
-  const firms = await getFirmArchive();
-  const products = await getProductArchive();
-  const types = await getTypeArchive();
-  const yearProducts = await getYearProductArchive();
-  const firmProducts = await getFirmProductArchive();
+  const years = await getPublishedYearInsights();
+  const firms = await getPublishedFirmInsights();
+  const products = await getPublishedProductInsights();
+  const types = await getPublishedTypeInsights();
+  const yearProducts = await getPublishedYearProductInsights();
+  const firmProducts = await getPublishedFirmProductInsights();
 
   const yearsCovered = years.length;
   const publishedPages = years.length + firms.length + products.length + types.length + yearProducts.length + firmProducts.length;
@@ -104,12 +132,7 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
       metric('Current upheld rate', formatPercent(dashboard.overview.upheldRate), `${formatNumber(dashboard.overview.upheldCases)} upheld decisions in the corpus`),
       metric('Latest year in focus', latestYear?.title || 'n/a', latestYear ? latestYear.summary : 'Awaiting sufficient yearly data'),
     ],
-    featured: [
-      latestYear,
-      firms[0],
-      products[0],
-      types[0],
-    ].filter(Boolean).map((item) => ({
+    featured: selectFeaturedInsights([latestYear, firms[0], products[0], types[0], yearProducts[0], firmProducts[0]], [years, firms, products, types, yearProducts, firmProducts]).map((item) => ({
       title: item!.title,
       href: item!.href,
       description: item!.summary,
@@ -157,33 +180,149 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
 }, ['insights-landing'], { revalidate: REVALIDATE_SECONDS });
 
 export async function getPublishedYearInsights(): Promise<InsightArchiveItem[]> {
-  return getYearArchive();
+  return applyArchiveOverrides(await getYearArchive(), await getPublicationOverrides());
 }
 
 export async function getPublishedFirmInsights(): Promise<InsightArchiveItem[]> {
-  return getFirmArchive();
+  return applyArchiveOverrides(await getFirmArchive(), await getPublicationOverrides());
 }
 
 export async function getPublishedProductInsights(): Promise<InsightArchiveItem[]> {
-  return getProductArchive();
+  return applyArchiveOverrides(await getProductArchive(), await getPublicationOverrides());
 }
 
 export async function getPublishedTypeInsights(): Promise<InsightArchiveItem[]> {
-  return getTypeArchive();
+  return applyArchiveOverrides(await getTypeArchive(), await getPublicationOverrides());
 }
 
 export async function getPublishedYearProductInsights(): Promise<InsightArchiveItem[]> {
-  return getYearProductArchive();
+  return applyArchiveOverrides(await getYearProductArchive(), await getPublicationOverrides());
 }
 
 export async function getPublishedFirmProductInsights(): Promise<InsightArchiveItem[]> {
-  return getFirmProductArchive();
+  return applyArchiveOverrides(await getFirmProductArchive(), await getPublicationOverrides());
+}
+
+export async function listInsightPublicationOverrides(): Promise<InsightPublicationOverride[]> {
+  return (await getPublicationOverrides()).slice().sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+    return a.entityKey.localeCompare(b.entityKey);
+  });
+}
+
+export async function listInsightPublicationCandidates(filters: {
+  kind?: InsightArchiveItem['kind'] | 'all';
+  query?: string;
+} = {}): Promise<InsightPublicationCandidate[]> {
+  const [years, firms, products, types, yearProducts, firmProducts, overrides] = await Promise.all([
+    getYearArchive(),
+    getFirmArchive(),
+    getProductArchive(),
+    getTypeArchive(),
+    getYearProductArchive(),
+    getFirmProductArchive(),
+    getPublicationOverrides(),
+  ]);
+
+  const archive = [...years, ...firms, ...products, ...types, ...yearProducts, ...firmProducts];
+  const normalizedQuery = (filters.query || '').trim().toLowerCase();
+  const normalizedKind = filters.kind && filters.kind !== 'all' ? filters.kind : null;
+
+  return archive
+    .filter((item) => !normalizedKind || item.kind === normalizedKind)
+    .filter((item) => {
+      if (!normalizedQuery) return true;
+      const haystack = `${item.title} ${item.summary} ${item.highlight} ${item.entityKey}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    })
+    .map((item) => {
+      const override = findOverride(overrides, item.kind, item.entityKey);
+      const effective = applyArchiveOverride(item, override);
+      if (!effective) return null;
+      return {
+        ...effective,
+        override,
+        effectivePublished: override ? override.isPublished : true,
+        effectiveNoindex: override ? override.isNoindex : Boolean(effective.isNoindex),
+        effectiveFeaturedRank: override?.featuredRank ?? effective.featuredRank ?? null,
+      } satisfies InsightPublicationCandidate;
+    })
+    .filter((item): item is InsightPublicationCandidate => Boolean(item))
+    .sort((a, b) => {
+      const rankA = a.effectiveFeaturedRank ?? Number.MAX_SAFE_INTEGER;
+      const rankB = b.effectiveFeaturedRank ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+      return b.totalCases - a.totalCases;
+    });
+}
+
+export async function saveInsightPublicationOverride(input: InsightPublicationOverrideInput): Promise<InsightPublicationOverride> {
+  await ensureInsightsSchema();
+  const kind = input.kind;
+  const entityKey = input.entityKey.trim();
+  const row = await DatabaseClient.queryOne<InsightOverrideRow>(
+    `
+      INSERT INTO insight_publication_overrides (
+        kind,
+        entity_key,
+        is_published,
+        is_noindex,
+        title_override,
+        description_override,
+        hero_dek_override,
+        featured_rank,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      ON CONFLICT (kind, entity_key)
+      DO UPDATE SET
+        is_published = EXCLUDED.is_published,
+        is_noindex = EXCLUDED.is_noindex,
+        title_override = EXCLUDED.title_override,
+        description_override = EXCLUDED.description_override,
+        hero_dek_override = EXCLUDED.hero_dek_override,
+        featured_rank = EXCLUDED.featured_rank,
+        updated_at = NOW()
+      RETURNING kind, entity_key, is_published, is_noindex, title_override, description_override, hero_dek_override, featured_rank, updated_at
+    `,
+    [
+      kind,
+      entityKey,
+      Boolean(input.isPublished),
+      Boolean(input.isNoindex),
+      sanitizeNullableText(input.titleOverride),
+      sanitizeNullableText(input.descriptionOverride),
+      sanitizeNullableText(input.heroDekOverride),
+      input.featuredRank == null ? null : input.featuredRank,
+    ]
+  );
+  if (!row) {
+    throw new Error('Failed to save insight publication override.');
+  }
+  return mapInsightOverride(row);
+}
+
+export async function deleteInsightPublicationOverride(kind: InsightArchiveItem['kind'], entityKey: string): Promise<void> {
+  await ensureInsightsSchema();
+  await DatabaseClient.query(
+    `DELETE FROM insight_publication_overrides WHERE kind = $1 AND entity_key = $2`,
+    [kind, entityKey.trim()]
+  );
+}
+
+export async function resolveInsightHref(kind: InsightArchiveItem['kind'], entityKey: string): Promise<string | null> {
+  const archives = await getArchivesForKind(kind);
+  return archives.find((item) => item.entityKey === entityKey)?.href || null;
 }
 
 export const getYearInsightPage = unstable_cache(async (year: number): Promise<InsightPageData | null> => {
   const years = await getYearArchive();
   const current = years.find((item) => item.entityKey === String(year));
   if (!current) return null;
+  const overrides = await getPublicationOverrides();
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, years: [year] };
   const [dashboard, analysis, cases, firms, products, types, yearProducts] = await Promise.all([
@@ -283,7 +422,7 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
     { title: 'Browse all annual pages', href: '/insights/years', description: 'See the full archive of annual FOS complaint analysis pages.' },
   ]);
 
-  return buildPage({
+  return applyPageOverride(buildPage({
     kind: 'year',
     slug: current.slug,
     entityKey: current.entityKey,
@@ -317,13 +456,16 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
       keywords: [`financial ombudsman complaints ${year}`, `FOS complaints ${year}`, `${year} ombudsman decisions`, `financial ombudsman year analysis ${year}`],
     },
     lastUpdated: current.latestDecisionDate,
-  });
+  }), override);
 }, ['insights-year-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
   const [firms, products, types, years, firmProducts] = await Promise.all([getFirmArchive(), getProductArchive(), getTypeArchive(), getYearArchive(), getFirmProductArchive()]);
   const current = firms.find((item) => item.slug === slug);
   if (!current) return null;
+  const overrides = await getPublicationOverrides();
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, firms: [current.title] };
   const [dashboard, comparison, cases] = await Promise.all([
@@ -414,7 +556,7 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
     { title: 'Browse all firm pages', href: '/insights/firms', description: 'See the wider archive of firm-level complaint analysis pages.' },
   ]);
 
-  return buildPage({
+  return applyPageOverride(buildPage({
     kind: 'firm',
     slug: current.slug,
     entityKey: current.entityKey,
@@ -448,7 +590,7 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
       keywords: [`${current.title} complaints`, `${current.title} ombudsman complaints`, `${current.title} upheld complaints`, `${current.title} financial ombudsman`],
     },
     lastUpdated: current.latestDecisionDate,
-  });
+  }), override);
 }, ['insights-firm-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getProductInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
@@ -462,6 +604,9 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
   ]);
   const current = products.find((item) => item.slug === slug);
   if (!current) return null;
+  const overrides = await getPublicationOverrides();
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, products: [current.title] };
   const [dashboard, analysis, advisor, cases] = await Promise.all([
@@ -558,7 +703,7 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
     { title: 'Browse all product pages', href: '/insights/products', description: 'See the full archive of product-level analysis pages.' },
   ]);
 
-  return buildPage({
+  return applyPageOverride(buildPage({
     kind: 'product',
     slug: current.slug,
     entityKey: current.entityKey,
@@ -592,13 +737,16 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
       keywords: [`${current.title} complaints`, `${current.title} ombudsman complaints`, `${current.title} upheld complaints`, `${current.title} complaint analysis`],
     },
     lastUpdated: current.latestDecisionDate,
-  });
+  }), override);
 }, ['insights-product-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
   const [types, firms, products, years] = await Promise.all([getTypeArchive(), getFirmArchive(), getProductArchive(), getYearArchive()]);
   const current = types.find((item) => item.slug === slug);
   if (!current) return null;
+  const overrides = await getPublicationOverrides();
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) return null;
 
   const data = await queryTypeInsightData(current.title);
   if (!data) return null;
@@ -683,7 +831,7 @@ export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<I
     { title: 'Browse all complaint themes', href: '/insights/types', description: 'See the full archive of complaint-theme analysis pages.' },
   ]);
 
-  return buildPage({
+  return applyPageOverride(buildPage({
     kind: 'type',
     slug: current.slug,
     entityKey: current.entityKey,
@@ -717,7 +865,7 @@ export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<I
       keywords: [`${current.title} complaints`, `${current.title} ombudsman`, `${current.title} complaint type`, `${current.title} complaint theme`],
     },
     lastUpdated: current.latestDecisionDate,
-  });
+  }), override);
 }, ['insights-type-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getYearProductInsightPage = unstable_cache(async (year: number, productSlug: string): Promise<InsightPageData | null> => {
@@ -732,6 +880,9 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
   ]);
   const current = yearProducts.find((item) => item.href === path);
   if (!current) return null;
+  const overrides = await getPublicationOverrides();
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) return null;
 
   const { left: yearKey, right: product } = splitCompositeKey(current.entityKey);
   const parsedYear = Number.parseInt(yearKey, 10);
@@ -830,7 +981,7 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
     { title: 'Browse all year and product pages', href: '/insights/year-products', description: 'See the archive of curated year-product analysis pages.' },
   ]);
 
-  return buildPage({
+  return applyPageOverride(buildPage({
     kind: 'year-product',
     slug: `${parsedYear}-${productSlug}`,
     entityKey: current.entityKey,
@@ -865,7 +1016,7 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
       keywords: [`${product} complaints ${parsedYear}`, `${product} ombudsman ${parsedYear}`, `${product} complaints in ${parsedYear}`, `${parsedYear} ${product} complaints`],
     },
     lastUpdated: current.latestDecisionDate,
-  });
+  }), override);
 }, ['insights-year-product-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string, productSlug: string): Promise<InsightPageData | null> => {
@@ -880,6 +1031,9 @@ export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string,
   ]);
   const current = firmProducts.find((item) => item.href === path);
   if (!current) return null;
+  const overrides = await getPublicationOverrides();
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) return null;
 
   const { left: firm, right: product } = splitCompositeKey(current.entityKey);
   const filters = { ...EMPTY_FILTERS, firms: [firm], products: [product] };
@@ -975,7 +1129,7 @@ export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string,
     { title: 'Browse all firm and product pages', href: '/insights/firm-products', description: 'See the archive of curated firm-product analysis pages.' },
   ]);
 
-  return buildPage({
+  return applyPageOverride(buildPage({
     kind: 'firm-product',
     slug: `${firmSlug}-${productSlug}`,
     entityKey: current.entityKey,
@@ -1010,7 +1164,7 @@ export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string,
       keywords: [`${firm} ${product} complaints`, `${firm} ${product} ombudsman`, `${firm} complaints ${product}`, `${product} complaints ${firm}`],
     },
     lastUpdated: current.latestDecisionDate,
-  });
+  }), override);
 }, ['insights-firm-product-page'], { revalidate: REVALIDATE_SECONDS });
 
 async function queryYearArchive(): Promise<InsightArchiveItem[]> {
@@ -1364,8 +1518,146 @@ async function queryArchiveRows(sql: string, params: unknown[]): Promise<Archive
   return DatabaseClient.query<ArchiveRow>(sql, params);
 }
 
+async function queryPublicationOverrides(): Promise<InsightPublicationOverride[]> {
+  ensureDatabaseConfigured();
+  try {
+    const rows = await DatabaseClient.query<InsightOverrideRow>(
+      `
+        SELECT
+          kind,
+          entity_key,
+          is_published,
+          is_noindex,
+          title_override,
+          description_override,
+          hero_dek_override,
+          featured_rank,
+          updated_at
+        FROM insight_publication_overrides
+      `
+    );
+    return rows.map((row) => mapInsightOverride(row));
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('does not exist') || message.includes('undefined_table')) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 function buildPage(data: InsightPageData): InsightPageData {
   return data;
+}
+
+function mapInsightOverride(row: InsightOverrideRow): InsightPublicationOverride {
+  return {
+    kind: String(row.kind || 'year') as InsightArchiveItem['kind'],
+    entityKey: String(row.entity_key || ''),
+    isPublished: row.is_published !== false,
+    isNoindex: Boolean(row.is_noindex),
+    titleOverride: sanitizeNullableText(row.title_override),
+    descriptionOverride: sanitizeNullableText(row.description_override),
+    heroDekOverride: sanitizeNullableText(row.hero_dek_override),
+    featuredRank: row.featured_rank == null ? null : toInt(row.featured_rank),
+    updatedAt: toIsoDateTime(row.updated_at),
+  };
+}
+
+function findOverride(overrides: InsightPublicationOverride[], kind: InsightArchiveItem['kind'], entityKey: string): InsightPublicationOverride | null {
+  return overrides.find((override) => override.kind === kind && override.entityKey === entityKey) || null;
+}
+
+function applyArchiveOverrides(items: InsightArchiveItem[], overrides: InsightPublicationOverride[]): InsightArchiveItem[] {
+  return items
+    .map((item) => applyArchiveOverride(item, findOverride(overrides, item.kind, item.entityKey)))
+    .filter((item): item is InsightArchiveItem => Boolean(item));
+}
+
+function applyArchiveOverride(item: InsightArchiveItem, override: InsightPublicationOverride | null): InsightArchiveItem | null {
+  if (override && !override.isPublished) {
+    return null;
+  }
+
+  return {
+    ...item,
+    title: override?.titleOverride || item.title,
+    summary: override?.descriptionOverride || item.summary,
+    featuredRank: override?.featuredRank ?? item.featuredRank ?? null,
+    isNoindex: override?.isNoindex ?? item.isNoindex ?? false,
+  };
+}
+
+function applyPageOverride(page: InsightPageData, override: InsightPublicationOverride | null): InsightPageData {
+  if (!override) return page;
+
+  const title = override.titleOverride || page.title;
+  const description = override.descriptionOverride || page.description;
+
+  return {
+    ...page,
+    title,
+    description,
+    hero: {
+      ...page.hero,
+      title: override.titleOverride || page.hero.title,
+      dek: override.heroDekOverride || page.hero.dek,
+    },
+    seo: {
+      ...page.seo,
+      title: override.titleOverride ? `${override.titleOverride} | FOS Insights` : page.seo.title,
+      description,
+    },
+    noindex: override.isNoindex,
+  };
+}
+
+async function getArchivesForKind(kind: InsightArchiveItem['kind']): Promise<InsightArchiveItem[]> {
+  switch (kind) {
+    case 'year':
+      return getYearArchive();
+    case 'firm':
+      return getFirmArchive();
+    case 'product':
+      return getProductArchive();
+    case 'type':
+      return getTypeArchive();
+    case 'year-product':
+      return getYearProductArchive();
+    case 'firm-product':
+      return getFirmProductArchive();
+    default:
+      return [];
+  }
+}
+
+function selectFeaturedInsights(
+  defaults: Array<InsightArchiveItem | undefined>,
+  collections: InsightArchiveItem[][]
+): InsightArchiveItem[] {
+  const all = collections.flat().filter((item) => !item.isNoindex);
+  const ranked = all
+    .filter((item) => item.featuredRank != null)
+    .sort((a, b) => {
+      const rankA = a.featuredRank ?? Number.MAX_SAFE_INTEGER;
+      const rankB = b.featuredRank ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return b.totalCases - a.totalCases;
+    });
+
+  if (ranked.length > 0) {
+    return ranked.slice(0, 6);
+  }
+
+  const seen = new Set<string>();
+  const items = defaults.filter((item): item is InsightArchiveItem => Boolean(item));
+  const output: InsightArchiveItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.href) || item.isNoindex) continue;
+    seen.add(item.href);
+    output.push(item);
+  }
+  return output.slice(0, 6);
 }
 
 function buildSlugMap(items: Array<{ entityKey: string; title: string }>): Map<string, string> {
@@ -1510,6 +1802,11 @@ function nullable(value: unknown): string | null {
   return value == null ? null : String(value);
 }
 
+function sanitizeNullableText(value: unknown): string | null {
+  const normalized = value == null ? '' : String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function toInt(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : 0;
   const parsed = Number.parseInt(String(value || '0'), 10);
@@ -1527,6 +1824,13 @@ function toIsoDate(value: unknown): string | null {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
+}
+
+function toIsoDateTime(value: unknown): string | null {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
 }
 
 function normalizeOutcomeLabel(value: string): string {
