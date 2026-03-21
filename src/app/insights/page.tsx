@@ -6,11 +6,11 @@ import { absoluteUrl } from '@/lib/insights/seo';
 
 export const metadata: Metadata = {
   title: 'FOS Insights | Public Ombudsman Complaint Analysis',
-  description: 'Public SEO-friendly Financial Ombudsman complaint analysis by year, firm, product, and complaint theme.',
+  description: 'Public SEO-friendly Financial Ombudsman complaint analysis by year, firm, product, complaint theme, and curated cross-sections.',
   alternates: { canonical: absoluteUrl('/insights') },
   openGraph: {
     title: 'FOS Insights',
-    description: 'Public SEO-friendly Financial Ombudsman complaint analysis by year, firm, product, and complaint theme.',
+    description: 'Public SEO-friendly Financial Ombudsman complaint analysis by year, firm, product, complaint theme, and curated cross-sections.',
     url: absoluteUrl('/insights'),
     type: 'website',
   },

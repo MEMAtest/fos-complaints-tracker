@@ -105,8 +105,10 @@ SEO-friendly public analysis pages are available under:
 - `/insights/firms`
 - `/insights/products`
 - `/insights/types`
+- `/insights/year-products`
+- `/insights/firm-products`
 
-These pages are generated from the same FOS analytics corpus and publish public year, firm, product, and complaint-theme analysis without requiring sign-in.
+These pages are generated from the same FOS analytics corpus and publish public year, firm, product, complaint-theme, and curated cross-section analysis without requiring sign-in.
 
 ## Debug endpoint access
 

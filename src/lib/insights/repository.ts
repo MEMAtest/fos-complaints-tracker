@@ -28,6 +28,8 @@ const MIN_FIRM_CASES = 250;
 const MAX_FIRM_PAGES = 250;
 const MIN_PRODUCT_CASES = 100;
 const MIN_TYPE_CASES = 100;
+const MIN_YEAR_PRODUCT_CASES = 500;
+const MIN_FIRM_PRODUCT_CASES = 1000;
 const MAX_REPRESENTATIVE_CASES = 5;
 
 const EMPTY_FILTERS: FOSDashboardFilters = {
@@ -62,29 +64,39 @@ type RankRow = {
   count?: number | string | null;
 };
 
+type CompositeArchiveRow = {
+  primary_label: string | number | null;
+  secondary_label: string | null;
+  total_cases: number | string | null;
+  upheld_rate: number | string | null;
+  latest_decision_date: string | Date | null;
+};
+
 const getYearArchive = unstable_cache(async () => queryYearArchive(), ['insights-year-archive'], { revalidate: REVALIDATE_SECONDS });
 const getFirmArchive = unstable_cache(async () => queryFirmArchive(), ['insights-firm-archive'], { revalidate: REVALIDATE_SECONDS });
 const getProductArchive = unstable_cache(async () => queryProductArchive(), ['insights-product-archive'], { revalidate: REVALIDATE_SECONDS });
 const getTypeArchive = unstable_cache(async () => queryTypeArchive(), ['insights-type-archive'], { revalidate: REVALIDATE_SECONDS });
+const getYearProductArchive = unstable_cache(async () => queryYearProductArchive(), ['insights-year-product-archive'], { revalidate: REVALIDATE_SECONDS });
+const getFirmProductArchive = unstable_cache(async () => queryFirmProductArchive(), ['insights-firm-product-archive'], { revalidate: REVALIDATE_SECONDS });
 
 export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLandingData> => {
-  const [dashboard, years, firms, products, types] = await Promise.all([
-    getDashboardSnapshot({ ...EMPTY_FILTERS }, { includeCases: false }),
-    getYearArchive(),
-    getFirmArchive(),
-    getProductArchive(),
-    getTypeArchive(),
-  ]);
+  const dashboard = await getDashboardSnapshot({ ...EMPTY_FILTERS }, { includeCases: false });
+  const years = await getYearArchive();
+  const firms = await getFirmArchive();
+  const products = await getProductArchive();
+  const types = await getTypeArchive();
+  const yearProducts = await getYearProductArchive();
+  const firmProducts = await getFirmProductArchive();
 
   const yearsCovered = years.length;
-  const publishedPages = years.length + firms.length + products.length + types.length;
+  const publishedPages = years.length + firms.length + products.length + types.length + yearProducts.length + firmProducts.length;
   const latestYear = years[0];
 
   return {
     hero: {
       eyebrow: 'Public FOS Insights',
-      title: 'Search-friendly ombudsman complaint analysis by year, firm, product, and theme.',
-      dek: 'A public editorial layer over the Financial Ombudsman decision corpus, generated from the same intelligence model that powers the workspace.',
+      title: 'Search-friendly ombudsman complaint analysis by year, firm, product, theme, and curated cross-section.',
+      dek: 'A public editorial layer over the Financial Ombudsman decision corpus, generated from the same intelligence model that powers the workspace and extended with stronger year-product and firm-product pages.',
     },
     metrics: [
       metric('Published decisions', formatNumber(dashboard.overview.totalCases), `${yearsCovered} years currently covered`),
@@ -127,6 +139,18 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
         description: 'Root-cause and complaint-theme pages built from the recurring issues tagged across published decisions.',
         items: types.slice(0, 6),
       },
+      {
+        title: 'Year + product analysis',
+        href: '/insights/year-products',
+        description: 'Curated cross-pages for the strongest year and product combinations in the published corpus.',
+        items: yearProducts.slice(0, 6),
+      },
+      {
+        title: 'Firm + product analysis',
+        href: '/insights/firm-products',
+        description: 'Curated cross-pages for firms with strong product-specific complaint footprints in published decisions.',
+        items: firmProducts.slice(0, 6),
+      },
     ],
     lastUpdated: dashboard.overview.latestDecisionDate,
   };
@@ -148,19 +172,28 @@ export async function getPublishedTypeInsights(): Promise<InsightArchiveItem[]> 
   return getTypeArchive();
 }
 
+export async function getPublishedYearProductInsights(): Promise<InsightArchiveItem[]> {
+  return getYearProductArchive();
+}
+
+export async function getPublishedFirmProductInsights(): Promise<InsightArchiveItem[]> {
+  return getFirmProductArchive();
+}
+
 export const getYearInsightPage = unstable_cache(async (year: number): Promise<InsightPageData | null> => {
   const years = await getYearArchive();
   const current = years.find((item) => item.entityKey === String(year));
   if (!current) return null;
 
   const filters = { ...EMPTY_FILTERS, years: [year] };
-  const [dashboard, analysis, cases, firms, products, types] = await Promise.all([
+  const [dashboard, analysis, cases, firms, products, types, yearProducts] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getAnalysisSnapshot(filters),
     getCaseList(filters),
     getFirmArchive(),
     getProductArchive(),
     getTypeArchive(),
+    getYearProductArchive(),
   ]);
 
   const previous = years.find((item) => item.entityKey === String(year - 1));
@@ -244,6 +277,7 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
   const relatedLinks = compactLinks([
     previous ? linkForItem(previous, `Read the ${year - 1} annual analysis`) : null,
     topProduct ? findLink(products, topProduct.product, `Explore ${topProduct.product} complaint analysis`) : null,
+    topProduct ? findCompositeLink(yearProducts, String(year), topProduct.product, `See ${topProduct.product} in ${year}`) : null,
     topFirm ? findLink(firms, topFirm.firm, `Explore ${topFirm.firm} complaint analysis`) : null,
     topTheme ? findLink(types, topTheme.label, `Explore the ${topTheme.label.toLowerCase()} complaint-theme page`) : null,
     { title: 'Browse all annual pages', href: '/insights/years', description: 'See the full archive of annual FOS complaint analysis pages.' },
@@ -287,7 +321,7 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
 }, ['insights-year-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [firms, products, types, years] = await Promise.all([getFirmArchive(), getProductArchive(), getTypeArchive(), getYearArchive()]);
+  const [firms, products, types, years, firmProducts] = await Promise.all([getFirmArchive(), getProductArchive(), getTypeArchive(), getYearArchive(), getFirmProductArchive()]);
   const current = firms.find((item) => item.slug === slug);
   if (!current) return null;
 
@@ -374,6 +408,7 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
 
   const relatedLinks = compactLinks([
     topProduct ? findLink(products, topProduct.product, `Explore ${topProduct.product} analysis`) : null,
+    topProduct ? findCompositeLink(firmProducts, current.title, topProduct.product, `See ${current.title} in ${topProduct.product}`) : null,
     topTheme ? findLink(types, topTheme.label, `Explore the ${topTheme.label.toLowerCase()} complaint-theme page`) : null,
     latestYear ? findLink(years, String(latestYear.year), `Read the ${latestYear.year} year analysis`) : null,
     { title: 'Browse all firm pages', href: '/insights/firms', description: 'See the wider archive of firm-level complaint analysis pages.' },
@@ -417,7 +452,14 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
 }, ['insights-firm-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getProductInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [products, firms, types, years] = await Promise.all([getProductArchive(), getFirmArchive(), getTypeArchive(), getYearArchive()]);
+  const [products, firms, types, years, yearProducts, firmProducts] = await Promise.all([
+    getProductArchive(),
+    getFirmArchive(),
+    getTypeArchive(),
+    getYearArchive(),
+    getYearProductArchive(),
+    getFirmProductArchive(),
+  ]);
   const current = products.find((item) => item.slug === slug);
   if (!current) return null;
 
@@ -509,8 +551,10 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
 
   const relatedLinks = compactLinks([
     topFirm ? findLink(firms, topFirm.firm, `Explore ${topFirm.firm} analysis`) : null,
+    topFirm ? findCompositeLink(firmProducts, topFirm.firm, current.title, `See ${topFirm.firm} in ${current.title}`) : null,
     topTheme ? findLink(types, topTheme.label, `Explore the ${topTheme.label.toLowerCase()} complaint-theme page`) : null,
     latestYear ? findLink(years, String(latestYear.year), `Read the ${latestYear.year} year analysis`) : null,
+    latestYear ? findCompositeLink(yearProducts, String(latestYear.year), current.title, `See ${current.title} in ${latestYear.year}`) : null,
     { title: 'Browse all product pages', href: '/insights/products', description: 'See the full archive of product-level analysis pages.' },
   ]);
 
@@ -676,6 +720,299 @@ export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<I
   });
 }, ['insights-type-page'], { revalidate: REVALIDATE_SECONDS });
 
+export const getYearProductInsightPage = unstable_cache(async (year: number, productSlug: string): Promise<InsightPageData | null> => {
+  const path = `/insights/year/${year}/product/${productSlug}`;
+  const [yearProducts, years, products, firms, types, firmProducts] = await Promise.all([
+    getYearProductArchive(),
+    getYearArchive(),
+    getProductArchive(),
+    getFirmArchive(),
+    getTypeArchive(),
+    getFirmProductArchive(),
+  ]);
+  const current = yearProducts.find((item) => item.href === path);
+  if (!current) return null;
+
+  const { left: yearKey, right: product } = splitCompositeKey(current.entityKey);
+  const parsedYear = Number.parseInt(yearKey, 10);
+  if (!Number.isFinite(parsedYear)) return null;
+
+  const filters = { ...EMPTY_FILTERS, years: [parsedYear], products: [product] };
+  const [dashboard, analysis, advisor, cases] = await Promise.all([
+    getDashboardSnapshot(filters, { includeCases: false }),
+    getAnalysisSnapshot(filters),
+    getAdvisorBrief({ product, rootCause: null, freeText: '' }),
+    getCaseList(filters),
+  ]);
+
+  const yearPage = findItemByTitle(years, String(parsedYear));
+  const productPage = findItemByTitle(products, product);
+  const topFirm = dashboard.firms[0];
+  const topTheme = dashboard.rootCauses[0];
+  const exactYearProduct = analysis.yearProductOutcome.find((row) => row.year === parsedYear && row.product === product);
+
+  const sections: InsightNarrativeSection[] = [
+    {
+      key: 'overview',
+      title: `${product} in ${parsedYear}`,
+      paragraphs: [
+        `${formatNumber(dashboard.overview.totalCases)} published decisions in the corpus sit in ${product} for ${parsedYear}. ${formatPercent(dashboard.overview.upheldRate)} of those decisions were upheld, which makes this a strong public cross-section for understanding how one product behaved in one specific year.`,
+        topFirm
+          ? `${topFirm.firm} is the most visible firm inside this year-product slice, with ${formatNumber(topFirm.total)} published decisions.`
+          : `No single firm dominates this year-product slice strongly enough to stand alone.`,
+      ],
+      bullets: buildBullets([
+        exactYearProduct ? `${parsedYear}: ${formatNumber(exactYearProduct.total)} decisions, ${formatPercent(exactYearProduct.upheldRate)} upheld` : null,
+        topTheme ? `Leading complaint theme: ${topTheme.label}` : null,
+        dashboard.precedents[0] ? `Leading precedent signal: ${dashboard.precedents[0].label}` : null,
+      ]),
+    },
+    {
+      key: 'concentration',
+      title: 'Firm concentration and issue profile',
+      paragraphs: [
+        dashboard.firms.length > 0
+          ? `${joinLabels(dashboard.firms.map((item) => item.firm), 3)} are the firms most often associated with ${product} complaints in ${parsedYear}. This gives a much tighter public view than the standalone year or product pages alone.`
+          : `Firm concentration was too diffuse to create a strong hierarchy in this slice.`,
+        dashboard.rootCauses.length > 0
+          ? `${joinLabels(dashboard.rootCauses.map((item) => item.label.toLowerCase()), 3)} are the strongest complaint-theme signals in this year-product combination.`
+          : `Complaint-theme tagging does not expose a strong recurring issue cluster in this slice.`,
+      ],
+      bullets: dashboard.firms.slice(0, 5).map((item) => `${item.firm}: ${formatNumber(item.total)} decisions, ${formatPercent(item.upheldRate)} upheld`),
+    },
+    {
+      key: 'handling',
+      title: 'Handling implications and precedent context',
+      paragraphs: [
+        advisor?.recommendedActions?.length
+          ? `The advisory layer for ${product} points to recurring handling implications here, including ${joinLabels(advisor.recommendedActions.map((item) => item.item.toLowerCase()), 3)}.`
+          : dashboard.precedents.length > 0
+            ? `${joinLabels(dashboard.precedents.map((item) => item.label), 3)} are the clearest precedent signals in this year-product slice.`
+            : `The advisory and precedent layers do not expose one clear repeated handling implication here.`,
+        advisor?.whatLoses?.[0]
+          ? `The strongest “what loses” signal for ${product} is ${advisor.whatLoses[0].theme.toLowerCase()}, which provides useful public context for how complaints in this area have tended to fail.`
+          : `There is no strong “what loses” signal exposed for this product at the current advisory granularity.`,
+      ],
+      bullets: buildBullets([
+        advisor?.whatWins?.[0] ? `What tends to win: ${advisor.whatWins[0].theme}` : null,
+        advisor?.whatLoses?.[0] ? `What tends to lose: ${advisor.whatLoses[0].theme}` : null,
+        topTheme ? `Leading complaint theme: ${topTheme.label}` : null,
+      ]),
+    },
+  ];
+
+  const rankedLists = [
+    ranked('Top firms', 'Firms most often associated with this product in this year.', dashboard.firms.map((item) => archiveRank(item.firm, item.total, `${formatPercent(item.upheldRate)} upheld`, firms))),
+    ranked('Complaint themes', 'Root-cause tags used as the public complaint-theme layer for this year-product slice.', dashboard.rootCauses.map((item) => archiveRank(item.label, item.count, 'Tagged theme', types))),
+    ranked('Precedent signals', 'Frequently surfaced precedent or rule signals in this cross-section.', dashboard.precedents.map((item) => ({ label: item.label, value: item.count, valueLabel: formatNumber(item.count), helper: 'Referenced decisions' }))),
+  ].filter((section) => section.items.length > 0);
+
+  const faq: InsightFaqItem[] = [
+    {
+      question: `How many ${product} ombudsman decisions were published in ${parsedYear}?`,
+      answer: `${formatNumber(dashboard.overview.totalCases)} published decisions in this dataset sit within ${product} for ${parsedYear}.`,
+    },
+    {
+      question: `What was the upheld rate for ${product} in ${parsedYear}?`,
+      answer: `${formatPercent(dashboard.overview.upheldRate)} of the published decisions in this year-product slice were upheld.`,
+    },
+    {
+      question: `Which firms appear most often in ${product} complaints in ${parsedYear}?`,
+      answer: topFirm ? `${topFirm.firm} is the most visible firm in the published decision set for this year-product slice.` : `No single firm dominates this year-product slice strongly enough to stand alone.`,
+    },
+  ];
+
+  const relatedLinks = compactLinks([
+    yearPage ? linkForItem(yearPage, `Read the full ${parsedYear} year analysis`) : null,
+    productPage ? linkForItem(productPage, `Read the standalone ${product} product analysis`) : null,
+    topFirm ? findCompositeLink(firmProducts, topFirm.firm, product, `See ${topFirm.firm} in ${product}`) : null,
+    topTheme ? findLink(types, topTheme.label, `Explore the ${topTheme.label.toLowerCase()} complaint-theme page`) : null,
+    { title: 'Browse all year and product pages', href: '/insights/year-products', description: 'See the archive of curated year-product analysis pages.' },
+  ]);
+
+  return buildPage({
+    kind: 'year-product',
+    slug: `${parsedYear}-${productSlug}`,
+    entityKey: current.entityKey,
+    title: `${product} complaints in ${parsedYear}`,
+    description: `${formatNumber(dashboard.overview.totalCases)} published FOS decisions in ${product} during ${parsedYear}, with upheld-rate context, firm concentration, complaint themes, and representative cases.`,
+    canonicalPath: current.href,
+    hero: {
+      eyebrow: 'Year + product analysis',
+      title: `${product} complaints in ${parsedYear}`,
+      dek: `A curated public analysis of ${product} in ${parsedYear}, combining annual and product-level signals from the published Financial Ombudsman decision corpus.`,
+    },
+    metrics: [
+      metric('Published decisions', formatNumber(dashboard.overview.totalCases), 'Decision volume in this year-product slice'),
+      metric('Upheld rate', formatPercent(dashboard.overview.upheldRate), `${formatNumber(dashboard.overview.upheldCases)} upheld decisions`),
+      metric('Leading firm', topFirm?.firm || 'n/a', topFirm ? `${formatNumber(topFirm.total)} decisions` : 'No dominant firm signal'),
+      metric('Leading complaint theme', topTheme?.label || 'n/a', topTheme ? `${formatNumber(topTheme.count)} tagged decisions` : 'No dominant theme signal'),
+    ],
+    sections,
+    rankedLists,
+    representativeCases: mapCases(cases.items),
+    faq,
+    relatedLinks,
+    breadcrumbs: [
+      { title: 'Insights', href: '/insights' },
+      { title: 'Year + Product', href: '/insights/year-products' },
+      { title: String(parsedYear), href: yearPage?.href || `/insights/year/${parsedYear}` },
+      { title: product, href: current.href },
+    ],
+    seo: {
+      title: `${product} complaints in ${parsedYear} | FOS Insights`,
+      description: `${formatNumber(dashboard.overview.totalCases)} published FOS decisions in ${product} during ${parsedYear}. Explore upheld rates, leading firms, complaint themes, and representative cases.`,
+      keywords: [`${product} complaints ${parsedYear}`, `${product} ombudsman ${parsedYear}`, `${product} complaints in ${parsedYear}`, `${parsedYear} ${product} complaints`],
+    },
+    lastUpdated: current.latestDecisionDate,
+  });
+}, ['insights-year-product-page'], { revalidate: REVALIDATE_SECONDS });
+
+export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string, productSlug: string): Promise<InsightPageData | null> => {
+  const path = `/insights/firm/${firmSlug}/product/${productSlug}`;
+  const [firmProducts, firms, products, years, types, yearProducts] = await Promise.all([
+    getFirmProductArchive(),
+    getFirmArchive(),
+    getProductArchive(),
+    getYearArchive(),
+    getTypeArchive(),
+    getYearProductArchive(),
+  ]);
+  const current = firmProducts.find((item) => item.href === path);
+  if (!current) return null;
+
+  const { left: firm, right: product } = splitCompositeKey(current.entityKey);
+  const filters = { ...EMPTY_FILTERS, firms: [firm], products: [product] };
+  const [dashboard, comparison, advisor, cases] = await Promise.all([
+    getDashboardSnapshot(filters, { includeCases: false }),
+    getComparisonSnapshot([firm], { ...EMPTY_FILTERS, products: [product] }),
+    getAdvisorBrief({ product, rootCause: null, freeText: '' }),
+    getCaseList(filters),
+  ]);
+
+  const firmPage = findItemByTitle(firms, firm);
+  const productPage = findItemByTitle(products, product);
+  const topTheme = dashboard.rootCauses[0];
+  const latestTrend = dashboard.trends[dashboard.trends.length - 1];
+  const firmComparison = comparison.firms[0];
+
+  const sections: InsightNarrativeSection[] = [
+    {
+      key: 'overview',
+      title: `${firm} in ${product}`,
+      paragraphs: [
+        `${firm} appears in ${formatNumber(dashboard.overview.totalCases)} published decisions in ${product} across this corpus. ${formatPercent(dashboard.overview.upheldRate)} of those decisions were upheld, making this one of the strongest public firm-product slices available for search and research.`,
+        latestTrend
+          ? `The latest year represented in this slice is ${latestTrend.year}, with ${formatNumber(latestTrend.total)} published decisions and an upheld rate of ${formatPercent(calculateTrendUpheldRate(latestTrend))}.`
+          : `The time series for this firm-product slice is not strong enough to isolate one latest-year signal.`,
+      ],
+      bullets: buildBullets([
+        topTheme ? `Leading complaint theme: ${topTheme.label}` : null,
+        dashboard.precedents[0] ? `Leading precedent signal: ${dashboard.precedents[0].label}` : null,
+        advisor?.riskAssessment?.riskLevel ? `Advisor risk signal for ${product}: ${advisor.riskAssessment.riskLevel.replace(/_/g, ' ')}` : null,
+      ]),
+    },
+    {
+      key: 'yearly-pattern',
+      title: 'How the slice behaves over time',
+      paragraphs: [
+        dashboard.trends.length > 1
+          ? `${firm} has a multi-year published decision trail in ${product}, which makes it possible to judge whether complaint exposure has been persistent or concentrated into a smaller set of years.`
+          : `The public history for ${firm} in ${product} is too narrow to support a strong multi-year narrative.`,
+        firmComparison?.topProducts?.length
+          ? `${product} remains a meaningful part of ${firm}'s published complaint exposure, but this page isolates just that one product line instead of blending it with the firm's wider footprint.`
+          : `The wider comparison layer does not add much extra product context beyond this firm-product slice itself.`,
+      ],
+      bullets: dashboard.trends.slice(-5).reverse().map((item) => `${item.year}: ${formatNumber(item.total)} decisions, ${formatPercent(calculateTrendUpheldRate(item))} upheld`),
+    },
+    {
+      key: 'themes-and-handling',
+      title: 'Themes, precedent context, and handling implications',
+      paragraphs: [
+        topTheme
+          ? `${topTheme.label} is the clearest complaint-theme signal in this firm-product slice, which helps explain what tends to drive published ombudsman decisions here.`
+          : `Complaint-theme tagging does not expose a single dominant issue cluster for this firm-product slice.`,
+        advisor?.recommendedActions?.length
+          ? `The product advisory layer also points to recurring handling implications, including ${joinLabels(advisor.recommendedActions.map((item) => item.item.toLowerCase()), 3)}.`
+          : dashboard.precedents.length > 0
+            ? `${joinLabels(dashboard.precedents.map((item) => item.label), 3)} are the clearest precedent signals in this slice.`
+            : `Neither the advisory nor precedent layer exposes a strong repeated handling implication here.`,
+      ],
+      bullets: buildBullets([
+        advisor?.whatWins?.[0] ? `What tends to win: ${advisor.whatWins[0].theme}` : null,
+        advisor?.whatLoses?.[0] ? `What tends to lose: ${advisor.whatLoses[0].theme}` : null,
+        dashboard.rootCauses[1] ? `Second complaint theme: ${dashboard.rootCauses[1].label}` : null,
+      ]),
+    },
+  ];
+
+  const rankedLists = [
+    ranked('Year breakdown', 'Recent years in which this firm-product slice appears in the published decision corpus.', dashboard.trends.slice().reverse().map((item) => ({ label: String(item.year), value: item.total, valueLabel: formatNumber(item.total), helper: `${formatPercent(calculateTrendUpheldRate(item))} upheld`, href: findCompositeLink(yearProducts, String(item.year), product)?.href }))),
+    ranked('Complaint themes', 'Root-cause tags used as the public complaint-theme layer for this firm-product slice.', dashboard.rootCauses.map((item) => archiveRank(item.label, item.count, 'Tagged theme', types))),
+    ranked('Precedent signals', 'Frequently surfaced precedent or rule signals in this firm-product slice.', dashboard.precedents.map((item) => ({ label: item.label, value: item.count, valueLabel: formatNumber(item.count), helper: 'Referenced decisions' }))),
+  ].filter((section) => section.items.length > 0);
+
+  const faq: InsightFaqItem[] = [
+    {
+      question: `How often are ${product} complaints involving ${firm} upheld?`,
+      answer: `${formatPercent(dashboard.overview.upheldRate)} of the published decisions in this firm-product slice were upheld.`,
+    },
+    {
+      question: `What complaint themes recur for ${firm} in ${product}?`,
+      answer: dashboard.rootCauses.length > 0 ? `${joinLabels(dashboard.rootCauses.map((item) => item.label.toLowerCase()), 3)} are the strongest recurring complaint-theme signals.` : `The complaint-theme layer is too diffuse to isolate one recurring issue confidently.`,
+    },
+    {
+      question: `Does this page cover all complaints involving ${firm}?`,
+      answer: `No. This page isolates only the published decisions involving ${firm} within ${product}. For the wider profile, use the standalone firm page.`,
+    },
+  ];
+
+  const relatedLinks = compactLinks([
+    firmPage ? linkForItem(firmPage, `Read the standalone ${firm} firm analysis`) : null,
+    productPage ? linkForItem(productPage, `Read the standalone ${product} product analysis`) : null,
+    latestTrend ? findCompositeLink(yearProducts, String(latestTrend.year), product, `See ${product} in ${latestTrend.year}`) : null,
+    topTheme ? findLink(types, topTheme.label, `Explore the ${topTheme.label.toLowerCase()} complaint-theme page`) : null,
+    { title: 'Browse all firm and product pages', href: '/insights/firm-products', description: 'See the archive of curated firm-product analysis pages.' },
+  ]);
+
+  return buildPage({
+    kind: 'firm-product',
+    slug: `${firmSlug}-${productSlug}`,
+    entityKey: current.entityKey,
+    title: `${firm} ${product} complaints analysis`,
+    description: `${formatNumber(dashboard.overview.totalCases)} published FOS decisions involving ${firm} in ${product}, with upheld-rate context, complaint themes, precedent signals, and representative cases.`,
+    canonicalPath: current.href,
+    hero: {
+      eyebrow: 'Firm + product analysis',
+      title: `${firm} in ${product}`,
+      dek: `A curated public analysis of ${firm}'s published Financial Ombudsman decisions in ${product}, including outcome context, complaint themes, precedent signals, and representative cases.`,
+    },
+    metrics: [
+      metric('Published decisions', formatNumber(dashboard.overview.totalCases), 'Decision volume in this firm-product slice'),
+      metric('Upheld rate', formatPercent(dashboard.overview.upheldRate), `${formatNumber(dashboard.overview.upheldCases)} upheld decisions`),
+      metric('Latest active year', latestTrend ? String(latestTrend.year) : 'n/a', latestTrend ? `${formatNumber(latestTrend.total)} decisions` : 'No latest-year signal'),
+      metric('Leading complaint theme', topTheme?.label || 'n/a', topTheme ? `${formatNumber(topTheme.count)} tagged decisions` : 'No dominant theme signal'),
+    ],
+    sections,
+    rankedLists,
+    representativeCases: mapCases(cases.items),
+    faq,
+    relatedLinks,
+    breadcrumbs: [
+      { title: 'Insights', href: '/insights' },
+      { title: 'Firm + Product', href: '/insights/firm-products' },
+      { title: firm, href: firmPage?.href || `/insights/firm/${firmSlug}` },
+      { title: product, href: current.href },
+    ],
+    seo: {
+      title: `${firm} ${product} complaints analysis | FOS Insights`,
+      description: `${formatNumber(dashboard.overview.totalCases)} published FOS decisions involving ${firm} in ${product}. Explore upheld rates, complaint themes, precedent signals, and representative cases.`,
+      keywords: [`${firm} ${product} complaints`, `${firm} ${product} ombudsman`, `${firm} complaints ${product}`, `${product} complaints ${firm}`],
+    },
+    lastUpdated: current.latestDecisionDate,
+  });
+}, ['insights-firm-product-page'], { revalidate: REVALIDATE_SECONDS });
+
 async function queryYearArchive(): Promise<InsightArchiveItem[]> {
   const rows = await queryArchiveRows(
     `
@@ -750,6 +1087,92 @@ async function queryProductArchive(): Promise<InsightArchiveItem[]> {
     [MIN_PRODUCT_CASES]
   );
   return toArchiveItems('product', rows, (totalCases, upheldRate) => `${formatNumber(totalCases)} published decisions with ${formatPercent(upheldRate)} upheld.`);
+}
+
+async function queryYearProductArchive(): Promise<InsightArchiveItem[]> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+  const products = await getProductArchive();
+  const rows = await DatabaseClient.query<CompositeArchiveRow>(
+    `
+      SELECT
+        EXTRACT(YEAR FROM d.decision_date)::INT AS primary_label,
+        COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS secondary_label,
+        COUNT(*)::INT AS total_cases,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
+        MAX(d.decision_date) AS latest_decision_date
+      FROM fos_decisions d
+      WHERE d.decision_date IS NOT NULL
+      GROUP BY EXTRACT(YEAR FROM d.decision_date)::INT, COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')
+      HAVING COUNT(*) >= $1
+      ORDER BY total_cases DESC, primary_label DESC, secondary_label ASC
+    `,
+    [MIN_YEAR_PRODUCT_CASES]
+  );
+
+  return rows.flatMap((row) => {
+    const year = String(row.primary_label || '').trim();
+    const product = String(row.secondary_label || '').trim();
+    const productItem = findItemByTitle(products, product);
+    if (!year || !product || !productItem) return [];
+    const totalCases = toInt(row.total_cases);
+    const upheldRate = toNumber(row.upheld_rate);
+    return [{
+      kind: 'year-product',
+      slug: `${year}-${productItem.slug}`,
+      entityKey: `${year}::${product}`,
+      title: `${product} complaints in ${year}`,
+      href: `/insights/year/${year}/product/${productItem.slug}`,
+      totalCases,
+      upheldRate,
+      latestDecisionDate: toIsoDate(row.latest_decision_date),
+      summary: `${formatNumber(totalCases)} published decisions in ${product} during ${year}, with ${formatPercent(upheldRate)} upheld.`,
+      highlight: `${year} + product analysis`,
+    } satisfies InsightArchiveItem];
+  });
+}
+
+async function queryFirmProductArchive(): Promise<InsightArchiveItem[]> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+  const [firms, products] = await Promise.all([getFirmArchive(), getProductArchive()]);
+  const rows = await DatabaseClient.query<CompositeArchiveRow>(
+    `
+      SELECT
+        COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS primary_label,
+        COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS secondary_label,
+        COUNT(*)::INT AS total_cases,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
+        MAX(d.decision_date) AS latest_decision_date
+      FROM fos_decisions d
+      GROUP BY COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm'), COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified')
+      HAVING COUNT(*) >= $1
+      ORDER BY total_cases DESC, primary_label ASC, secondary_label ASC
+    `,
+    [MIN_FIRM_PRODUCT_CASES]
+  );
+
+  return rows.flatMap((row) => {
+    const firm = String(row.primary_label || '').trim();
+    const product = String(row.secondary_label || '').trim();
+    const firmItem = findItemByTitle(firms, firm);
+    const productItem = findItemByTitle(products, product);
+    if (!firm || !product || !firmItem || !productItem) return [];
+    const totalCases = toInt(row.total_cases);
+    const upheldRate = toNumber(row.upheld_rate);
+    return [{
+      kind: 'firm-product',
+      slug: `${firmItem.slug}-${productItem.slug}`,
+      entityKey: `${firm}::${product}`,
+      title: `${firm} · ${product}`,
+      href: `/insights/firm/${firmItem.slug}/product/${productItem.slug}`,
+      totalCases,
+      upheldRate,
+      latestDecisionDate: toIsoDate(row.latest_decision_date),
+      summary: `${formatNumber(totalCases)} published decisions involving ${firm} in ${product}, with ${formatPercent(upheldRate)} upheld.`,
+      highlight: 'Firm + product analysis',
+    } satisfies InsightArchiveItem];
+  });
 }
 
 async function queryTypeArchive(): Promise<InsightArchiveItem[]> {
@@ -1043,10 +1466,26 @@ function compactLinks(values: Array<InsightRelatedLink | null>): InsightRelatedL
   return output;
 }
 
+function splitCompositeKey(value: string): { left: string; right: string } {
+  const [left = '', ...rest] = value.split('::');
+  return { left, right: rest.join('::') };
+}
+
 function findLink(archive: InsightArchiveItem[], title: string, description: string): InsightRelatedLink | null {
   const item = findItemByTitle(archive, title);
   if (!item) return null;
   return linkForItem(item, description);
+}
+
+function findCompositeLink(archive: InsightArchiveItem[], left: string, right: string, description?: string): InsightRelatedLink | null {
+  const normalizedLeft = left.trim().toLowerCase();
+  const normalizedRight = right.trim().toLowerCase();
+  const item = archive.find((entry) => {
+    const composite = splitCompositeKey(entry.entityKey);
+    return composite.left.trim().toLowerCase() === normalizedLeft && composite.right.trim().toLowerCase() === normalizedRight;
+  });
+  if (!item) return null;
+  return linkForItem(item, description || item.summary);
 }
 
 function linkForItem(item: InsightArchiveItem, description: string): InsightRelatedLink {
@@ -1060,6 +1499,11 @@ function linkForItem(item: InsightArchiveItem, description: string): InsightRela
 function findItemByTitle(items: InsightArchiveItem[], title: string): InsightArchiveItem | undefined {
   const normalized = title.trim().toLowerCase();
   return items.find((item) => item.entityKey.trim().toLowerCase() === normalized || item.title.trim().toLowerCase() === normalized);
+}
+
+function calculateTrendUpheldRate(value: { upheld: number; total: number }): number {
+  if (!value.total) return 0;
+  return (value.upheld / value.total) * 100;
 }
 
 function nullable(value: unknown): string | null {

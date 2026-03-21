@@ -1,4 +1,4 @@
-export type InsightKind = 'year' | 'firm' | 'product' | 'type';
+export type InsightKind = 'year' | 'firm' | 'product' | 'type' | 'year-product' | 'firm-product';
 
 export type InsightArchiveItem = {
   kind: InsightKind;

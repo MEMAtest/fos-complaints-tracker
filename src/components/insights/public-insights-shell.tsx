@@ -7,6 +7,8 @@ const NAV_ITEMS = [
   { href: '/insights/firms', label: 'Firms' },
   { href: '/insights/products', label: 'Products' },
   { href: '/insights/types', label: 'Themes' },
+  { href: '/insights/year-products', label: 'Year + Product' },
+  { href: '/insights/firm-products', label: 'Firm + Product' },
 ] as const;
 
 export function PublicInsightsShell({ children }: { children: React.ReactNode }) {
@@ -65,6 +67,8 @@ export function PublicInsightsShell({ children }: { children: React.ReactNode })
             <Link href="/insights/firms" className="hover:text-slate-950">Browse firm analysis</Link>
             <Link href="/insights/products" className="hover:text-slate-950">Browse product analysis</Link>
             <Link href="/insights/types" className="hover:text-slate-950">Browse complaint themes</Link>
+            <Link href="/insights/year-products" className="hover:text-slate-950">Browse year and product analysis</Link>
+            <Link href="/insights/firm-products" className="hover:text-slate-950">Browse firm and product analysis</Link>
           </div>
         </div>
       </footer>
