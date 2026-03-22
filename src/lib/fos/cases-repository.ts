@@ -373,49 +373,38 @@ export async function getSimilarCases(caseId: string, limit = 10): Promise<FOSSi
       WHERE ${caseIdExpression('d')} = $1
          OR d.decision_reference = $1
       LIMIT 1
+    ),
+    scored AS (
+      SELECT
+        ${caseIdExpression('d')} AS case_id,
+        d.decision_reference,
+        d.decision_date,
+        NULLIF(BTRIM(d.business_name), '') AS firm_name,
+        NULLIF(BTRIM(d.product_sector), '') AS product_group,
+        ${outcomeExpression('d')} AS outcome,
+        d.decision_summary,
+        (
+          CASE WHEN COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $2 THEN 3 ELSE 0 END
+          + CASE WHEN COALESCE(NULLIF(BTRIM(d.business_name), ''), '') = $3 THEN 1 ELSE 0 END
+          + CASE WHEN ${outcomeExpression('d')} = $4 THEN 1 ELSE 0 END
+          + COALESCE((
+            SELECT COUNT(*)::INT * 2
+            FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
+            WHERE LOWER(BTRIM(rt.value)) = ANY($5::TEXT[])
+          ), 0)
+          + COALESCE((
+            SELECT COUNT(*)::INT
+            FROM jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
+            WHERE LOWER(BTRIM(p.value)) = ANY($6::TEXT[])
+          ), 0)
+        ) AS similarity_score
+      FROM fos_decisions d
+      WHERE ${caseIdExpression('d')} NOT IN (SELECT case_id FROM source_case)
+        AND d.decision_reference IS DISTINCT FROM $1
     )
-    SELECT
-      ${caseIdExpression('d')} AS case_id,
-      d.decision_reference,
-      d.decision_date,
-      NULLIF(BTRIM(d.business_name), '') AS firm_name,
-      NULLIF(BTRIM(d.product_sector), '') AS product_group,
-      ${outcomeExpression('d')} AS outcome,
-      d.decision_summary,
-      (
-        CASE WHEN COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $2 THEN 3 ELSE 0 END
-        + CASE WHEN COALESCE(NULLIF(BTRIM(d.business_name), ''), '') = $3 THEN 1 ELSE 0 END
-        + CASE WHEN ${outcomeExpression('d')} = $4 THEN 1 ELSE 0 END
-        + COALESCE((
-          SELECT COUNT(*)::INT * 2
-          FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
-          WHERE LOWER(BTRIM(rt.value)) = ANY($5::TEXT[])
-        ), 0)
-        + COALESCE((
-          SELECT COUNT(*)::INT
-          FROM jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
-          WHERE LOWER(BTRIM(p.value)) = ANY($6::TEXT[])
-        ), 0)
-      ) AS similarity_score
-    FROM fos_decisions d
-    WHERE ${caseIdExpression('d')} NOT IN (SELECT case_id FROM source_case)
-      AND d.decision_reference IS DISTINCT FROM $1
-    HAVING (
-      CASE WHEN COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $2 THEN 3 ELSE 0 END
-      + CASE WHEN COALESCE(NULLIF(BTRIM(d.business_name), ''), '') = $3 THEN 1 ELSE 0 END
-      + CASE WHEN ${outcomeExpression('d')} = $4 THEN 1 ELSE 0 END
-      + COALESCE((
-        SELECT COUNT(*)::INT * 2
-        FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
-        WHERE LOWER(BTRIM(rt.value)) = ANY($5::TEXT[])
-      ), 0)
-      + COALESCE((
-        SELECT COUNT(*)::INT
-        FROM jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
-        WHERE LOWER(BTRIM(p.value)) = ANY($6::TEXT[])
-      ), 0)
-    ) >= 3
-    ORDER BY similarity_score DESC, d.decision_date DESC NULLS LAST
+    SELECT * FROM scored
+    WHERE similarity_score >= 3
+    ORDER BY similarity_score DESC, decision_date DESC NULLS LAST
     LIMIT $7
     `,
     [
