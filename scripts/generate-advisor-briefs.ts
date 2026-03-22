@@ -343,27 +343,27 @@ async function generateBrief(product: string, rootCause: string | null): Promise
 
   if (WITH_AI && totalCases >= 10) {
     try {
-      // Fetch reasoning texts for AI analysis
+      // Fetch reasoning texts for AI analysis (shorter excerpts to reduce token count)
       const upheldTexts = await query<{ text: string }>(`
-        SELECT LEFT(COALESCE(ombudsman_reasoning_text, '') || E'\n' || COALESCE(decision_logic, ''), 600) AS text
+        SELECT LEFT(COALESCE(ombudsman_reasoning_text, '') || E'\n' || COALESCE(decision_logic, ''), 400) AS text
         FROM fos_decisions
         WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1
         ${rcFilter}
         AND ${outcomeExpr} = 'upheld'
         AND (ombudsman_reasoning_text IS NOT NULL OR decision_logic IS NOT NULL)
         ORDER BY decision_date DESC NULLS LAST
-        LIMIT 5
+        LIMIT 3
       `, params);
 
       const notUpheldTexts = await query<{ text: string }>(`
-        SELECT LEFT(COALESCE(ombudsman_reasoning_text, '') || E'\n' || COALESCE(decision_logic, ''), 600) AS text
+        SELECT LEFT(COALESCE(ombudsman_reasoning_text, '') || E'\n' || COALESCE(decision_logic, ''), 400) AS text
         FROM fos_decisions
         WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1
         ${rcFilter}
         AND ${outcomeExpr} = 'not_upheld'
         AND (ombudsman_reasoning_text IS NOT NULL OR decision_logic IS NOT NULL)
         ORDER BY decision_date DESC NULLS LAST
-        LIMIT 5
+        LIMIT 3
       `, params);
 
       const prompt = buildAiUserPrompt({
@@ -374,30 +374,48 @@ async function generateBrief(product: string, rootCause: string | null): Promise
         notUpheldRate,
         riskLevel,
         trendDirection,
-        yearTrend,
-        keyPrecedents,
-        rootCausePatterns,
-        vulnerabilities,
+        yearTrend: yearTrend.slice(-5),
+        keyPrecedents: keyPrecedents.slice(0, 5),
+        rootCausePatterns: rootCausePatterns.slice(0, 5),
+        vulnerabilities: vulnerabilities.slice(0, 4),
         upheldTexts: upheldTexts.map((r) => r.text).filter((t) => t.trim().length > 50),
         notUpheldTexts: notUpheldTexts.map((r) => r.text).filter((t) => t.trim().length > 50),
       });
 
-      const aiResponse = await callGroq(
-        [
-          { role: 'system', content: AI_SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
-        ],
-        { maxTokens: 2000, temperature: 0.3 }
-      );
+      // Retry with backoff on 429 (Groq free tier: 12k TPM)
+      let aiResponse: string | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          aiResponse = await callGroq(
+            [
+              { role: 'system', content: AI_SYSTEM_PROMPT },
+              { role: 'user', content: prompt },
+            ],
+            { maxTokens: 1500, temperature: 0.3 }
+          );
+          break;
+        } catch (retryErr) {
+          const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          if (msg.includes('429') && attempt < 2) {
+            const backoff = 20_000 * (attempt + 1);
+            console.log(`    Rate limited, waiting ${backoff / 1000}s (attempt ${attempt + 1}/3)...`);
+            await delay(backoff);
+          } else {
+            throw retryErr;
+          }
+        }
+      }
 
-      const sections = parseAiSections(aiResponse);
-      aiExecutiveSummary = sections.executiveSummary || null;
-      aiWhatWins = sections.whatWins || null;
-      aiWhatLoses = sections.whatLoses || null;
-      aiGuidance = sections.guidance || null;
+      if (aiResponse) {
+        const sections = parseAiSections(aiResponse);
+        aiExecutiveSummary = sections.executiveSummary || null;
+        aiWhatWins = sections.whatWins || null;
+        aiWhatLoses = sections.whatLoses || null;
+        aiGuidance = sections.guidance || null;
+      }
 
-      // Rate limit: 2.5s between Groq calls
-      await delay(2500);
+      // Rate limit: 15s between Groq calls (12k TPM free tier)
+      await delay(15_000);
     } catch (err) {
       console.error(`    AI generation failed for ${product}/${rootCause || 'all'}:`, err instanceof Error ? err.message : err);
     }
