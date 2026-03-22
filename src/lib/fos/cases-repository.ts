@@ -1,9 +1,11 @@
 import { DatabaseClient } from '@/lib/database';
 import {
+  FOSCaseContext,
   FOSCaseDetail,
   FOSCaseListItem,
   FOSDashboardFilters,
   FOSSectionSource,
+  FOSSimilarCase,
 } from './types';
 import {
   buildFilteredCte,
@@ -15,11 +17,13 @@ import {
   hasActiveScopeFilters,
   normalizeLabel,
   normalizeOutcome,
+  normalizeTagLabel,
   nullableString,
   outcomeExpression,
   parseStringArray,
   toInt,
   toIsoDate,
+  toNumber,
   trimText,
 } from './repo-helpers';
 
@@ -343,6 +347,162 @@ export async function queryCases(filters: FOSDashboardFilters, totalOverride?: n
       total: filteredTotal,
       totalPages,
     },
+  };
+}
+
+export async function getSimilarCases(caseId: string, limit = 10): Promise<FOSSimilarCase[]> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+
+  const detail = await getCaseDetail(caseId);
+  if (!detail) return [];
+
+  const product = detail.productGroup || 'Unspecified';
+  const rootCauses = detail.rootCauseTags;
+  const precedents = detail.precedents;
+  const firm = detail.firmName || '';
+  const outcome = detail.outcome;
+
+  // Attribute-based similarity scoring via SQL
+  const rows = await DatabaseClient.query<Record<string, unknown>>(
+    `
+    WITH source_case AS (
+      SELECT
+        ${caseIdExpression('d')} AS case_id
+      FROM fos_decisions d
+      WHERE ${caseIdExpression('d')} = $1
+         OR d.decision_reference = $1
+      LIMIT 1
+    )
+    SELECT
+      ${caseIdExpression('d')} AS case_id,
+      d.decision_reference,
+      d.decision_date,
+      NULLIF(BTRIM(d.business_name), '') AS firm_name,
+      NULLIF(BTRIM(d.product_sector), '') AS product_group,
+      ${outcomeExpression('d')} AS outcome,
+      d.decision_summary,
+      (
+        CASE WHEN COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $2 THEN 3 ELSE 0 END
+        + CASE WHEN COALESCE(NULLIF(BTRIM(d.business_name), ''), '') = $3 THEN 1 ELSE 0 END
+        + CASE WHEN ${outcomeExpression('d')} = $4 THEN 1 ELSE 0 END
+        + COALESCE((
+          SELECT COUNT(*)::INT * 2
+          FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
+          WHERE LOWER(BTRIM(rt.value)) = ANY($5::TEXT[])
+        ), 0)
+        + COALESCE((
+          SELECT COUNT(*)::INT
+          FROM jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
+          WHERE LOWER(BTRIM(p.value)) = ANY($6::TEXT[])
+        ), 0)
+      ) AS similarity_score
+    FROM fos_decisions d
+    WHERE ${caseIdExpression('d')} NOT IN (SELECT case_id FROM source_case)
+      AND d.decision_reference IS DISTINCT FROM $1
+    HAVING (
+      CASE WHEN COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $2 THEN 3 ELSE 0 END
+      + CASE WHEN COALESCE(NULLIF(BTRIM(d.business_name), ''), '') = $3 THEN 1 ELSE 0 END
+      + CASE WHEN ${outcomeExpression('d')} = $4 THEN 1 ELSE 0 END
+      + COALESCE((
+        SELECT COUNT(*)::INT * 2
+        FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
+        WHERE LOWER(BTRIM(rt.value)) = ANY($5::TEXT[])
+      ), 0)
+      + COALESCE((
+        SELECT COUNT(*)::INT
+        FROM jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
+        WHERE LOWER(BTRIM(p.value)) = ANY($6::TEXT[])
+      ), 0)
+    ) >= 3
+    ORDER BY similarity_score DESC, d.decision_date DESC NULLS LAST
+    LIMIT $7
+    `,
+    [
+      caseId,
+      product,
+      firm,
+      outcome,
+      rootCauses.map((t) => t.toLowerCase()),
+      precedents.map((t) => t.toLowerCase()),
+      limit,
+    ]
+  );
+
+  return rows.map((row) => ({
+    caseId: String(row.case_id || row.decision_reference || ''),
+    decisionReference: String(row.decision_reference || ''),
+    decisionDate: toIsoDate(row.decision_date),
+    firmName: nullableString(row.firm_name),
+    productGroup: nullableString(row.product_group),
+    outcome: normalizeOutcome(String(row.outcome || 'unknown')),
+    decisionSummary: nullableString(row.decision_summary),
+    similarityScore: toInt(row.similarity_score),
+  }));
+}
+
+export async function getCaseContext(caseId: string): Promise<FOSCaseContext | null> {
+  ensureDatabaseConfigured();
+  await ensureFosDecisionsTableExists();
+
+  const detail = await getCaseDetail(caseId);
+  if (!detail) return null;
+
+  const product = detail.productGroup || 'Unspecified';
+
+  const [productStats, rootCauseRows, precedentRows] = await Promise.all([
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `SELECT
+        COUNT(*)::INT AS total,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 1) AS upheld_rate
+      FROM fos_decisions d
+      WHERE COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $1`,
+      [product]
+    ),
+    DatabaseClient.query<Record<string, unknown>>(
+      `SELECT
+        BTRIM(rc.value) AS label,
+        COUNT(*)::INT AS count,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 1) AS upheld_rate
+      FROM fos_decisions d
+      CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rc(value)
+      WHERE COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $1
+        AND LOWER(BTRIM(rc.value)) = ANY($2::TEXT[])
+      GROUP BY BTRIM(rc.value)
+      ORDER BY count DESC
+      LIMIT 5`,
+      [product, detail.rootCauseTags.map((t) => t.toLowerCase())]
+    ),
+    DatabaseClient.query<Record<string, unknown>>(
+      `SELECT
+        BTRIM(p.value) AS label,
+        COUNT(*)::INT AS count
+      FROM fos_decisions d
+      CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(d.precedents, '[]'::jsonb)) AS p(value)
+      WHERE COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $1
+        AND LOWER(BTRIM(p.value)) = ANY($2::TEXT[])
+      GROUP BY BTRIM(p.value)
+      ORDER BY count DESC
+      LIMIT 5`,
+      [product, detail.precedents.map((t) => t.toLowerCase())]
+    ),
+  ]);
+
+  const totalCases = toInt(productStats?.total);
+
+  return {
+    productUpheldRate: toNumber(productStats?.upheld_rate),
+    productTotalCases: totalCases,
+    rootCauseRates: rootCauseRows.map((r) => ({
+      label: normalizeTagLabel(String(r.label || '')),
+      count: toInt(r.count),
+      upheldRate: toNumber(r.upheld_rate),
+    })),
+    precedentRates: precedentRows.map((r) => ({
+      label: normalizeTagLabel(String(r.label || '')),
+      count: toInt(r.count),
+      percentOfCases: totalCases > 0 ? (toInt(r.count) / totalCases) * 100 : 0,
+    })),
   };
 }
 

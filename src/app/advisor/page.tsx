@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { SkeletonCard } from '@/components/shared/skeleton-card';
 import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
@@ -12,8 +11,12 @@ import { RiskAssessmentCard } from '@/components/advisor/risk-assessment-card';
 import { PrecedentList } from '@/components/advisor/precedent-list';
 import { RootCausePatterns } from '@/components/advisor/root-cause-patterns';
 import { ThemeCard } from '@/components/advisor/theme-card';
-import { SampleCasesTable } from '@/components/advisor/sample-cases-table';
 import { ActionChecklist } from '@/components/advisor/action-checklist';
+import { ExecutiveSummary } from '@/components/advisor/executive-summary';
+import { OutcomeDonutChart } from '@/components/advisor/outcome-donut-chart';
+import { YearTrendChart } from '@/components/advisor/year-trend-chart';
+import { PrecedentBarChart } from '@/components/advisor/precedent-bar-chart';
+import { DecisionsBrowser } from '@/components/advisor/decisions-browser';
 import { formatDate } from '@/lib/utils';
 
 export default function AdvisorPage() {
@@ -80,17 +83,17 @@ export default function AdvisorPage() {
           </section>
         )}
 
-        {/* Brief results */}
+        {/* Brief results — report layout */}
         {brief && !loading && (
           <>
-            {/* Brief header */}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            {/* 1. Report header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-5 py-4">
               <div className="flex items-center gap-2 text-sm">
-                <span className="font-semibold text-slate-900">{brief.query.product}</span>
+                <span className="text-lg font-semibold text-slate-900">{brief.query.product}</span>
                 {brief.query.rootCause && (
                   <>
-                    <span className="text-slate-400">/</span>
-                    <span className="text-slate-700">{brief.query.rootCause}</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="text-base text-slate-700">{brief.query.rootCause}</span>
                   </>
                 )}
               </div>
@@ -99,24 +102,46 @@ export default function AdvisorPage() {
               </p>
             </div>
 
-            {/* Risk assessment */}
-            <RiskAssessmentCard risk={brief.riskAssessment} />
-
-            {/* AI guidance */}
-            {brief.aiGuidance && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Overall Guidance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-sm leading-relaxed text-slate-700 whitespace-pre-line">
-                    {brief.aiGuidance}
-                  </div>
-                </CardContent>
-              </Card>
+            {/* 2. Executive Summary (AI narrative) */}
+            {brief.aiExecutiveSummary && (
+              <ExecutiveSummary summary={brief.aiExecutiveSummary} />
             )}
 
-            {/* What wins / what loses */}
+            {/* 3. Risk Assessment + Outcome Donut side-by-side */}
+            <section className="grid gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <RiskAssessmentCard risk={brief.riskAssessment} />
+              </div>
+              {brief.outcomeDistribution && brief.outcomeDistribution.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <h3 className="mb-3 text-sm font-semibold text-slate-900">Outcome Distribution</h3>
+                  <OutcomeDonutChart distribution={brief.outcomeDistribution} />
+                </div>
+              )}
+            </section>
+
+            {/* 4. Year-over-Year Trend (full-width) */}
+            {brief.riskAssessment.yearTrend.length > 1 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">Year-over-Year Trend</h3>
+                <YearTrendChart yearTrend={brief.riskAssessment.yearTrend} />
+              </div>
+            )}
+
+            {/* 5. Precedent Analysis (bar chart) + 6. Root Cause Patterns */}
+            <section className="grid gap-4 xl:grid-cols-2">
+              <ExpandableCard title="Precedent Analysis" description="Most frequently cited precedents in decisions for this product.">
+                <PrecedentBarChart precedents={brief.keyPrecedents} />
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <PrecedentList precedents={brief.keyPrecedents} />
+                </div>
+              </ExpandableCard>
+              <ExpandableCard title="Root Cause Analysis" description="Root causes ranked by frequency with their upheld rates.">
+                <RootCausePatterns patterns={brief.rootCausePatterns} />
+              </ExpandableCard>
+            </section>
+
+            {/* 7. What Wins / What Loses (AI narratives with case citations) */}
             <section className="grid gap-4 md:grid-cols-2">
               <ThemeCard
                 title="What Wins Cases (Not Upheld)"
@@ -132,24 +157,24 @@ export default function AdvisorPage() {
               />
             </section>
 
-            {/* Precedents + Root cause patterns */}
-            <section className="grid gap-4 xl:grid-cols-2">
-              <ExpandableCard title="Key Precedents" description="Most frequently cited precedents in decisions for this product.">
-                <PrecedentList precedents={brief.keyPrecedents} />
-              </ExpandableCard>
-              <ExpandableCard title="Root Cause Patterns" description="Root causes ranked by frequency with their upheld rates.">
-                <RootCausePatterns patterns={brief.rootCausePatterns} />
-              </ExpandableCard>
-            </section>
+            {/* AI Guidance (if available) */}
+            {brief.aiGuidance && (
+              <div className="rounded-xl border-l-4 border-blue-500 bg-white p-5 shadow-sm">
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">Compliance Guidance</h3>
+                <div className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
+                  {brief.aiGuidance}
+                </div>
+              </div>
+            )}
 
-            {/* Sample cases */}
-            <ExpandableCard title="Sample Decisions" description="Recent upheld and not-upheld decisions. Click a row to view full case detail.">
-              <SampleCasesTable cases={brief.sampleCases} onSelectCase={setSelectedCaseId} />
-            </ExpandableCard>
-
-            {/* Recommended actions */}
+            {/* 8. Recommended Actions */}
             <ExpandableCard title="Recommended Actions" description="Prioritised checklist based on precedents, root causes, and vulnerability patterns.">
               <ActionChecklist actions={brief.recommendedActions} />
+            </ExpandableCard>
+
+            {/* 9. Decisions Browser (paginated table) */}
+            <ExpandableCard title="Sample Decisions" description="Recent upheld and not-upheld decisions. Click a row to view full case detail.">
+              <DecisionsBrowser cases={brief.sampleCases} onSelectCase={setSelectedCaseId} />
             </ExpandableCard>
           </>
         )}
@@ -171,6 +196,7 @@ export default function AdvisorPage() {
         caseDetail={selectedCase}
         loading={caseLoading}
         error={caseError}
+        onSelectCase={setSelectedCaseId}
       />
     </main>
   );

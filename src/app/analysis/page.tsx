@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters } from '@/hooks/use-fos-filters';
 import { useFosAnalysis } from '@/hooks/use-fos-analysis';
+import { useCaseDetail } from '@/hooks/use-fos-dashboard';
 import { SearchBar } from '@/components/dashboard/search-bar';
 import { KpiCard } from '@/components/dashboard/kpi-card';
 import { FilterPill } from '@/components/shared/filter-pills';
@@ -20,6 +21,11 @@ import { ProductBubbleChart } from '@/components/analysis/product-bubble-chart';
 import { CategoriesByMonth } from '@/components/analysis/categories-by-month';
 import { DecisionsHeatmap } from '@/components/analysis/decisions-heatmap';
 import { YearFilterBar } from '@/components/shared/year-filter-bar';
+import { OutcomeFilterBar } from '@/components/shared/outcome-filter-bar';
+import { SubsetAnalysisPanel } from '@/components/analysis/subset-analysis-panel';
+import { SubsetDecisionsTable } from '@/components/analysis/subset-decisions-table';
+import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
+import { OUTCOME_LABELS } from '@/lib/fos/constants';
 import { formatNumber, formatPercent, formatDateTime } from '@/lib/utils';
 
 export default function AnalysisPage() {
@@ -30,6 +36,7 @@ export default function AnalysisPage() {
     initialized,
     hasActiveFilters,
     toggleYear,
+    toggleOutcome,
     toggleProduct,
     toggleFirm,
     toggleTag,
@@ -40,6 +47,7 @@ export default function AnalysisPage() {
   } = useFosFilters();
 
   const { snapshot, loading, error, meta, progress, fetchAnalysis } = useFosAnalysis(filters, initialized);
+  const { selectedCaseId, setSelectedCaseId, selectedCase, caseLoading, caseError } = useCaseDetail();
 
   /* ---- derived metrics ---- */
   const yearRollup = useMemo(() => {
@@ -125,12 +133,21 @@ export default function AnalysisPage() {
           accentColor="teal"
         />
 
+        {/* ---- outcome filter bar ---- */}
+        <OutcomeFilterBar
+          activeOutcomes={filters.outcomes}
+          onToggleOutcome={toggleOutcome}
+        />
+
         {/* ---- active filter pills ---- */}
         {hasActiveFilters && (
           <div className="flex flex-wrap gap-2">
             {filters.query && <FilterPill label={`Query: ${filters.query}`} onClear={() => setFilters((prev) => ({ ...prev, query: '', page: 1 }))} />}
             {filters.years.map((year) => (
               <FilterPill key={`year-${year}`} label={`Year ${year}`} onClear={() => toggleYear(year)} />
+            ))}
+            {filters.outcomes.map((outcome) => (
+              <FilterPill key={`outcome-${outcome}`} label={`Outcome: ${OUTCOME_LABELS[outcome]}`} onClear={() => toggleOutcome(outcome)} />
             ))}
             {filters.products.map((product) => (
               <FilterPill key={`product-${product}`} label={`Product: ${product}`} onClear={() => toggleProduct(product)} />
@@ -257,6 +274,22 @@ export default function AnalysisPage() {
           </ExpandableCard>
         </section>
 
+        {/* ---- deep analysis section ---- */}
+        {snapshot && totalCases > 0 && (
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
+              <h2 className="mb-1 text-lg font-semibold text-slate-900">Deep Analysis</h2>
+              <p className="mb-4 text-sm text-slate-600">
+                Generate an AI-powered analysis of why these decisions went the way they did, and browse matching cases.
+              </p>
+              <SubsetAnalysisPanel filters={filters} totalCases={totalCases} />
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <SubsetDecisionsTable filters={filters} totalCases={totalCases} onSelectCase={setSelectedCaseId} />
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* ---- empty state ---- */}
         {!loading && !error && snapshot && totalCases === 0 && hasActiveFilters && (
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -264,6 +297,15 @@ export default function AnalysisPage() {
           </section>
         )}
       </div>
+
+      {/* ---- case detail sheet ---- */}
+      <CaseDetailSheet
+        open={!!selectedCaseId}
+        onOpenChange={(open) => !open && setSelectedCaseId(null)}
+        caseDetail={selectedCase}
+        loading={caseLoading}
+        error={caseError}
+      />
     </main>
   );
 }

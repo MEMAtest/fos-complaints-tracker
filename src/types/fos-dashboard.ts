@@ -1,4 +1,15 @@
-import { FOSAdvisorBrief, FOSAnalysisSnapshot, FOSCaseDetail, FOSDashboardFilters, FOSDashboardSnapshot } from '@/lib/fos/types';
+import {
+  FOSAdvisorBrief,
+  FOSAnalysisSnapshot,
+  FOSCaseDetail,
+  FOSCaseListItem,
+  FOSDashboardFilters,
+  FOSDashboardSnapshot,
+  FOSPagination,
+  FOSSubsetAnalysis,
+  FOSSimilarCase,
+  FOSCaseContext,
+} from '@/lib/fos/types';
 
 export interface FOSApiMeta {
   queryMs: number;
@@ -39,5 +50,31 @@ export interface FOSAdvisorApiResponse {
 export interface FOSAdvisorOptionsApiResponse {
   success: boolean;
   data?: { products: string[]; rootCauses: string[] };
+  error?: string;
+}
+
+export interface FOSCasesApiResponse {
+  success: boolean;
+  data?: {
+    items: FOSCaseListItem[];
+    pagination: FOSPagination;
+  };
+  meta?: FOSApiMeta;
+  error?: string;
+}
+
+export interface FOSSynthesisApiResponse {
+  success: boolean;
+  data?: FOSSubsetAnalysis;
+  meta?: FOSApiMeta;
+  error?: string;
+}
+
+export interface FOSSimilarCasesApiResponse {
+  success: boolean;
+  data?: {
+    cases: FOSSimilarCase[];
+    context: FOSCaseContext;
+  };
   error?: string;
 }

@@ -3,22 +3,24 @@
  *
  * Usage:
  *   DATABASE_URL="postgres://..." npx tsx scripts/generate-advisor-briefs.ts
+ *   DATABASE_URL="postgres://..." GROQ_API_KEY="..." npx tsx scripts/generate-advisor-briefs.ts --with-ai
  *
- * This script:
- * 1. Creates the fos_advisor_briefs table if it doesn't exist
- * 2. Queries all distinct product × root_cause combos from fos_decisions
- * 3. For each combo, calls generateAndStoreAdvisorBrief() to compute stats
- *    (AI narratives can be added manually or via a separate process)
- *
- * For AI-enhanced briefs, the generation functions in repository.ts accept
- * an aiAnalysis parameter with whatWins/whatLoses/guidance narratives.
+ * Flags:
+ *   --with-ai   Enable AI narrative generation via Groq (requires GROQ_API_KEY)
  */
 
 import { Pool } from 'pg';
+import { callGroq } from './lib/groq-client';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   console.error('ERROR: DATABASE_URL environment variable is required.');
+  process.exit(1);
+}
+
+const WITH_AI = process.argv.includes('--with-ai');
+if (WITH_AI && !(process.env.GROQ_API_KEY || '').trim()) {
+  console.error('ERROR: --with-ai requires GROQ_API_KEY environment variable.');
   process.exit(1);
 }
 
@@ -61,6 +63,8 @@ async function ensureTable(): Promise<void> {
       ai_what_wins TEXT,
       ai_what_loses TEXT,
       ai_guidance TEXT,
+      ai_executive_summary TEXT,
+      outcome_distribution JSONB,
       vulnerabilities JSONB NOT NULL,
       sample_cases JSONB NOT NULL,
       recommended_actions JSONB NOT NULL,
@@ -69,6 +73,9 @@ async function ensureTable(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_advisor_briefs_product ON fos_advisor_briefs(product);
   `);
+  // Ensure new columns exist on older tables
+  await query(`ALTER TABLE fos_advisor_briefs ADD COLUMN IF NOT EXISTS ai_executive_summary TEXT`);
+  await query(`ALTER TABLE fos_advisor_briefs ADD COLUMN IF NOT EXISTS outcome_distribution JSONB`);
   console.log('Table fos_advisor_briefs ensured.');
 }
 
@@ -91,6 +98,87 @@ const outcomeExpr = `
 
 function normalizeTag(label: string): string {
   return label.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const AI_SYSTEM_PROMPT = `You are a Principal Compliance Analyst specialising in FOS complaint intelligence.
+Generate three analytical sections for a pre-computed intelligence brief. Each section
+must be 2-3 paragraphs of substantive, evidence-based analysis in formal British English.
+Cite the statistics provided. Do not use filler phrases. Be specific and actionable.`;
+
+function buildAiUserPrompt(data: {
+  product: string;
+  rootCause: string | null;
+  totalCases: number;
+  upheldRate: number;
+  notUpheldRate: number;
+  riskLevel: string;
+  trendDirection: string;
+  yearTrend: { year: number; upheldRate: number; total: number }[];
+  keyPrecedents: { label: string; count: number; percentOfCases: number }[];
+  rootCausePatterns: { label: string; count: number; upheldRate: number }[];
+  vulnerabilities: { label: string; count: number; percentOfCases: number }[];
+  upheldTexts: string[];
+  notUpheldTexts: string[];
+}): string {
+  const yearTrendStr = data.yearTrend.map((y) => `${y.year}: ${y.upheldRate}% (${y.total} cases)`).join(', ');
+  const precedentsStr = data.keyPrecedents.map((p) => `${p.label}: ${p.count} cases (${p.percentOfCases}%)`).join(', ');
+  const rcStr = data.rootCausePatterns.map((r) => `${r.label}: ${r.count} cases (${r.upheldRate}% upheld)`).join(', ');
+  const vulnStr = data.vulnerabilities.map((v) => `${v.label}: ${v.count} cases`).join(', ');
+
+  return `Intelligence brief for: ${data.product}${data.rootCause ? ' / ' + data.rootCause : ''}
+
+STATISTICS:
+- Total cases: ${data.totalCases}
+- Upheld rate: ${data.upheldRate}% (FOS overall average: ~40%)
+- Not upheld rate: ${data.notUpheldRate}%
+- Risk level: ${data.riskLevel} | Trend: ${data.trendDirection}
+- Year trend: ${yearTrendStr || 'Insufficient data'}
+
+TOP PRECEDENTS: ${precedentsStr || 'None'}
+TOP ROOT CAUSES: ${rcStr || 'None'}
+VULNERABILITY FLAGS: ${vulnStr || 'None'}
+
+SAMPLE UPHELD REASONING (${data.upheldTexts.length} excerpts):
+${data.upheldTexts.map((t, i) => `[${i + 1}] ${t}`).join('\n\n') || 'None available'}
+
+SAMPLE NOT-UPHELD REASONING (${data.notUpheldTexts.length} excerpts):
+${data.notUpheldTexts.map((t, i) => `[${i + 1}] ${t}`).join('\n\n') || 'None available'}
+
+Generate FOUR sections in EXACTLY this format (use these exact delimiters):
+
+=== EXECUTIVE SUMMARY ===
+[2 paragraphs: overview of risk profile, volume, trend, and the single most important finding.]
+
+=== WHAT WINS CASES (Firm Defences That Succeed) ===
+[2-3 paragraphs: Analyse not-upheld decisions. What evidence and processes persuaded the ombudsman?]
+
+=== WHAT LOSES CASES (Common Firm Failures) ===
+[2-3 paragraphs: Analyse upheld decisions. What failures led to upheld findings?]
+
+=== GUIDANCE ===
+[2-3 paragraphs: 4-6 specific recommendations tied to the data.]`;
+}
+
+function parseAiSections(text: string): { executiveSummary: string; whatWins: string; whatLoses: string; guidance: string } {
+  const sections = { executiveSummary: '', whatWins: '', whatLoses: '', guidance: '' };
+  const parts = text.split(/===\s*/);
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith('EXECUTIVE SUMMARY')) {
+      sections.executiveSummary = trimmed.replace(/^EXECUTIVE SUMMARY\s*===?\s*/, '').trim();
+    } else if (trimmed.startsWith('WHAT WINS')) {
+      sections.whatWins = trimmed.replace(/^WHAT WINS[^=]*===?\s*/, '').trim();
+    } else if (trimmed.startsWith('WHAT LOSES')) {
+      sections.whatLoses = trimmed.replace(/^WHAT LOSES[^=]*===?\s*/, '').trim();
+    } else if (trimmed.startsWith('GUIDANCE')) {
+      sections.guidance = trimmed.replace(/^GUIDANCE\s*===?\s*/, '').trim();
+    }
+  }
+  return sections;
 }
 
 async function generateBrief(product: string, rootCause: string | null): Promise<void> {
@@ -121,6 +209,17 @@ async function generateBrief(product: string, rootCause: string | null): Promise
 
   const upheldRate = Number(stats?.upheld_rate || 0);
   const notUpheldRate = Number(stats?.not_upheld_rate || 0);
+
+  // Outcome distribution
+  const outcomeRows = await query<Record<string, unknown>>(`
+    SELECT ${outcomeExpr} AS outcome, COUNT(*)::INT AS count
+    FROM fos_decisions
+    WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1
+    ${rcFilter}
+    GROUP BY ${outcomeExpr}
+    ORDER BY count DESC
+  `, params);
+  const outcomeDistribution = outcomeRows.map((r) => ({ outcome: String(r.outcome), count: Number(r.count) }));
 
   // Year trend
   const yearTrendRows = await query<Record<string, unknown>>(`
@@ -177,7 +276,7 @@ async function generateBrief(product: string, rootCause: string | null): Promise
   `, [...params, totalCases]);
   const vulnerabilities = vulnRows.map((r) => ({ label: normalizeTag(String(r.label)), count: Number(r.count), percentOfCases: Number(r.pct) }));
 
-  // Sample cases
+  // Sample cases — expanded to 10 upheld + 10 not upheld = 20
   const caseIdExpr = `COALESCE(NULLIF(decision_reference, ''), NULLIF(pdf_sha256, ''), MD5(CONCAT_WS('|', COALESCE(pdf_url, ''), COALESCE(source_url, ''), COALESCE(business_name, ''), COALESCE(decision_date::TEXT, ''))))`;
 
   const sampleUpheld = await query<Record<string, unknown>>(`
@@ -187,7 +286,7 @@ async function generateBrief(product: string, rootCause: string | null): Promise
     FROM fos_decisions
     WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1 ${rcFilter}
     AND ${outcomeExpr} = 'upheld'
-    ORDER BY decision_date DESC NULLS LAST LIMIT 3
+    ORDER BY decision_date DESC NULLS LAST LIMIT 10
   `, params);
 
   const sampleNotUpheld = await query<Record<string, unknown>>(`
@@ -197,7 +296,7 @@ async function generateBrief(product: string, rootCause: string | null): Promise
     FROM fos_decisions
     WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1 ${rcFilter}
     AND ${outcomeExpr} = 'not_upheld'
-    ORDER BY decision_date DESC NULLS LAST LIMIT 2
+    ORDER BY decision_date DESC NULLS LAST LIMIT 10
   `, params);
 
   const mapCase = (r: Record<string, unknown>) => ({
@@ -236,18 +335,88 @@ async function generateBrief(product: string, rootCause: string | null): Promise
     });
   }
 
+  // AI generation (opt-in)
+  let aiWhatWins: string | null = null;
+  let aiWhatLoses: string | null = null;
+  let aiGuidance: string | null = null;
+  let aiExecutiveSummary: string | null = null;
+
+  if (WITH_AI && totalCases >= 10) {
+    try {
+      // Fetch reasoning texts for AI analysis
+      const upheldTexts = await query<{ text: string }>(`
+        SELECT LEFT(COALESCE(ombudsman_reasoning_text, '') || E'\n' || COALESCE(decision_logic, ''), 600) AS text
+        FROM fos_decisions
+        WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1
+        ${rcFilter}
+        AND ${outcomeExpr} = 'upheld'
+        AND (ombudsman_reasoning_text IS NOT NULL OR decision_logic IS NOT NULL)
+        ORDER BY decision_date DESC NULLS LAST
+        LIMIT 5
+      `, params);
+
+      const notUpheldTexts = await query<{ text: string }>(`
+        SELECT LEFT(COALESCE(ombudsman_reasoning_text, '') || E'\n' || COALESCE(decision_logic, ''), 600) AS text
+        FROM fos_decisions
+        WHERE COALESCE(NULLIF(BTRIM(product_sector), ''), 'Unspecified') = $1
+        ${rcFilter}
+        AND ${outcomeExpr} = 'not_upheld'
+        AND (ombudsman_reasoning_text IS NOT NULL OR decision_logic IS NOT NULL)
+        ORDER BY decision_date DESC NULLS LAST
+        LIMIT 5
+      `, params);
+
+      const prompt = buildAiUserPrompt({
+        product,
+        rootCause,
+        totalCases,
+        upheldRate,
+        notUpheldRate,
+        riskLevel,
+        trendDirection,
+        yearTrend,
+        keyPrecedents,
+        rootCausePatterns,
+        vulnerabilities,
+        upheldTexts: upheldTexts.map((r) => r.text).filter((t) => t.trim().length > 50),
+        notUpheldTexts: notUpheldTexts.map((r) => r.text).filter((t) => t.trim().length > 50),
+      });
+
+      const aiResponse = await callGroq(
+        [
+          { role: 'system', content: AI_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        { maxTokens: 2000, temperature: 0.3 }
+      );
+
+      const sections = parseAiSections(aiResponse);
+      aiExecutiveSummary = sections.executiveSummary || null;
+      aiWhatWins = sections.whatWins || null;
+      aiWhatLoses = sections.whatLoses || null;
+      aiGuidance = sections.guidance || null;
+
+      // Rate limit: 2.5s between Groq calls
+      await delay(2500);
+    } catch (err) {
+      console.error(`    AI generation failed for ${product}/${rootCause || 'all'}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
   // UPSERT
   await query(`
     INSERT INTO fos_advisor_briefs (
       product, root_cause, total_cases, upheld_rate, not_upheld_rate,
       risk_level, trend_direction, year_trend, key_precedents,
       root_cause_patterns, what_wins, what_loses, ai_what_wins, ai_what_loses,
-      ai_guidance, vulnerabilities, sample_cases, recommended_actions, generated_at
+      ai_guidance, ai_executive_summary, outcome_distribution,
+      vulnerabilities, sample_cases, recommended_actions, generated_at
     ) VALUES (
       $1, $2, $3, $4, $5,
       $6, $7, $8::jsonb, $9::jsonb,
       $10::jsonb, $11::jsonb, $12::jsonb, $13, $14,
-      $15, $16::jsonb, $17::jsonb, $18::jsonb, NOW()
+      $15, $16, $17::jsonb,
+      $18::jsonb, $19::jsonb, $20::jsonb, NOW()
     )
     ON CONFLICT (product, root_cause) DO UPDATE SET
       total_cases = EXCLUDED.total_cases, upheld_rate = EXCLUDED.upheld_rate,
@@ -255,15 +424,20 @@ async function generateBrief(product: string, rootCause: string | null): Promise
       trend_direction = EXCLUDED.trend_direction, year_trend = EXCLUDED.year_trend,
       key_precedents = EXCLUDED.key_precedents, root_cause_patterns = EXCLUDED.root_cause_patterns,
       what_wins = EXCLUDED.what_wins, what_loses = EXCLUDED.what_loses,
-      ai_what_wins = EXCLUDED.ai_what_wins, ai_what_loses = EXCLUDED.ai_what_loses,
-      ai_guidance = EXCLUDED.ai_guidance, vulnerabilities = EXCLUDED.vulnerabilities,
+      ai_what_wins = COALESCE(EXCLUDED.ai_what_wins, fos_advisor_briefs.ai_what_wins),
+      ai_what_loses = COALESCE(EXCLUDED.ai_what_loses, fos_advisor_briefs.ai_what_loses),
+      ai_guidance = COALESCE(EXCLUDED.ai_guidance, fos_advisor_briefs.ai_guidance),
+      ai_executive_summary = COALESCE(EXCLUDED.ai_executive_summary, fos_advisor_briefs.ai_executive_summary),
+      outcome_distribution = EXCLUDED.outcome_distribution,
+      vulnerabilities = EXCLUDED.vulnerabilities,
       sample_cases = EXCLUDED.sample_cases, recommended_actions = EXCLUDED.recommended_actions,
       generated_at = NOW()
   `, [
     product, rootCause, totalCases, upheldRate, notUpheldRate,
     riskLevel, trendDirection, JSON.stringify(yearTrend), JSON.stringify(keyPrecedents),
-    JSON.stringify(rootCausePatterns), JSON.stringify([]), JSON.stringify([]), null, null,
-    null, JSON.stringify(vulnerabilities), JSON.stringify(sampleCases), JSON.stringify(recommendedActions),
+    JSON.stringify(rootCausePatterns), JSON.stringify([]), JSON.stringify([]), aiWhatWins, aiWhatLoses,
+    aiGuidance, aiExecutiveSummary, JSON.stringify(outcomeDistribution),
+    JSON.stringify(vulnerabilities), JSON.stringify(sampleCases), JSON.stringify(recommendedActions),
   ]);
 }
 
@@ -277,7 +451,7 @@ function parseJsonArray(input: unknown): string[] {
 }
 
 async function main() {
-  console.log('Starting FOS Advisor Brief generation...\n');
+  console.log(`Starting FOS Advisor Brief generation${WITH_AI ? ' (with AI narratives)' : ''}...\n`);
 
   await ensureTable();
 
@@ -291,6 +465,7 @@ async function main() {
 
   let generated = 0;
   let skipped = 0;
+  let aiGenerated = 0;
 
   for (const { product } of productRows) {
     // Product-level brief (root_cause = NULL)
@@ -324,9 +499,17 @@ async function main() {
     }
   }
 
+  if (WITH_AI) {
+    const aiCount = await queryOne<{ count: string }>(
+      `SELECT COUNT(*)::INT AS count FROM fos_advisor_briefs WHERE ai_executive_summary IS NOT NULL`
+    );
+    aiGenerated = Number(aiCount?.count || 0);
+  }
+
   // Final count
   const countRow = await queryOne<{ count: string }>('SELECT COUNT(*)::INT AS count FROM fos_advisor_briefs');
   console.log(`\nDone. Generated ${generated} briefs (${skipped} skipped). Total in DB: ${countRow?.count || 0}.`);
+  if (WITH_AI) console.log(`AI narratives populated: ${aiGenerated}.`);
 
   await pool.end();
 }

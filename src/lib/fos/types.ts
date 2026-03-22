@@ -334,7 +334,51 @@ export interface FOSAdvisorBrief {
   aiWhatWins: string | null;
   aiWhatLoses: string | null;
   aiGuidance: string | null;
+  aiExecutiveSummary: string | null;
+  outcomeDistribution: FOSOutcomeDistribution[] | null;
   vulnerabilities: FOSAdvisorVulnerability[];
   sampleCases: FOSAdvisorSampleCase[];
   recommendedActions: FOSAdvisorChecklist[];
+}
+
+// On-demand subset analysis types
+
+export interface FOSSubsetRootCause {
+  label: string;
+  count: number;
+  upheldRate: number;
+}
+
+export interface FOSSubsetPrecedent {
+  label: string;
+  count: number;
+  percentOfCases: number;
+}
+
+export interface FOSSubsetAnalysis {
+  narrative: string;
+  rootCauses: FOSSubsetRootCause[];
+  precedents: FOSSubsetPrecedent[];
+  totalCases: number;
+  upheldRate: number;
+}
+
+// Similar decisions types
+
+export interface FOSSimilarCase {
+  caseId: string;
+  decisionReference: string;
+  decisionDate: string | null;
+  firmName: string | null;
+  productGroup: string | null;
+  outcome: FOSOutcome;
+  decisionSummary: string | null;
+  similarityScore: number;
+}
+
+export interface FOSCaseContext {
+  productUpheldRate: number;
+  productTotalCases: number;
+  rootCauseRates: { label: string; count: number; upheldRate: number }[];
+  precedentRates: { label: string; count: number; percentOfCases: number }[];
 }

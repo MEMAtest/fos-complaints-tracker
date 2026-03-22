@@ -34,7 +34,7 @@ import {
 export { parseFilters, hasActiveScopeFilters } from './repo-helpers';
 export { getDashboardSnapshot } from './dashboard-repository';
 export { getAnalysisSnapshot } from './analysis-repository';
-export { getCaseDetail, getCaseList } from './cases-repository';
+export { getCaseDetail, getCaseList, getSimilarCases, getCaseContext } from './cases-repository';
 export {
   getAdvisorOptions,
   getAdvisorBrief,

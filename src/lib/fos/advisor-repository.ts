@@ -8,6 +8,7 @@ import {
   FOSAdvisorSampleCase,
   FOSAdvisorThemeExtract,
   FOSAdvisorVulnerability,
+  FOSOutcomeDistribution,
 } from './types';
 import {
   caseIdExpression,
@@ -120,6 +121,8 @@ export async function getAdvisorBrief(query: FOSAdvisorQuery): Promise<FOSAdviso
       aiWhatWins: nullableString(row.ai_what_wins),
       aiWhatLoses: nullableString(row.ai_what_loses),
       aiGuidance: nullableString(row.ai_guidance),
+      aiExecutiveSummary: nullableString(row.ai_executive_summary),
+      outcomeDistribution: parseJsonValue<FOSOutcomeDistribution[]>(row.outcome_distribution) || null,
       vulnerabilities,
       sampleCases,
       recommendedActions,
