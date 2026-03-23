@@ -11,6 +11,11 @@ interface SubsetAnalysisPanelProps {
   totalCases: number;
 }
 
+/** Strip any HTML tags from AI-generated text as defense-in-depth. */
+function sanitizeText(text: string): string {
+  return text.replace(/<[^>]*>/g, '');
+}
+
 export function SubsetAnalysisPanel({ filters, totalCases }: SubsetAnalysisPanelProps) {
   const { synthesis, loading, error, fetchSynthesis, reset } = useSubsetSynthesis();
   const [triggered, setTriggered] = useState(false);
@@ -105,7 +110,7 @@ export function SubsetAnalysisPanel({ filters, totalCases }: SubsetAnalysisPanel
         </div>
         <div className="prose prose-sm prose-slate max-w-none">
           {synthesis.narrative.split('\n').map((line, i) => {
-            const trimmed = line.trim();
+            const trimmed = sanitizeText(line.trim());
             if (!trimmed) return null;
             if (trimmed.startsWith('## ')) {
               return (

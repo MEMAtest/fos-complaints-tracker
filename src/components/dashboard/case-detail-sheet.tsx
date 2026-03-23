@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -89,21 +89,36 @@ function SimilarDecisionsSection({ caseId, onSelectCase }: { caseId: string; onS
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [triggered, setTriggered] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort in-flight fetch on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
 
   const handleFindSimilar = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setTriggered(true);
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/fos/cases/${encodeURIComponent(caseId)}/similar`);
+      const res = await fetch(`/api/fos/cases/${encodeURIComponent(caseId)}/similar`, {
+        signal: controller.signal,
+      });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to load similar decisions.');
       setContext(data.data.context);
       setSimilar(data.data.cases);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Unknown error.');
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        setLoading(false);
+      }
     }
   }, [caseId]);
 

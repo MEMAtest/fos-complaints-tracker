@@ -11,8 +11,8 @@ export async function GET(
 ) {
   try {
     const { caseId } = params;
-    if (!caseId) {
-      return Response.json({ success: false, error: 'Missing caseId.' }, { status: 400 });
+    if (!caseId || caseId.length > 200 || !/^[a-zA-Z0-9_\-]+$/.test(caseId)) {
+      return Response.json({ success: false, error: 'Invalid or missing caseId.' }, { status: 400 });
     }
 
     const [cases, context] = await Promise.all([
@@ -32,11 +32,9 @@ export async function GET(
       { headers: { 'Cache-Control': 's-maxage=120, stale-while-revalidate=300' } }
     );
   } catch (error) {
+    console.error('[similar-cases]', error instanceof Error ? error.message : error);
     return Response.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to find similar cases.',
-      },
+      { success: false, error: 'Failed to find similar cases.' },
       { status: 500 }
     );
   }

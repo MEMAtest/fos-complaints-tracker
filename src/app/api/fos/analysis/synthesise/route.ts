@@ -251,10 +251,27 @@ export async function POST(request: NextRequest) {
     await ensureFosDecisionsTableExists();
 
     const body = await request.json();
-    const filters = body?.filters as FOSDashboardFilters | undefined;
-    if (!filters) {
+    const raw = body?.filters;
+    if (!raw || typeof raw !== 'object') {
       return Response.json({ success: false, error: 'Missing filters in request body.' }, { status: 400 });
     }
+
+    // Validate filter structure — each array field must be an array of primitives
+    const isStringArray = (v: unknown): v is string[] =>
+      Array.isArray(v) && v.every((item) => typeof item === 'string');
+    const isNumberArray = (v: unknown): v is number[] =>
+      Array.isArray(v) && v.every((item) => typeof item === 'number');
+
+    const filters: FOSDashboardFilters = {
+      years: isNumberArray(raw.years) ? raw.years.slice(0, 20) : [],
+      outcomes: isStringArray(raw.outcomes) ? raw.outcomes.slice(0, 10) : [],
+      products: isStringArray(raw.products) ? raw.products.slice(0, 50) : [],
+      firms: isStringArray(raw.firms) ? raw.firms.slice(0, 50) : [],
+      tags: isStringArray(raw.tags) ? raw.tags.slice(0, 20) : [],
+      query: typeof raw.query === 'string' ? raw.query.slice(0, 500) : '',
+      page: 1,
+      pageSize: 25,
+    };
 
     const stats = await gatherSynthesisStats(filters);
 
@@ -294,11 +311,14 @@ export async function POST(request: NextRequest) {
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    // Don't leak internal/Groq API error details to the client
+    const safeMessage =
+      message.includes('GROQ_API_KEY') || message.includes('api.groq.com') || message.includes('429')
+        ? 'AI analysis service is temporarily unavailable. Please try again later.'
+        : message || 'Failed to generate synthesis.';
     return Response.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate synthesis.',
-      },
+      { success: false, error: safeMessage },
       { status: 500 }
     );
   }
