@@ -1,15 +1,17 @@
 'use client';
 
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, CircleHelp, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FOSAdvisorRiskAssessment } from '@/lib/fos/types';
 import { formatNumber, formatPercent } from '@/lib/utils';
 
 const RISK_STYLES = {
-  low: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', label: 'Low risk', icon: ShieldCheck },
-  medium: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', label: 'Medium risk', icon: Shield },
-  high: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', label: 'High risk', icon: ShieldAlert },
-  very_high: { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', label: 'Very high risk', icon: AlertTriangle },
+  low: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', label: 'Low', icon: ShieldCheck },
+  medium: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', label: 'Medium', icon: Shield },
+  high: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', label: 'High', icon: ShieldAlert },
+  very_high: { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', label: 'Very high', icon: AlertTriangle },
 };
 
 const TREND_ICONS = {
@@ -23,7 +25,7 @@ interface RiskAssessmentCardProps {
 }
 
 export function RiskAssessmentCard({ risk }: RiskAssessmentCardProps) {
-  const style = RISK_STYLES[risk.riskLevel];
+  const style = RISK_STYLES[risk.upholdRiskLevel];
   const trend = TREND_ICONS[risk.trendDirection];
   const RiskIcon = style.icon;
   const TrendIcon = trend.icon;
@@ -36,7 +38,26 @@ export function RiskAssessmentCard({ risk }: RiskAssessmentCardProps) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           <RiskIcon className={`h-5 w-5 ${style.text}`} />
-          <span className={`text-sm font-semibold ${style.text}`}>{style.label}</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-sm font-semibold ${style.text}`}>Uphold Risk</span>
+              <UiTooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${style.text} opacity-80 transition hover:opacity-100`}
+                    aria-label="Explain uphold risk"
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Based on similar historical FOS outcomes.</TooltipContent>
+              </UiTooltip>
+            </div>
+            <Badge variant="outline" className={style.text}>
+              {style.label}
+            </Badge>
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           <TrendIcon className={`h-4 w-4 ${trend.text}`} />
@@ -46,8 +67,8 @@ export function RiskAssessmentCard({ risk }: RiskAssessmentCardProps) {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div>
-          <p className="text-xs text-slate-500">Total cases</p>
-          <p className="mt-0.5 text-2xl font-semibold text-slate-900">{formatNumber(risk.totalCases)}</p>
+          <p className="text-xs text-slate-500">Sample size</p>
+          <p className="mt-0.5 text-2xl font-semibold text-slate-900">{formatNumber(risk.sampleSize)}</p>
         </div>
         <div>
           <p className="text-xs text-slate-500">Upheld rate</p>

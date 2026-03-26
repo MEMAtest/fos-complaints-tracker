@@ -115,7 +115,7 @@ function buildAiUserPrompt(data: {
   totalCases: number;
   upheldRate: number;
   notUpheldRate: number;
-  riskLevel: string;
+  upholdRiskLevel: string;
   trendDirection: string;
   yearTrend: { year: number; upheldRate: number; total: number }[];
   keyPrecedents: { label: string; count: number; percentOfCases: number }[];
@@ -135,7 +135,7 @@ STATISTICS:
 - Total cases: ${data.totalCases}
 - Upheld rate: ${data.upheldRate}% (FOS overall average: ~40%)
 - Not upheld rate: ${data.notUpheldRate}%
-- Risk level: ${data.riskLevel} | Trend: ${data.trendDirection}
+- Uphold risk: ${data.upholdRiskLevel} | Trend: ${data.trendDirection}
 - Year trend: ${yearTrendStr || 'Insufficient data'}
 
 TOP PRECEDENTS: ${precedentsStr || 'None'}
@@ -237,7 +237,7 @@ async function generateBrief(product: string, rootCause: string | null): Promise
   `, params);
   const yearTrend = yearTrendRows.map((r) => ({ year: Number(r.year), upheldRate: Number(r.upheld_rate), total: Number(r.total) }));
 
-  const riskLevel = upheldRate >= 60 ? 'very_high' : upheldRate >= 45 ? 'high' : upheldRate >= 30 ? 'medium' : 'low';
+  const upholdRiskLevel = upheldRate >= 60 ? 'very_high' : upheldRate >= 45 ? 'high' : upheldRate >= 30 ? 'medium' : 'low';
   let trendDirection = 'stable';
   if (yearTrend.length >= 2) {
     const recent = yearTrend[yearTrend.length - 1].upheldRate;
@@ -372,7 +372,7 @@ async function generateBrief(product: string, rootCause: string | null): Promise
         totalCases,
         upheldRate,
         notUpheldRate,
-        riskLevel,
+        upholdRiskLevel,
         trendDirection,
         yearTrend: yearTrend.slice(-5),
         keyPrecedents: keyPrecedents.slice(0, 5),
@@ -452,7 +452,7 @@ async function generateBrief(product: string, rootCause: string | null): Promise
       generated_at = NOW()
   `, [
     product, rootCause, totalCases, upheldRate, notUpheldRate,
-    riskLevel, trendDirection, JSON.stringify(yearTrend), JSON.stringify(keyPrecedents),
+    upholdRiskLevel, trendDirection, JSON.stringify(yearTrend), JSON.stringify(keyPrecedents),
     JSON.stringify(rootCausePatterns), JSON.stringify([]), JSON.stringify([]), aiWhatWins, aiWhatLoses,
     aiGuidance, aiExecutiveSummary, JSON.stringify(outcomeDistribution),
     JSON.stringify(vulnerabilities), JSON.stringify(sampleCases), JSON.stringify(recommendedActions),

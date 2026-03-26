@@ -95,7 +95,7 @@ export async function getAdvisorBrief(query: FOSAdvisorQuery): Promise<FOSAdviso
     );
     const overallUpheldRate = toNumber(overallRow?.rate);
 
-    const riskLevel = String(row.risk_level || 'medium') as FOSAdvisorBrief['riskAssessment']['riskLevel'];
+    const upholdRiskLevel = String(row.risk_level || 'medium') as FOSAdvisorBrief['riskAssessment']['upholdRiskLevel'];
     const trendDirection = String(row.trend_direction || 'stable') as FOSAdvisorBrief['riskAssessment']['trendDirection'];
 
     return {
@@ -107,10 +107,11 @@ export async function getAdvisorBrief(query: FOSAdvisorQuery): Promise<FOSAdviso
       generatedAt: toIsoDate(row.generated_at) || new Date().toISOString(),
       riskAssessment: {
         totalCases,
+        sampleSize: totalCases,
         upheldRate,
         notUpheldRate,
         overallUpheldRate,
-        riskLevel,
+        upholdRiskLevel,
         trendDirection,
         yearTrend,
       },
@@ -229,7 +230,7 @@ export async function generateAndStoreAdvisorBrief(
     total: toInt(r.total),
   }));
 
-  const riskLevel = upheldRate >= 60 ? 'very_high' : upheldRate >= 45 ? 'high' : upheldRate >= 30 ? 'medium' : 'low';
+  const upholdRiskLevel = upheldRate >= 60 ? 'very_high' : upheldRate >= 45 ? 'high' : upheldRate >= 30 ? 'medium' : 'low';
   let trendDirection: 'improving' | 'stable' | 'worsening' = 'stable';
   if (yearTrend.length >= 2) {
     const recent = yearTrend[yearTrend.length - 1].upheldRate;
@@ -416,7 +417,7 @@ export async function generateAndStoreAdvisorBrief(
       totalCases,
       upheldRate,
       notUpheldRate,
-      riskLevel,
+      upholdRiskLevel,
       trendDirection,
       JSON.stringify(yearTrend),
       JSON.stringify(keyPrecedents),

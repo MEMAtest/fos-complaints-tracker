@@ -1,5 +1,6 @@
 import {
   FOSAdvisorBrief,
+  FOSAdvisorRiskAssessment,
   FOSAnalysisSnapshot,
   FOSCaseDetail,
   FOSCaseListItem,
@@ -10,6 +11,14 @@ import {
   FOSSimilarCase,
   FOSCaseContext,
 } from '@/lib/fos/types';
+
+export type FOSAdvisorRiskAssessmentApi = FOSAdvisorRiskAssessment & {
+  riskLevel: FOSAdvisorRiskAssessment['upholdRiskLevel'];
+};
+
+export type FOSAdvisorBriefApi = Omit<FOSAdvisorBrief, 'riskAssessment'> & {
+  riskAssessment: FOSAdvisorRiskAssessmentApi;
+};
 
 export interface FOSApiMeta {
   queryMs: number;
@@ -43,7 +52,7 @@ export interface FOSAnalysisApiResponse {
 
 export interface FOSAdvisorApiResponse {
   success: boolean;
-  data?: FOSAdvisorBrief;
+  data?: FOSAdvisorBriefApi;
   error?: string;
 }
 

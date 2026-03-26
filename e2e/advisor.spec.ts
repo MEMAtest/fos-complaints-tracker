@@ -77,10 +77,12 @@ test.describe('Advisor API - /api/fos/advisor', () => {
     // Risk assessment
     expect(brief.riskAssessment).toBeDefined();
     expect(typeof brief.riskAssessment.totalCases).toBe('number');
+    expect(typeof brief.riskAssessment.sampleSize).toBe('number');
     expect(typeof brief.riskAssessment.upheldRate).toBe('number');
     expect(typeof brief.riskAssessment.notUpheldRate).toBe('number');
     expect(typeof brief.riskAssessment.overallUpheldRate).toBe('number');
-    expect(['low', 'medium', 'high', 'very_high']).toContain(brief.riskAssessment.riskLevel);
+    expect(['low', 'medium', 'high', 'very_high']).toContain(brief.riskAssessment.upholdRiskLevel);
+    expect(brief.riskAssessment.riskLevel).toBe(brief.riskAssessment.upholdRiskLevel);
     expect(['improving', 'stable', 'worsening']).toContain(brief.riskAssessment.trendDirection);
     expect(Array.isArray(brief.riskAssessment.yearTrend)).toBe(true);
 
@@ -171,8 +173,9 @@ test.describe('Advisor UI - page and form', () => {
     // Submit
     await page.getByRole('button', { name: /get intelligence/i }).click();
 
-    // Wait for brief to load — risk assessment card should appear
-    await expect(page.getByText(/total cases/i).first()).toBeVisible({ timeout: 30_000 });
+    // Wait for brief to load — uphold-risk card should appear
+    await expect(page.getByText(/sample size/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/uphold risk/i).first()).toBeVisible();
 
     // Brief sections should be visible
     await expect(page.getByText(/Precedent Analysis/i).first()).toBeVisible();
@@ -212,7 +215,8 @@ async function loadFirstBrief(page: import('@playwright/test').Page) {
   expect(firstOption).toBeTruthy();
   await page.locator('#advisor-product').selectOption(firstOption!);
   await page.getByRole('button', { name: /get intelligence/i }).click();
-  await expect(page.getByText(/total cases/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/sample size/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/uphold risk/i).first()).toBeVisible();
 }
 
 test.describe('Advisor UI – Executive Summary', () => {

@@ -43,10 +43,11 @@ type AdvisorSampleCaseLike = {
 
 type AdvisorRiskAssessmentLike = {
   totalCases: number;
+  sampleSize: number;
   upheldRate: number;
   notUpheldRate: number;
   overallUpheldRate: number;
-  riskLevel: ComplaintLetterIntelligence['riskSnapshot']['riskLevel'];
+  upholdRiskLevel: ComplaintLetterIntelligence['riskSnapshot']['upholdRiskLevel'];
   trendDirection: ComplaintLetterIntelligence['riskSnapshot']['trendDirection'];
 };
 
@@ -197,10 +198,11 @@ export function buildComplaintLetterIntelligence(
     generatedAt: brief.generatedAt,
     riskSnapshot: {
       totalCases: brief.riskAssessment.totalCases,
+      sampleSize: brief.riskAssessment.sampleSize,
       upheldRate: brief.riskAssessment.upheldRate,
       notUpheldRate: brief.riskAssessment.notUpheldRate,
       overallUpheldRate: brief.riskAssessment.overallUpheldRate,
-      riskLevel: brief.riskAssessment.riskLevel,
+      upholdRiskLevel: brief.riskAssessment.upholdRiskLevel,
       trendDirection: brief.riskAssessment.trendDirection,
     },
     draftingGuidance: {
@@ -465,10 +467,11 @@ async function queryCorpusBrief(scope: QueryScope): Promise<AdvisorBriefLike | n
     generatedAt: new Date().toISOString(),
     riskAssessment: {
       totalCases,
+      sampleSize: totalCases,
       upheldRate,
       notUpheldRate,
       overallUpheldRate,
-      riskLevel: deriveRiskLevel(upheldRate),
+      upholdRiskLevel: deriveUpholdRiskLevel(upheldRate),
       trendDirection,
     },
     keyPrecedents: mappedPrecedents,
@@ -532,7 +535,7 @@ async function queryCorpusBriefLightweight(scope: QueryScope): Promise<AdvisorBr
   const upheldRate = toNumber(statsRow?.upheld_rate);
   const notUpheldRate = toNumber(statsRow?.not_upheld_rate);
   const overallUpheldRate = toNumber(overallRow?.rate);
-  const riskLevel = deriveRiskLevel(upheldRate);
+  const upholdRiskLevel = deriveUpholdRiskLevel(upheldRate);
   const genericActions: ComplaintLetterIntelligenceAction[] = dedupeActions([
     {
       item: `Stress-test the draft against the ${scope.product} upheld rate before issue.`,
@@ -561,10 +564,11 @@ async function queryCorpusBriefLightweight(scope: QueryScope): Promise<AdvisorBr
     generatedAt: new Date().toISOString(),
     riskAssessment: {
       totalCases,
+      sampleSize: totalCases,
       upheldRate,
       notUpheldRate,
       overallUpheldRate,
-      riskLevel,
+      upholdRiskLevel,
       trendDirection: 'stable',
     },
     keyPrecedents: [],
@@ -662,7 +666,7 @@ function dedupeActions(actions: ComplaintLetterIntelligenceAction[]): ComplaintL
   return result;
 }
 
-function deriveRiskLevel(upheldRate: number): AdvisorRiskAssessmentLike['riskLevel'] {
+function deriveUpholdRiskLevel(upheldRate: number): AdvisorRiskAssessmentLike['upholdRiskLevel'] {
   if (upheldRate >= 60) return 'very_high';
   if (upheldRate >= 45) return 'high';
   if (upheldRate >= 30) return 'medium';

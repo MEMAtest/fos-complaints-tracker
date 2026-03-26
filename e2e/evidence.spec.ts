@@ -10,7 +10,7 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
 
   try {
     await signIn(page, 'operator@local.test', 'OperatorPass123!');
-    complaintId = await createComplaint(page, {
+    const createdComplaintId = await createComplaint(page, {
       complaintReference,
       complainantName: 'Evidence Flow Tester',
       firmName: 'MEMA Test Firm',
@@ -22,8 +22,9 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
       status: 'open',
       priority: 'medium',
     });
+    complaintId = createdComplaintId;
 
-    await page.goto(`/complaints/${complaintId}`);
+    await page.goto(`/complaints/${createdComplaintId}`);
     await page.getByRole('button', { name: /^evidence$/i }).click();
     await page.setInputFiles('[data-testid="evidence-file-input"]', {
       name: 'complaint-email.txt',
@@ -34,8 +35,8 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
     await page.getByTestId('evidence-summary-input').fill('Customer escalation email showing missed timeline.');
     await page.getByTestId('evidence-upload-button').click();
 
-    await expect.poll(() => getEvidenceCount(page, complaintId)).toBe(1);
-    const evidenceId = await getLatestEvidenceId(page, complaintId);
+    await expect.poll(() => getEvidenceCount(page, createdComplaintId)).toBe(1);
+    const evidenceId = await getLatestEvidenceId(page, createdComplaintId);
     await expect(page.getByTestId('evidence-preview-category')).toContainText('email');
     await expect(page.getByTestId('evidence-text-preview')).toContainText('Timeline confirms delayed response.');
 
@@ -57,17 +58,17 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
 
     await page.getByRole('button', { name: /edit/i }).click();
     await page.getByTestId('evidence-archive-button').click();
-    await expect.poll(() => getEvidenceArchivedState(page, complaintId!, evidenceId)).toBe(true);
+    await expect.poll(() => getEvidenceArchivedState(page, createdComplaintId, evidenceId)).toBe(true);
 
     await signOut(page);
     await signIn(page, 'manager@local.test', 'ManagerPass123!');
-    await page.goto(`/complaints/${complaintId}`);
+    await page.goto(`/complaints/${createdComplaintId}`);
     await page.getByRole('button', { name: /^evidence$/i }).click();
     await page.getByRole('button', { name: /active only/i }).click();
     await page.getByText('complaint-email-renamed.txt').first().click();
     await page.getByRole('button', { name: /edit/i }).click();
     await page.getByTestId('evidence-delete-button').click();
-    await expect.poll(() => getEvidencePresence(page, complaintId!, evidenceId)).toBe(false);
+    await expect.poll(() => getEvidencePresence(page, createdComplaintId, evidenceId)).toBe(false);
   } finally {
     await signOut(page).catch(() => undefined);
     await signIn(page, 'manager@local.test', 'ManagerPass123!').catch(() => undefined);

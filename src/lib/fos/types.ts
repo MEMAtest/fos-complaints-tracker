@@ -274,10 +274,11 @@ export interface FOSAdvisorQuery {
 
 export interface FOSAdvisorRiskAssessment {
   totalCases: number;
+  sampleSize: number;
   upheldRate: number;
   notUpheldRate: number;
   overallUpheldRate: number;
-  riskLevel: 'low' | 'medium' | 'high' | 'very_high';
+  upholdRiskLevel: 'low' | 'medium' | 'high' | 'very_high';
   trendDirection: 'improving' | 'stable' | 'worsening';
   yearTrend: { year: number; upheldRate: number; total: number }[];
 }

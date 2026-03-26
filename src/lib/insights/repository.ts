@@ -636,7 +636,7 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
       bullets: buildBullets([
         latestYear ? `Latest year in the product series: ${latestYear.year}` : null,
         dashboard.precedents[0] ? `Leading precedent signal: ${dashboard.precedents[0].label}` : null,
-        advisor?.riskAssessment?.riskLevel ? `Advisor risk signal: ${advisor.riskAssessment.riskLevel.replace(/_/g, ' ')}` : null,
+        advisor?.riskAssessment?.upholdRiskLevel ? `Advisor uphold-risk signal: ${advisor.riskAssessment.upholdRiskLevel.replace(/_/g, ' ')}` : null,
       ]),
     },
     {
@@ -1063,7 +1063,7 @@ export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string,
       bullets: buildBullets([
         topTheme ? `Leading complaint theme: ${topTheme.label}` : null,
         dashboard.precedents[0] ? `Leading precedent signal: ${dashboard.precedents[0].label}` : null,
-        advisor?.riskAssessment?.riskLevel ? `Advisor risk signal for ${product}: ${advisor.riskAssessment.riskLevel.replace(/_/g, ' ')}` : null,
+        advisor?.riskAssessment?.upholdRiskLevel ? `Advisor uphold-risk signal for ${product}: ${advisor.riskAssessment.upholdRiskLevel.replace(/_/g, ' ')}` : null,
       ]),
     },
     {

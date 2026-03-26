@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getAdvisorBrief } from '@/lib/fos/repository';
+import type { FOSAdvisorBrief } from '@/lib/fos/types';
+import type { FOSAdvisorApiResponse } from '@/types/fos-dashboard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,7 +65,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const payload = { success: true, data: brief };
+    const payload: FOSAdvisorApiResponse = { success: true, data: serializeAdvisorBrief(brief) };
 
     if (!freeText) {
       cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, payload });
@@ -78,4 +80,15 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function serializeAdvisorBrief(brief: FOSAdvisorBrief): FOSAdvisorApiResponse['data'] {
+  return {
+    ...brief,
+    riskAssessment: {
+      ...brief.riskAssessment,
+      // Keep the legacy field for one release while downstream consumers migrate.
+      riskLevel: brief.riskAssessment.upholdRiskLevel,
+    },
+  };
 }

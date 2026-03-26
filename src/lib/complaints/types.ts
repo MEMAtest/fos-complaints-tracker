@@ -259,10 +259,11 @@ export interface ComplaintLetterIntelligence {
   generatedAt: string;
   riskSnapshot: {
     totalCases: number;
+    sampleSize: number;
     upheldRate: number;
     notUpheldRate: number;
     overallUpheldRate: number;
-    riskLevel: 'low' | 'medium' | 'high' | 'very_high';
+    upholdRiskLevel: 'low' | 'medium' | 'high' | 'very_high';
     trendDirection: 'improving' | 'stable' | 'worsening';
   };
   draftingGuidance: {
@@ -291,9 +292,15 @@ export interface ComplaintLetterIntelligence {
   aiGuidance: string | null;
 }
 
+export type ComplaintLetterIntelligenceApi = Omit<ComplaintLetterIntelligence, 'riskSnapshot'> & {
+  riskSnapshot: ComplaintLetterIntelligence['riskSnapshot'] & {
+    riskLevel: ComplaintLetterIntelligence['riskSnapshot']['upholdRiskLevel'];
+  };
+};
+
 export interface ComplaintLetterIntelligenceResponse {
   success: boolean;
-  data?: ComplaintLetterIntelligence | null;
+  data?: ComplaintLetterIntelligenceApi | null;
   meta?: {
     complaintId: string;
     sourceScope: ComplaintLetterIntelligenceSourceScope;

@@ -74,11 +74,11 @@ export function buildComparableCaseReviewerNoteBlock(review: ComplaintLetterComp
 export function buildRiskSnapshotBlock(intelligence: ComplaintLetterIntelligence): string {
   const lines = [
     `Scope used: ${intelligence.sourceScope === 'product_root_cause' ? 'product and root cause' : 'product only'}.`,
-    `Similar cases reviewed: ${intelligence.riskSnapshot.totalCases}.`,
+    `Sample size: ${intelligence.riskSnapshot.sampleSize}.`,
     `Upheld rate: ${intelligence.riskSnapshot.upheldRate.toFixed(1)}%.`,
     `Not upheld rate: ${intelligence.riskSnapshot.notUpheldRate.toFixed(1)}%.`,
     `Overall upheld benchmark: ${intelligence.riskSnapshot.overallUpheldRate.toFixed(1)}%.`,
-    `Risk level: ${intelligence.riskSnapshot.riskLevel.replace(/_/g, ' ')}.`,
+    `Uphold risk: ${intelligence.riskSnapshot.upholdRiskLevel.replace(/_/g, ' ')}.`,
     `Trend direction: ${intelligence.riskSnapshot.trendDirection}.`,
   ];
   return buildDraftAssistBlock('risk snapshot', lines);

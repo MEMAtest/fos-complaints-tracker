@@ -121,6 +121,12 @@ Those controls let admins:
 - set featured rank for archive and landing-page promotion
 - override titles, descriptions, and hero deck copy without code changes
 
+## Risk model reference
+
+The live internal uphold-risk definition, thresholds, and compatibility notes are documented in:
+
+- `docs/risk-model.md`
+
 ## Debug endpoint access
 
 Both internal debug endpoints require:

@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, BrainCircuit, Loader2, Scale, Sparkles } from 'lucide-react';
+import { AlertCircle, BrainCircuit, CircleHelp, Loader2, Scale, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
 import { useCaseDetail } from '@/hooks/use-fos-dashboard';
 import {
@@ -228,12 +229,26 @@ export function ComplaintLetterIntelligencePanel({
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <Badge variant="outline">{intelligence.sourceScope === 'product_root_cause' ? 'Product + root cause' : 'Product only'}</Badge>
-                <Badge variant="outline">Risk {intelligence.riskSnapshot.riskLevel.replace('_', ' ')}</Badge>
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="outline">Uphold Risk {intelligence.riskSnapshot.upholdRiskLevel.replace(/_/g, ' ')}</Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Explain uphold risk"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-600"
+                      >
+                        <CircleHelp className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Based on similar historical FOS outcomes.</TooltipContent>
+                  </Tooltip>
+                </div>
                 <span>Generated {formatDateTime(intelligence.generatedAt)}</span>
               </div>
 
               <div className="grid gap-3 md:grid-cols-4">
-                <MetricCard label="Similar cases" value={formatNumber(intelligence.riskSnapshot.totalCases)} />
+                <MetricCard label="Sample size" value={formatNumber(intelligence.riskSnapshot.sampleSize)} />
                 <MetricCard label="Upheld" value={formatPercent(intelligence.riskSnapshot.upheldRate)} />
                 <MetricCard label="Not upheld" value={formatPercent(intelligence.riskSnapshot.notUpheldRate)} />
                 <MetricCard label="Trend" value={intelligence.riskSnapshot.trendDirection} />

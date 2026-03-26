@@ -3,7 +3,7 @@ import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { getComplaintById } from '@/lib/complaints/repository';
 import { buildComplaintLetterIntelligence, getComplaintLetterIntelligenceFromCorpus } from '@/lib/complaints/letter-intelligence';
 import { getAdvisorBrief } from '@/lib/fos/repository';
-import type { ComplaintLetterIntelligenceResponse, ComplaintLetterIntelligenceSourceScope } from '@/lib/complaints/types';
+import type { ComplaintLetterIntelligence, ComplaintLetterIntelligenceResponse, ComplaintLetterIntelligenceSourceScope } from '@/lib/complaints/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (fallbackIntelligence) {
         const payload: ComplaintLetterIntelligenceResponse = {
           success: true,
-          data: fallbackIntelligence,
+          data: serializeComplaintLetterIntelligence(fallbackIntelligence),
           meta: {
             complaintId: complaint.id,
             sourceScope: fallbackIntelligence.sourceScope,
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const intelligence = buildComplaintLetterIntelligence(complaint, brief, sourceScope);
     const payload: ComplaintLetterIntelligenceResponse = {
       success: true,
-      data: intelligence,
+      data: serializeComplaintLetterIntelligence(intelligence),
       meta: {
         complaintId: complaint.id,
         sourceScope,
@@ -99,4 +99,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 function isQueryTimeoutError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase();
   return message.includes('query read timeout') || message.includes('statement timeout') || message.includes('timeout');
+}
+
+function serializeComplaintLetterIntelligence(intelligence: ComplaintLetterIntelligence): ComplaintLetterIntelligenceResponse['data'] {
+  return {
+    ...intelligence,
+    riskSnapshot: {
+      ...intelligence.riskSnapshot,
+      // Keep the legacy field for one release while downstream consumers migrate.
+      riskLevel: intelligence.riskSnapshot.upholdRiskLevel,
+    },
+  };
 }
