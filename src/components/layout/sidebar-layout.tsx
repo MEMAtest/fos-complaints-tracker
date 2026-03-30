@@ -11,7 +11,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
-  if (pathname === '/login' || pathname.startsWith('/insights')) {
+  if (pathname === '/' || pathname === '/login' || pathname.startsWith('/insights')) {
     return <>{children}</>;
   }
 

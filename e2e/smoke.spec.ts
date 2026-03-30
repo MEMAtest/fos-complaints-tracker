@@ -3,10 +3,15 @@ import { test, expect } from '@playwright/test';
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Smoke tests - pages load', () => {
-  test('Dashboard page loads with KPI cards', async ({ page }) => {
+  test('Homepage loads with marketing hero', async ({ page }) => {
     await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('See live complaint intelligence clearly');
+    await expect(page.getByRole('main').getByRole('link', { name: /explore live data/i }).first()).toBeVisible();
+  });
+
+  test('Workspace dashboard loads with KPI cards', async ({ page }) => {
+    await page.goto('/workspace');
     await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('FOS Complaints Intelligence');
-    // KPI section should render (either skeleton or real cards)
     await expect(page.locator('section').first()).toBeVisible();
   });
 
@@ -29,7 +34,7 @@ test.describe('Smoke tests - pages load', () => {
 
 test.describe('Smoke tests - sidebar navigation', () => {
   test('Navigate between all pages via sidebar', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/workspace');
     await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('FOS Complaints Intelligence');
     const nav = page.locator('aside').getByRole('navigation');
 
@@ -50,7 +55,7 @@ test.describe('Smoke tests - sidebar navigation', () => {
 
     // Navigate back to Dashboard
     await nav.getByRole('link', { name: /^Dashboard$/i }).click();
-    await expect(page).toHaveURL(/\/(\?.*)?$/);
+    await expect(page).toHaveURL(/\/workspace(\?.*)?$/);
   });
 });
 
@@ -110,7 +115,7 @@ test.describe('Smoke tests - API routes', () => {
 
 test.describe('Smoke tests - dashboard interactions', () => {
   test('Search bar accepts input', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/workspace');
     const searchInput = page.getByPlaceholder(/search/i);
     if (await searchInput.isVisible()) {
       await searchInput.fill('test query');
@@ -119,7 +124,7 @@ test.describe('Smoke tests - dashboard interactions', () => {
   });
 
   test('Dashboard loads data and shows case count', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/workspace');
     await expect(page.getByText(/Showing .* decisions/i)).toBeVisible({ timeout: 30_000 });
   });
 });

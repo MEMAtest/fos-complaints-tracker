@@ -20,7 +20,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: Home, requiresAuth: false },
+  { href: '/workspace', label: 'Dashboard', icon: Home, requiresAuth: false },
   { href: '/analysis', label: 'Analysis', icon: BarChart3, requiresAuth: false },
   { href: '/root-causes', label: 'Root Causes', icon: Network, requiresAuth: false },
   { href: '/comparison', label: 'Firm Comparison', icon: GitCompare, requiresAuth: false },

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getAppHref } from '@/lib/marketing/config';
 
 const NAV_ITEMS = [
   { href: '/insights/years', label: 'Years' },
@@ -12,12 +13,14 @@ const NAV_ITEMS = [
 ] as const;
 
 export function PublicInsightsShell({ children }: { children: React.ReactNode }) {
+  const workspaceHref = getAppHref('/');
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.18),transparent_30%),#f5f8ff] text-slate-950">
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/88 backdrop-blur-lg">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 md:px-8">
           <div className="flex items-center gap-3">
-            <Link href="/insights" className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0f1f4f] text-white shadow-lg shadow-blue-950/20">
                 <BarChart3 className="h-5 w-5" />
               </div>
@@ -41,7 +44,7 @@ export function PublicInsightsShell({ children }: { children: React.ReactNode })
               <Link href="/analysis">Open analysis</Link>
             </Button>
             <Button asChild size="sm" className="gap-2 rounded-full bg-[#0f1f4f] px-4 hover:bg-[#0c1940]">
-              <Link href="/">
+              <Link href={workspaceHref}>
                 Workspace
                 <ArrowRight className="h-4 w-4" />
               </Link>
