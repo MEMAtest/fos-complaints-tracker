@@ -20,8 +20,9 @@ export function MarketingHeader() {
 
         <nav className="hidden items-center gap-6 lg:flex">
           <Link href="/insights" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Live Data</Link>
+          <Link href="/check" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Outcome Estimator</Link>
           <Link href="#how-it-works" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">How it works</Link>
-          <Link href="#platform" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Platform</Link>
+          <Link href={workspaceHref} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Platform</Link>
           <Link href="#roles" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Who it helps</Link>
         </nav>
 

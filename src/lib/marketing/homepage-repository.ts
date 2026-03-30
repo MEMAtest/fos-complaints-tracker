@@ -1,6 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { getInsightsLandingData } from '@/lib/insights/repository';
-import { getAppHref, getWorkspaceEntryHref } from './config';
+import { getWorkspaceEntryHref } from './config';
 import type { HomepageSnapshot } from './types';
 
 const REVALIDATE_SECONDS = 60 * 60;
@@ -11,6 +11,7 @@ function helper(metric: string | undefined, fallback: string): string {
 
 export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnapshot> => {
   const landing = await getInsightsLandingData();
+  const workspaceHref = getWorkspaceEntryHref();
   const latestYear = landing.collections.find((collection) => collection.href === '/insights/years')?.items[0];
   const topFirm = landing.collections.find((collection) => collection.href === '/insights/firms')?.items[0];
   const topProduct = landing.collections.find((collection) => collection.href === '/insights/products')?.items[0];
@@ -28,7 +29,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       },
       secondaryCta: {
         label: 'Request workspace demo',
-        href: getWorkspaceEntryHref(),
+        href: workspaceHref,
       },
       trustPoints: [
         'Live firm, product, year, and theme analysis',
@@ -115,7 +116,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         title: 'Transition into the workspace when the complaint needs handling depth.',
         caption:
           'The workspace holds complaint detail, evidence, correspondence, approvals, and actions together so the operating trail stays connected from start to finish.',
-        href: getAppHref('/complaints'),
+        href: workspaceHref,
         actionLabel: 'Request workspace demo',
         eyebrow: 'Operational complaint handling',
         metrics: [
@@ -140,7 +141,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         title: 'Finish with outputs leadership can actually use.',
         caption:
           'Board packs and appendix material are built from the same complaint and insight layer, so the reporting story stays consistent instead of fragmenting across decks and spreadsheets.',
-        href: getAppHref('/board-pack'),
+        href: workspaceHref,
         actionLabel: 'See reporting flow',
         eyebrow: 'Board-ready reporting',
         metrics: [
@@ -187,7 +188,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Letter drafting with review control',
           'Approvals, actions, and operational ownership',
         ],
-        href: getWorkspaceEntryHref(),
+        href: workspaceHref,
         ctaLabel: 'Request workspace demo',
         accentMetric: 'Workspace-ready flow',
       },
@@ -202,7 +203,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Reviewer notes and version history visible',
           'Deadlines and actions kept in the same operating thread',
         ],
-        href: getAppHref('/complaints'),
+        href: workspaceHref,
         ctaLabel: 'Open complaints flow',
         accentMetric: 'Investigation-ready workflow',
       },
@@ -217,7 +218,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Appendix material from evidence and letters',
           'Leadership reporting built on live complaint context',
         ],
-        href: getAppHref('/board-pack'),
+        href: workspaceHref,
         ctaLabel: 'See reporting flow',
         accentMetric: 'Board-ready outputs',
       },
@@ -249,7 +250,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Actions and deadlines visible in the same flow',
           'Board-ready outputs connected back to the operating record',
         ],
-        href: getWorkspaceEntryHref(),
+        href: workspaceHref,
         ctaLabel: 'Request workspace demo',
         tone: 'dark',
       },
