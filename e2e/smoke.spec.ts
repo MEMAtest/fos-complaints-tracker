@@ -6,7 +6,7 @@ test.describe('Smoke tests - pages load', () => {
   test('Homepage loads with marketing hero', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('See live complaint intelligence clearly');
-    await expect(page.getByRole('main').getByRole('link', { name: /explore live data/i }).first()).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: /start analysis/i }).first()).toBeVisible();
   });
 
   test('Workspace dashboard loads with KPI cards', async ({ page }) => {

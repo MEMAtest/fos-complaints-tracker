@@ -1,15 +1,13 @@
 import type { Metadata } from 'next';
 import { absoluteUrl } from '@/lib/insights/seo';
-import { getAppHref } from '@/lib/marketing/config';
+import { getWorkspaceEntryHref } from '@/lib/marketing/config';
 import { getHomepageSnapshot } from '@/lib/marketing/homepage-repository';
+import { AudienceSplit } from '@/components/marketing/audience-split';
 import { FooterCta } from '@/components/marketing/footer-cta';
 import { HomepageHero } from '@/components/marketing/homepage-hero';
-import { HowItWorksStory } from '@/components/marketing/how-it-works-story';
-import { LiveLinksGrid } from '@/components/marketing/live-links-grid';
 import { LiveProofStrip } from '@/components/marketing/live-proof-strip';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
-import { ExpectationsSection } from '@/components/marketing/expectations-section';
-import { ProductSurfaceGrid } from '@/components/marketing/product-surface-grid';
+import { PhaseGrid } from '@/components/marketing/phase-grid';
 
 export const metadata: Metadata = {
   title: 'FOS Complaints Intelligence | Live Complaint Data, Workspace, and Board Reporting',
@@ -33,7 +31,7 @@ export const metadata: Metadata = {
 
 export default async function MarketingHomepage() {
   const snapshot = await getHomepageSnapshot();
-  const workspaceHref = getAppHref('/');
+  const workspaceHref = getWorkspaceEntryHref();
   const structuredData = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -64,16 +62,14 @@ export default async function MarketingHomepage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7fbff] text-slate-950">
+    <div className="min-h-screen bg-[#f6f8fc] text-slate-950">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <MarketingHeader />
-      <main>
+      <main className="overflow-hidden">
         <HomepageHero snapshot={snapshot} />
         <LiveProofStrip metrics={snapshot.liveProof} updatedAt={snapshot.updatedAt} />
-        <HowItWorksStory steps={snapshot.storySteps} />
-        <ProductSurfaceGrid surfaces={snapshot.surfaces} />
-        <ExpectationsSection expectations={snapshot.expectations} />
-        <LiveLinksGrid links={snapshot.featuredLinks} />
+        <PhaseGrid steps={snapshot.storySteps} />
+        <AudienceSplit links={snapshot.featuredLinks} audienceCards={snapshot.audienceCards} />
       </main>
       <FooterCta workspaceHref={workspaceHref} />
     </div>

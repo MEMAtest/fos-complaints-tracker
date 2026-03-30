@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getAppHref } from '@/lib/marketing/config';
+import { getWorkspaceEntryHref } from '@/lib/marketing/config';
 
 const NAV_ITEMS = [
   { href: '/insights/years', label: 'Years' },
@@ -13,7 +13,7 @@ const NAV_ITEMS = [
 ] as const;
 
 export function PublicInsightsShell({ children }: { children: React.ReactNode }) {
-  const workspaceHref = getAppHref('/');
+  const workspaceHref = getWorkspaceEntryHref();
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.18),transparent_30%),#f5f8ff] text-slate-950">

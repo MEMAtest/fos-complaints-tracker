@@ -9,17 +9,18 @@ type HomepageHeroProps = {
 
 export function HomepageHero({ snapshot }: HomepageHeroProps) {
   return (
-    <section className="relative overflow-hidden border-b border-slate-200/60">
-      <div className="absolute inset-x-0 top-0 -z-10 h-[34rem] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.22),transparent_30%),radial-gradient(circle_at_25%_35%,rgba(59,130,246,0.16),transparent_35%),radial-gradient(circle_at_top_right,rgba(15,31,79,0.12),transparent_28%),linear-gradient(180deg,#f7fbff_0%,#eef5ff_44%,#f9fbff_100%)]" />
-      <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-10 md:px-8 md:py-16 xl:grid-cols-[0.95fr_1.05fr] xl:items-center">
-        <div>
+    <section className="relative overflow-hidden border-b border-slate-200/50 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(15,31,79,0.12),transparent_26%),linear-gradient(180deg,#f6f9ff_0%,#eef4ff_46%,#f7fbff_100%)]">
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-[#f7fbff]" />
+      <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 pb-16 pt-10 md:px-8 md:pb-20 md:pt-14 xl:grid-cols-[0.82fr_1.18fr] xl:items-center">
+        <div className="relative z-10">
           <p className="text-xs uppercase tracking-[0.28em] text-sky-700">{snapshot.hero.eyebrow}</p>
-          <h1 className="mt-5 max-w-5xl text-5xl font-semibold tracking-[-0.04em] text-slate-950 md:text-6xl xl:text-7xl">
+          <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-[0.94] tracking-[-0.05em] text-slate-950 md:text-6xl xl:text-[4.9rem]">
             {snapshot.hero.title}
           </h1>
-          <p className="mt-6 max-w-3xl text-base leading-8 text-slate-600 md:text-lg">
+          <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
             {snapshot.hero.dek}
           </p>
+
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href={snapshot.hero.primaryCta.href}
@@ -35,13 +36,13 @@ export function HomepageHero({ snapshot }: HomepageHeroProps) {
               {snapshot.hero.secondaryCta.label}
             </Link>
           </div>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:max-w-2xl">
-            {snapshot.liveProof.slice(0, 2).map((metric) => (
-              <article key={metric.label} className="rounded-[1.5rem] border border-slate-200/80 bg-white/88 p-4 shadow-sm backdrop-blur">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{metric.helper}</p>
-              </article>
+
+          <div className="mt-8 grid gap-3 md:max-w-xl">
+            {snapshot.hero.trustPoints.map((point) => (
+              <div key={point} className="inline-flex w-fit items-center gap-3 rounded-full border border-slate-200 bg-white/85 px-4 py-2 text-sm text-slate-600 shadow-sm backdrop-blur">
+                <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
+                <span>{point}</span>
+              </div>
             ))}
           </div>
         </div>

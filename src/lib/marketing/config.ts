@@ -1,15 +1,14 @@
-const configuredAppBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL?.trim().replace(/\/$/, '') || '';
+const configuredAppOrigin = process.env.NEXT_PUBLIC_APP_BASE_URL?.trim().replace(/\/$/, '') || '';
 
-export function getAppHref(path = '/'): string {
-  const normalizedPath = path === '/' ? '' : path.startsWith('/') ? path : `/${path}`;
+export function getWorkspaceEntryHref(): string {
+  return configuredAppOrigin ? `${configuredAppOrigin}/workspace` : '/workspace';
+}
 
-  if (configuredAppBaseUrl) {
-    return `${configuredAppBaseUrl}${normalizedPath}`;
-  }
-
-  return path === '/' ? '/workspace' : normalizedPath || '/workspace';
+export function getAppHref(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return configuredAppOrigin ? `${configuredAppOrigin}${normalizedPath}` : normalizedPath;
 }
 
 export function getAppBaseUrl(): string {
-  return configuredAppBaseUrl || '/workspace';
+  return configuredAppOrigin || '/';
 }

@@ -58,7 +58,7 @@ Optional DB runtime env vars:
 - `DB_RETRY_MAX_MS` (default `4000` for scripts, `2000` for app runtime) max retry delay
 - `DEBUG_API_SECRET` (required for `/api/debug-*` endpoints, bearer token)
 - `CRON_SECRET` (recommended in production for `/api/fos/keepalive`)
-- `NEXT_PUBLIC_APP_BASE_URL` (optional) public base URL for the secure workspace CTA; defaults locally to `/workspace`
+- `NEXT_PUBLIC_APP_BASE_URL` (optional) public app origin for secure workspace and app CTAs; when unset, homepage workspace entry falls back to `/workspace`
 
 ## Local auth users
 

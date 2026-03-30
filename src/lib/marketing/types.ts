@@ -30,22 +30,19 @@ export type HomepageStoryStep = {
   body: string;
   bullets: string[];
   href: string;
+  ctaLabel: string;
   accentMetric: string;
 };
 
-export type HomepageSurface = {
+export type HomepageAudienceCard = {
   key: string;
   eyebrow: string;
   title: string;
   body: string;
   bullets: string[];
   href: string;
-  metric: string;
-};
-
-export type HomepageExpectation = {
-  title: string;
-  body: string;
+  ctaLabel: string;
+  tone: 'light' | 'dark';
 };
 
 export type HomepageSnapshot = {
@@ -61,12 +58,12 @@ export type HomepageSnapshot = {
       label: string;
       href: string;
     };
+    trustPoints: string[];
   };
   liveProof: HomepageMetric[];
   demoSteps: HomepageDemoStep[];
   storySteps: HomepageStoryStep[];
-  surfaces: HomepageSurface[];
-  expectations: HomepageExpectation[];
+  audienceCards: HomepageAudienceCard[];
   featuredLinks: Array<{
     title: string;
     href: string;

@@ -1,6 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { getInsightsLandingData } from '@/lib/insights/repository';
-import { getAppHref } from './config';
+import { getAppHref, getWorkspaceEntryHref } from './config';
 import type { HomepageSnapshot } from './types';
 
 const REVALIDATE_SECONDS = 60 * 60;
@@ -21,15 +21,20 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       eyebrow: 'Live FOS complaints intelligence',
       title: 'See live complaint intelligence clearly, then move straight into the workflow.',
       dek:
-        'Explore firms, products, years, and complaint themes in public. Then step into the secure workspace to investigate complaints, draft responses, and produce board-ready reporting without rebuilding the story by hand.',
+        'Explore the public complaint signal first. Then move into the workspace to investigate complaints, manage evidence and letters, and produce reporting that leadership can actually use.',
       primaryCta: {
-        label: 'Explore live data',
+        label: 'Start analysis',
         href: '/insights',
       },
       secondaryCta: {
-        label: 'Open workspace',
-        href: getAppHref('/'),
+        label: 'Request workspace demo',
+        href: getWorkspaceEntryHref(),
       },
+      trustPoints: [
+        'Live firm, product, year, and theme analysis',
+        'Workspace for evidence, letters, approvals, and actions',
+        'Board-ready outputs built from the same intelligence layer',
+      ],
     },
     liveProof: [
       {
@@ -57,20 +62,21 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       {
         key: 'search',
         label: 'Search',
-        title: 'Start with live public complaint intelligence.',
+        title: 'Explore the public signal first.',
         caption:
-          'Search the public corpus by year, firm, product, and complaint theme before you ever enter the secure workspace.',
+          'Start with public year, firm, product, and theme pages so users can understand the complaint landscape before they ever enter the secure workspace.',
         href: '/insights',
-        actionLabel: 'Open live insights',
+        actionLabel: 'Start analysis',
         eyebrow: 'Live public access',
         metrics: [
           { label: 'Published decisions', value: helper(landing.metrics[0]?.value, 'Live'), helper: 'Corpus coverage' },
           { label: 'Latest year', value: latestYear?.title || helper(landing.metrics[3]?.value, 'Current'), helper: 'Annual analysis' },
+          { label: 'Theme focus', value: topTheme?.title || 'Complaint themes', helper: 'Root-cause and complaint-theme view' },
         ],
         bullets: [
-          'Jump into annual, firm, product, and theme pages immediately.',
-          'Use public pages as the front door into the platform.',
-          'Move from search visibility into real complaint context without friction.',
+          'Search live annual, firm, product, and complaint-theme analysis.',
+          'Use public pages as the front door into the product.',
+          'Move from search visibility into real complaint context immediately.',
         ],
         previewRows: [
           { label: 'Search query', value: 'Lloyds · Banking and credit', tone: 'accent' },
@@ -81,15 +87,16 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       {
         key: 'compare',
         label: 'Compare',
-        title: 'See how firms and products sit against the wider dataset.',
+        title: 'See the complaint pattern in context.',
         caption:
-          'Move from a single page into relative context: which firms dominate, which products carry exposure, and where upheld patterns diverge.',
+          'Comparison views show where firm footprint, product concentration, and upheld patterns diverge, so users do not jump from a single page straight to a conclusion.',
         href: '/comparison',
-        actionLabel: 'Open firm comparison',
+        actionLabel: 'Open comparison',
         eyebrow: 'Context before judgment',
         metrics: [
           { label: 'Top firm', value: topFirm?.title || 'Leading firm view', helper: 'High-volume comparison candidate' },
           { label: 'Top product', value: topProduct?.title || 'Product view', helper: 'Recurring product line' },
+          { label: 'Compare by', value: 'Volume + upheld', helper: 'Relative context across the corpus' },
         ],
         bullets: [
           'Compare live firm footprints against the wider published corpus.',
@@ -97,23 +104,24 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Use comparison as the bridge between browsing and investigation.',
         ],
         previewRows: [
-          { label: topFirm?.title || 'Firm A', value: topFirm?.summary || 'High published decision volume', tone: 'accent' },
-          { label: topProduct?.title || 'Firm B', value: topProduct?.summary || 'Product concentration in view' },
-          { label: 'Compare by', value: 'Volume · upheld rate · complaint mix', tone: 'positive' },
+          { label: topFirm?.title || 'Firm profile', value: topFirm?.summary || 'High published decision volume', tone: 'accent' },
+          { label: topProduct?.title || 'Product profile', value: topProduct?.summary || 'Product concentration in view' },
+          { label: 'Comparison lens', value: 'Volume · mix · upheld context', tone: 'positive' },
         ],
       },
       {
         key: 'work',
         label: 'Work',
-        title: 'Handle complaints in one place once you move into the workspace.',
+        title: 'Transition into the workspace when the complaint needs handling depth.',
         caption:
-          'The secure workspace is where evidence, letters, approvals, actions, and timelines stay connected instead of being rebuilt across tools.',
+          'The workspace holds complaint detail, evidence, correspondence, approvals, and actions together so the operating trail stays connected from start to finish.',
         href: getAppHref('/complaints'),
-        actionLabel: 'Open complaints workspace',
+        actionLabel: 'Request workspace demo',
         eyebrow: 'Operational complaint handling',
         metrics: [
           { label: 'Workspace focus', value: 'Evidence + letters', helper: 'Operational complaint handling' },
           { label: 'Review model', value: 'Approvals + versions', helper: 'Controlled correspondence workflow' },
+          { label: 'Action layer', value: 'Owners + deadlines', helper: 'Operational follow-through' },
         ],
         bullets: [
           'Track complaint detail, evidence, letters, reviewer notes, and actions together.',
@@ -131,13 +139,14 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         label: 'Report',
         title: 'Finish with outputs leadership can actually use.',
         caption:
-          'Board packs, appendix material, and management reporting are built from the same complaint and insight layer, so the narrative stays consistent.',
+          'Board packs and appendix material are built from the same complaint and insight layer, so the reporting story stays consistent instead of fragmenting across decks and spreadsheets.',
         href: getAppHref('/board-pack'),
-        actionLabel: 'Open board pack builder',
+        actionLabel: 'See reporting flow',
         eyebrow: 'Board-ready reporting',
         metrics: [
           { label: 'Outputs', value: 'PDF + PPTX', helper: 'Export-ready board reporting' },
           { label: 'Appendix inputs', value: 'Letters + evidence', helper: 'Operational detail included' },
+          { label: 'Reporting lens', value: 'Board-ready', helper: 'Built from live complaint context' },
         ],
         bullets: [
           'Generate reporting directly from the intelligence and complaint workflow.',
@@ -154,138 +163,102 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
     storySteps: [
       {
         key: 'explore',
-        stage: '01',
-        title: 'Explore the public signal before you commit to the workspace.',
+        stage: 'Phase 1',
+        title: 'Explore the Public Signal',
         body:
-          'The homepage and insights layer are designed as a real entry point, not a marketing dead end. Users can browse years, firms, products, and complaint themes immediately and understand what sits behind the platform.',
+          'Search the public complaint layer by year, firm, product, and complaint theme. The homepage should make it obvious that the platform is live from the first click, not hidden behind a brochure.',
         bullets: [
-          'Search live complaint intelligence publicly.',
-          'Use real annual, firm, and product pages as the first interaction.',
-          'See fresh analysis instead of static brochure copy.',
+          'SEO-friendly analysis pages',
+          'Live firm, product, year, and theme coverage',
+          'Direct path into real complaint context',
         ],
         href: '/insights',
+        ctaLabel: 'Start analysis',
         accentMetric: helper(landing.metrics[1]?.value, 'Live pages'),
       },
       {
-        key: 'understand',
-        stage: '02',
-        title: 'Move from surface-level browsing into context.',
+        key: 'transition',
+        stage: 'Phase 2',
+        title: 'Transition into the Workspace',
         body:
-          'Comparison and structured analysis let users see whether a complaint signal is concentrated, broad, worsening, or isolated. That is the step where raw browsing becomes real decision context.',
+          'Once a complaint needs operational depth, move into the workspace to keep evidence, letters, approvals, and actions in one controlled handling flow.',
         bullets: [
-          'Compare firms and products against the wider dataset.',
-          'Use relative context before drawing conclusions.',
-          'Carry public insight into deeper review work.',
+          'Complaint detail with evidence and timeline',
+          'Letter drafting with review control',
+          'Approvals, actions, and operational ownership',
         ],
-        href: '/comparison',
-        accentMetric: topFirm?.title || 'Firm comparison',
+        href: getWorkspaceEntryHref(),
+        ctaLabel: 'Request workspace demo',
+        accentMetric: 'Workspace-ready flow',
       },
       {
         key: 'work',
-        stage: '03',
+        stage: 'Phase 3',
         title: 'Work complaints with evidence, letters, approvals, and actions connected.',
         body:
-          'The workspace is where the platform becomes operational. Users can manage complaint detail, evidence, controlled correspondence, reviewer notes, and remediation actions without losing the analytical context that brought them there.',
+          'The product becomes operational inside the workspace. The key shift is that evidence, correspondence, review, and remediation do not split across separate tools.',
         bullets: [
-          'Evidence, letters, approvals, and actions stay on the same record.',
-          'Historical intelligence improves draft quality and review focus.',
-          'The handling trail stays visible from start to finish.',
+          'Evidence and complaint records connected',
+          'Reviewer notes and version history visible',
+          'Deadlines and actions kept in the same operating thread',
         ],
         href: getAppHref('/complaints'),
+        ctaLabel: 'Open complaints flow',
         accentMetric: 'Investigation-ready workflow',
       },
       {
         key: 'report',
-        stage: '04',
-        title: 'Report the outcome without rebuilding the narrative elsewhere.',
+        stage: 'Phase 4',
+        title: 'Finish with outputs leadership can actually use.',
         body:
-          'Board packs and leadership outputs sit on top of the same complaint and intelligence layer. That keeps public insight, handling activity, and reporting aligned instead of fragmenting the story across decks and spreadsheets.',
+          'Board packs, appendix material, and leadership reporting are generated from the same complaint and intelligence layer, so the reporting story stays grounded in the live operating record.',
         bullets: [
-          'Board-ready exports are built from the live workspace.',
-          'Appendix material can draw on letters, evidence, and actions.',
-          'Leadership reporting stays anchored to the actual operating record.',
+          'Board-ready PDF and PPTX output',
+          'Appendix material from evidence and letters',
+          'Leadership reporting built on live complaint context',
         ],
         href: getAppHref('/board-pack'),
+        ctaLabel: 'See reporting flow',
         accentMetric: 'Board-ready outputs',
       },
     ],
-    surfaces: [
+    audienceCards: [
       {
-        key: 'insights',
-        eyebrow: 'Live Insights',
-        title: 'Public analysis pages with real substance behind them.',
-        body: 'The public layer exposes high-signal firm, product, theme, and annual analysis pages so users can start from live data instead of a brochure.',
+        key: 'public-teams',
+        eyebrow: 'For Public-Facing Data Teams',
+        title: 'Use the public intelligence layer to understand the complaint signal fast.',
+        body:
+          'Analysts, researchers, and decision-makers can start publicly with live year, firm, product, and complaint-theme pages before they ever need access to the secure workspace.',
         bullets: [
-          'Year, firm, product, and theme archives.',
-          'SEO-friendly deep pages with representative cases.',
-          'Clear routing into higher-value analysis surfaces.',
+          'Search-friendly public insight pages',
+          'Comparison and context before deeper review',
+          'Clear route from discovery into real complaint analysis',
         ],
         href: '/insights',
-        metric: helper(landing.metrics[1]?.value, 'Public insight pages'),
+        ctaLabel: 'Start analysis',
+        tone: 'light',
       },
       {
-        key: 'comparison',
-        eyebrow: 'Firm and Product Comparison',
-        title: 'A cleaner way to compare exposure and concentration.',
-        body: 'Comparison pages bring together firm footprint, product mix, upheld context, and concentration so users can see the pattern before they investigate the detail.',
+        key: 'workspace-teams',
+        eyebrow: 'For Workspace Complaint Teams',
+        title: 'Handle complaints with a clearer operating record and stronger reporting finish.',
+        body:
+          'Complaint handlers, reviewers, and governance leads can manage evidence, letters, approvals, actions, and reporting in the same product rather than rebuilding the workflow elsewhere.',
         bullets: [
-          'Relative firm and product context.',
-          'Stronger interpretation than a flat table or search result.',
-          'Useful bridge between public browsing and operational review.',
+          'Evidence, correspondence, and approvals together',
+          'Actions and deadlines visible in the same flow',
+          'Board-ready outputs connected back to the operating record',
         ],
-        href: '/comparison',
-        metric: topFirm?.title || 'Live comparison workspace',
-      },
-      {
-        key: 'workspace',
-        eyebrow: 'Complaints Workspace',
-        title: 'The operational layer for handling complaints properly.',
-        body: 'Once users move into the workspace, the platform holds the evidence trail, correspondence workflow, approvals, reminders, and activity history together.',
-        bullets: [
-          'Evidence and complaint detail in one place.',
-          'Letters with reviewer workflow and version history.',
-          'Actions, deadlines, and handling visibility.',
-        ],
-        href: getAppHref('/complaints'),
-        metric: 'Evidence + letters + approvals',
-      },
-      {
-        key: 'reporting',
-        eyebrow: 'Board Pack Builder',
-        title: 'Reporting built from the same intelligence and workflow layer.',
-        body: 'Board packs and appendix material are generated from the same complaint and analysis context, so leadership reporting stays cleaner and more defensible.',
-        bullets: [
-          'Templates, saved definitions, and appendix material.',
-          'PDF and PPTX output paths.',
-          'Reporting grounded in live complaint context.',
-        ],
-        href: getAppHref('/board-pack'),
-        metric: 'PDF + PPTX outputs',
-      },
-    ],
-    expectations: [
-      {
-        title: 'You can start publicly.',
-        body: 'Visitors can search live firm, year, product, and complaint-theme analysis before they ever touch the secure workspace.',
-      },
-      {
-        title: 'You can move into operational complaint handling.',
-        body: 'Once inside the workspace, users can manage evidence, letters, approvals, reviewer notes, actions, and timelines in one system.',
-      },
-      {
-        title: 'You can work at analyst or board level.',
-        body: 'The same platform supports quick research, deeper complaint handling, and leadership-ready board reporting without splitting the process across separate tools.',
-      },
-      {
-        title: 'You can expect a clear path through the platform.',
-        body: 'Explore the signal, understand the pattern, work the complaint, and report the outcome. The homepage is built to make that flow obvious.',
+        href: getWorkspaceEntryHref(),
+        ctaLabel: 'Request workspace demo',
+        tone: 'dark',
       },
     ],
     featuredLinks: landing.featured.slice(0, 6).map((item, index) => ({
       title: item.title,
       href: item.href,
       description: item.description,
-      tag: index === 0 ? 'Featured live page' : 'Live analysis',
+      tag: index === 0 ? 'Live annual page' : index === 1 ? 'Firm page' : 'Featured live page',
     })),
     updatedAt: landing.lastUpdated,
   };
