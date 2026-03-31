@@ -434,6 +434,60 @@ export async function generateAndStoreAdvisorBrief(
   );
 }
 
+// ─── Estimator firm overlay ──────────────────────────────────────────────
+
+export interface EstimatorFirmOverlay {
+  firmName: string;
+  totalCases: number;
+  upheldRate: number;
+  notUpheldRate: number;
+}
+
+export async function getEstimatorFirmOverlay(
+  product: string,
+  rootCause: string | null,
+  firm: string
+): Promise<EstimatorFirmOverlay | null> {
+  ensureDatabaseConfigured();
+
+  // Escape ILIKE wildcards so user input can't broaden the match
+  const escapedFirm = `%${firm.replace(/[%_\\]/g, '\\$&')}%`;
+  const params: unknown[] = [product, escapedFirm];
+  let rootCauseFilter = '';
+
+  if (rootCause) {
+    rootCauseFilter = `AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
+      WHERE LOWER(BTRIM(rt.value)) = LOWER($3)
+    )`;
+    params.push(rootCause);
+  }
+
+  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `
+    SELECT
+      COUNT(*)::INT AS total_cases,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld') / NULLIF(COUNT(*), 0), 2) AS not_upheld_rate
+    FROM fos_decisions d
+    WHERE COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $1
+    AND d.business_name ILIKE $2
+    ${rootCauseFilter}
+    `,
+    params
+  );
+
+  const totalCases = toInt(row?.total_cases);
+  if (totalCases === 0) return null;
+
+  return {
+    firmName: firm,
+    totalCases,
+    upheldRate: toNumber(row?.upheld_rate),
+    notUpheldRate: toNumber(row?.not_upheld_rate),
+  };
+}
+
 // ─── Private helpers ─────────────────────────────────────────────────────────
 
 async function queryAdvisorTextMatchCases(
