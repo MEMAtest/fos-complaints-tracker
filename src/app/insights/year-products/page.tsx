@@ -17,6 +17,7 @@ export default async function InsightYearProductsPage() {
       description="Curated public cross-pages for the strongest year and product combinations in the published Financial Ombudsman decision corpus. These pages are published only when the combination has enough data volume to support a useful, non-thin analysis."
       items={items}
       placeholder="Search years and products"
+      variant="year-products"
     />
   );
 }

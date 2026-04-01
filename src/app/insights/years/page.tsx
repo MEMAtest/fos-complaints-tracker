@@ -17,6 +17,7 @@ export default async function InsightYearsPage() {
       description="Browse year-by-year public analysis of the Financial Ombudsman decisions corpus, including upheld-rate context, leading firms, product concentration, complaint themes, and representative cases."
       items={items}
       placeholder="Search years"
+      variant="years"
     />
   );
 }

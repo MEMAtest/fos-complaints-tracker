@@ -17,6 +17,7 @@ export default async function InsightFirmsPage() {
       description="Public firm-by-firm analysis pages built from published Financial Ombudsman decisions, covering complaint volume, product mix, upheld-rate context, complaint themes, and representative cases."
       items={items}
       placeholder="Search firms"
+      variant="firms"
     />
   );
 }

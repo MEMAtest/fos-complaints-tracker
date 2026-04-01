@@ -98,6 +98,7 @@ test.describe('Check Estimator - Page loads', () => {
     await expect(page.locator('#check-product')).toBeVisible();
     await expect(page.locator('#check-root-cause')).toBeVisible();
     await expect(page.locator('#check-firm')).toBeVisible();
+    await expect(page.getByText(/Try a live example/i)).toBeVisible();
   });
 
   test('no sidebar is shown on /check', async ({ page }) => {
@@ -127,8 +128,18 @@ test.describe('Check Estimator - Form interaction', () => {
   test('submit button is disabled when no product selected', async ({ page }) => {
     await page.goto('/check');
     await expect(page.locator('#check-product')).not.toBeDisabled({ timeout: 15_000 });
-    const submitButton = page.getByRole('button', { name: /check my exposure/i });
+    const submitButton = page.getByRole('button', { name: /estimate likely uphold exposure/i });
     await expect(submitButton).toBeDisabled();
+  });
+
+  test('example chip populates the form and loads results', async ({ page }) => {
+    await page.goto('/check');
+    await expect(page.locator('#check-product')).not.toBeDisabled({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /signal|overlay|depth|snapshot/i }).first().click();
+
+    await expect(page.locator('#check-product')).not.toHaveValue('');
+    await expect(page.getByText(/Estimated upheld rate/i)).toBeVisible({ timeout: 30_000 });
   });
 
   test('selecting product and submitting shows risk gauge and results', async ({ page }) => {
@@ -144,13 +155,14 @@ test.describe('Check Estimator - Form interaction', () => {
     await page.locator('#check-product').selectOption(firstOption!);
 
     // Submit
-    await page.getByRole('button', { name: /check my exposure/i }).click();
+    await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
 
     // Risk gauge should appear (contains upheld rate text)
-    await expect(page.getByText(/upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
 
     // Confidence badge should appear
     await expect(page.getByText(/confidence/i).first()).toBeVisible();
+    await expect(page.getByText(/Uphold Risk/i).first()).toBeVisible();
   });
 
   test('selecting product + root cause shows results', async ({ page }) => {
@@ -173,8 +185,8 @@ test.describe('Check Estimator - Form interaction', () => {
       await page.locator('#check-root-cause').selectOption(firstRC!);
     }
 
-    await page.getByRole('button', { name: /check my exposure/i }).click();
-    await expect(page.getByText(/upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
+    await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
   });
 
   test('entering a firm name shows firm comparison or not-found message', async ({ page }) => {
@@ -188,8 +200,8 @@ test.describe('Check Estimator - Form interaction', () => {
     await page.locator('#check-product').selectOption(firstProduct!);
     await page.locator('#check-firm').fill('Barclays');
 
-    await page.getByRole('button', { name: /check my exposure/i }).click();
-    await expect(page.getByText(/upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
+    await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
 
     // Wait for the firm overlay to resolve — either comparison bars or the not-found message
     const firmComparison = page.getByText(/Firm vs sector comparison/i);
@@ -211,7 +223,7 @@ test.describe('Check Estimator - Form interaction', () => {
       el.appendChild(opt);
     });
     await page.locator('#check-product').selectOption('NonExistentProduct999');
-    await page.getByRole('button', { name: /check my exposure/i }).click();
+    await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
 
     await expect(
       page.getByText(/not enough historical data|request failed/i).first()
@@ -229,8 +241,8 @@ test.describe('Check Estimator - Results sections', () => {
       .getAttribute('value');
     expect(firstOption).toBeTruthy();
     await page.locator('#check-product').selectOption(firstOption!);
-    await page.getByRole('button', { name: /check my exposure/i }).click();
-    await expect(page.getByText(/upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
+    await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
   }
 
   test('outcome breakdown bar is visible when distribution exists', async ({ page }) => {
@@ -272,5 +284,13 @@ test.describe('Check Estimator - Results sections', () => {
     const href = await ctaLink.getAttribute('href');
     expect(href).toContain('/advisor');
     expect(href).toContain('product=');
+  });
+
+  test('workspace CTA points to the workspace handoff', async ({ page }) => {
+    await loadEstimate(page);
+
+    const workspaceLink = page.getByRole('link', { name: /open workspace/i });
+    await expect(workspaceLink).toBeVisible();
+    await expect(workspaceLink).toHaveAttribute('href', '/workspace');
   });
 });

@@ -22,11 +22,12 @@ export function OutcomeBreakdown({ distribution, totalCases }: OutcomeBreakdownP
 
   return (
     <div>
-      <p className="mb-2 text-xs font-medium text-slate-500">Outcome breakdown</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Outcome breakdown</p>
+      <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-950">How similar published decisions actually resolved</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-600">This distribution shows the result mix in the comparable published set rather than only the top-line upheld rate.</p>
 
-      {/* Stacked bar */}
       <div
-        className="flex h-6 w-full overflow-hidden rounded-full"
+        className="mt-5 flex h-7 w-full overflow-hidden rounded-full border border-slate-200 bg-white"
         role="img"
         aria-label={`Outcome breakdown: ${segments.map((s) => `${s.label} ${s.pct.toFixed(1)}%`).join(', ')}`}
       >
@@ -40,12 +41,17 @@ export function OutcomeBreakdown({ distribution, totalCases }: OutcomeBreakdownP
         ))}
       </div>
 
-      {/* Legend */}
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
         {segments.filter((s) => s.pct >= 1).map((seg) => (
-          <div key={seg.outcome} className="flex items-center gap-1.5 text-xs text-slate-600">
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: seg.color }} />
-            {seg.label} {seg.pct.toFixed(1)}%
+          <div key={seg.outcome} className="rounded-[1.25rem] border border-slate-200 bg-[#fbfcfe] p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: seg.color }} />
+                <span className="font-semibold text-slate-900">{seg.label}</span>
+              </div>
+              <span className="font-semibold text-slate-950">{seg.pct.toFixed(1)}%</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{seg.count.toLocaleString()} published decisions in this outcome bucket.</p>
           </div>
         ))}
       </div>

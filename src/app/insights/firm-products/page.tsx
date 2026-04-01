@@ -17,6 +17,7 @@ export default async function InsightFirmProductsPage() {
       description="Curated public cross-pages for firms with strong product-specific complaint footprints in the published Financial Ombudsman decision corpus. These pages are published only when the firm-product slice is large enough to support a strong public analysis."
       items={items}
       placeholder="Search firms and products"
+      variant="firm-products"
     />
   );
 }

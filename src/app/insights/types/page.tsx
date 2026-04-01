@@ -17,6 +17,7 @@ export default async function InsightTypesPage() {
       description="Browse public complaint-theme pages built from the root-cause tagging layer in the published Financial Ombudsman decisions corpus. These pages act as the closest durable complaint-type taxonomy available in the dataset."
       items={items}
       placeholder="Search complaint themes"
+      variant="types"
     />
   );
 }

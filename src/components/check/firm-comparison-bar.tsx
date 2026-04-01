@@ -8,23 +8,27 @@ interface FirmComparisonBarProps {
 }
 
 export function FirmComparisonBar({ firmName, firmRate, productRate, overallRate }: FirmComparisonBarProps) {
-  const bars: { label: string; rate: number; color: string }[] = [
-    { label: firmName, rate: firmRate, color: '#6366f1' },
-    { label: 'This product (all firms)', rate: productRate, color: '#f43f5e' },
-    { label: 'FOS overall average', rate: overallRate, color: '#94a3b8' },
+  const bars: { label: string; rate: number; color: string; helper: string }[] = [
+    { label: firmName, rate: firmRate, color: '#2563eb', helper: 'Firm-specific rate in the current product slice' },
+    { label: 'Selected product', rate: productRate, color: '#7c3aed', helper: 'Comparable product context across all firms' },
+    { label: 'FOS overall average', rate: overallRate, color: '#f59e0b', helper: 'Published corpus-wide context' },
   ];
 
   return (
     <div>
-      <p className="mb-3 text-xs font-medium text-slate-500">Firm vs sector comparison</p>
-      <div className="space-y-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Firm vs sector comparison</p>
+      <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-950">How the named firm compares with the wider context</h3>
+      <div className="mt-5 space-y-4">
         {bars.map((bar) => (
-          <div key={bar.label}>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-700">{bar.label}</span>
-              <span className="font-semibold text-slate-900">{bar.rate.toFixed(1)}%</span>
+          <div key={bar.label} className="rounded-[1.35rem] border border-slate-200 bg-[#fbfcfe] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div>
+                <p className="font-semibold text-slate-900">{bar.label}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{bar.helper}</p>
+              </div>
+              <span className="text-lg font-semibold tracking-tight text-slate-950">{bar.rate.toFixed(1)}%</span>
             </div>
-            <div className="mt-1 h-2.5 w-full rounded-full bg-slate-100">
+            <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full transition-all"
                 style={{ width: `${Math.min(bar.rate, 100)}%`, backgroundColor: bar.color }}

@@ -17,6 +17,7 @@ export default async function InsightProductsPage() {
       description="Public product-level complaint analysis pages for the Financial Ombudsman corpus, with outcome context, top firms, complaint themes, precedent signals, and representative published decisions."
       items={items}
       placeholder="Search products"
+      variant="products"
     />
   );
 }
