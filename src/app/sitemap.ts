@@ -10,12 +10,14 @@ import {
 import { absoluteUrl } from '@/lib/insights/seo';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const years = await getPublishedYearInsights();
-  const firms = await getPublishedFirmInsights();
-  const products = await getPublishedProductInsights();
-  const types = await getPublishedTypeInsights();
-  const yearProducts = await getPublishedYearProductInsights();
-  const firmProducts = await getPublishedFirmProductInsights();
+  const [years, firms, products, types, yearProducts, firmProducts] = await Promise.all([
+    getPublishedYearInsights(),
+    getPublishedFirmInsights(),
+    getPublishedProductInsights(),
+    getPublishedTypeInsights(),
+    getPublishedYearProductInsights(),
+    getPublishedFirmProductInsights(),
+  ]);
 
   const staticRoutes: MetadataRoute.Sitemap = [
     '',

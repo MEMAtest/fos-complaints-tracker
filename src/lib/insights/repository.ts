@@ -88,19 +88,105 @@ type InsightOverrideRow = {
   updated_at: string | Date | null;
 };
 
-const getYearArchive = unstable_cache(async () => queryYearArchive(), ['insights-year-archive'], { revalidate: REVALIDATE_SECONDS });
-const getFirmArchive = unstable_cache(async () => queryFirmArchive(), ['insights-firm-archive'], { revalidate: REVALIDATE_SECONDS });
-const getProductArchive = unstable_cache(async () => queryProductArchive(), ['insights-product-archive'], { revalidate: REVALIDATE_SECONDS });
-const getTypeArchive = unstable_cache(async () => queryTypeArchive(), ['insights-type-archive'], { revalidate: REVALIDATE_SECONDS });
-const getYearProductArchive = unstable_cache(async () => queryYearProductArchive(), ['insights-year-product-archive'], { revalidate: REVALIDATE_SECONDS });
-const getFirmProductArchive = unstable_cache(async () => queryFirmProductArchive(), ['insights-firm-product-archive'], { revalidate: REVALIDATE_SECONDS });
+type PublicDashboardOverview = {
+  totalCases: number;
+  upheldRate: number;
+  upheldCases: number;
+  latestDecisionDate: string | null;
+};
+
+const LANDING_COLLECTIONS = [
+  {
+    title: 'Year analysis',
+    href: '/insights/years',
+    description: 'Annual complaint patterns, shifts, and upheld-rate context across the published FOS corpus.',
+  },
+  {
+    title: 'Firm analysis',
+    href: '/insights/firms',
+    description: 'Complaint volumes, product concentration, and upheld-rate context for the biggest firms in the corpus.',
+  },
+  {
+    title: 'Product analysis',
+    href: '/insights/products',
+    description: 'Deep dives into complaint performance by product line and recurring ombudsman themes.',
+  },
+  {
+    title: 'Complaint themes',
+    href: '/insights/types',
+    description: 'Root-cause and complaint-theme pages built from the recurring issues tagged across published decisions.',
+  },
+  {
+    title: 'Year + product analysis',
+    href: '/insights/year-products',
+    description: 'Curated cross-pages for the strongest year and product combinations in the published corpus.',
+  },
+  {
+    title: 'Firm + product analysis',
+    href: '/insights/firm-products',
+    description: 'Curated cross-pages for firms with strong product-specific complaint footprints in published decisions.',
+  },
+] as const;
+
+const getYearArchive = unstable_cache(async () => queryArchiveWithFallback('year', queryYearArchive), ['insights-year-archive'], { revalidate: REVALIDATE_SECONDS });
+const getFirmArchive = unstable_cache(async () => queryArchiveWithFallback('firm', queryFirmArchive), ['insights-firm-archive'], { revalidate: REVALIDATE_SECONDS });
+const getProductArchive = unstable_cache(async () => queryArchiveWithFallback('product', queryProductArchive), ['insights-product-archive'], { revalidate: REVALIDATE_SECONDS });
+const getTypeArchive = unstable_cache(async () => queryArchiveWithFallback('type', queryTypeArchive), ['insights-type-archive'], { revalidate: REVALIDATE_SECONDS });
+const getYearProductArchive = unstable_cache(async () => queryArchiveWithFallback('year-product', queryYearProductArchive), ['insights-year-product-archive'], { revalidate: REVALIDATE_SECONDS });
+const getFirmProductArchive = unstable_cache(async () => queryArchiveWithFallback('firm-product', queryFirmProductArchive), ['insights-firm-product-archive'], { revalidate: REVALIDATE_SECONDS });
 let publicationOverridesPromise: Promise<InsightPublicationOverride[]> | null = null;
+const loggedPublicFallbacks = new Set<string>();
 
 async function getPublicationOverrides(): Promise<InsightPublicationOverride[]> {
   if (!publicationOverridesPromise) {
-    publicationOverridesPromise = queryPublicationOverrides();
+    publicationOverridesPromise = queryPublicationOverrides().catch((error) => {
+      publicationOverridesPromise = null;
+      throw error;
+    });
   }
   return publicationOverridesPromise;
+}
+
+async function queryArchiveWithFallback(
+  kind: InsightArchiveItem['kind'],
+  loader: () => Promise<InsightArchiveItem[]>
+): Promise<InsightArchiveItem[]> {
+  try {
+    return await loader();
+  } catch (error) {
+    logPublicDataFallback(`${kind}-archive`, error);
+    return [];
+  }
+}
+
+async function getSafePublicDashboardOverview(): Promise<PublicDashboardOverview | null> {
+  try {
+    const dashboard = await getDashboardSnapshot({ ...EMPTY_FILTERS }, { includeCases: false });
+    return {
+      totalCases: dashboard.overview.totalCases,
+      upheldRate: dashboard.overview.upheldRate,
+      upheldCases: dashboard.overview.upheldCases,
+      latestDecisionDate: dashboard.overview.latestDecisionDate,
+    };
+  } catch (error) {
+    logPublicDataFallback('landing-dashboard', error);
+    return null;
+  }
+}
+
+async function getPublishedArchiveWithFallback(
+  kind: InsightArchiveItem['kind'],
+  loader: () => Promise<InsightArchiveItem[]>
+): Promise<InsightArchiveItem[]> {
+  const [archiveResult, overridesResult] = await Promise.allSettled([loader(), getPublicationOverrides()]);
+  const archive = archiveResult.status === 'fulfilled' ? archiveResult.value : [];
+  const overrides = overridesResult.status === 'fulfilled' ? overridesResult.value : [];
+
+  if (overridesResult.status === 'rejected') {
+    logPublicDataFallback(`${kind}-overrides`, overridesResult.reason);
+  }
+
+  return applyArchiveOverrides(archive, overrides);
 }
 
 export function resetInsightPublicationOverridesCache(): void {
@@ -108,17 +194,23 @@ export function resetInsightPublicationOverridesCache(): void {
 }
 
 export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLandingData> => {
-  const dashboard = await getDashboardSnapshot({ ...EMPTY_FILTERS }, { includeCases: false });
-  const years = await getPublishedYearInsights();
-  const firms = await getPublishedFirmInsights();
-  const products = await getPublishedProductInsights();
-  const types = await getPublishedTypeInsights();
-  const yearProducts = await getPublishedYearProductInsights();
-  const firmProducts = await getPublishedFirmProductInsights();
+  const [dashboard, years, firms, products, types, yearProducts, firmProducts] = await Promise.all([
+    getSafePublicDashboardOverview(),
+    getPublishedYearInsights(),
+    getPublishedFirmInsights(),
+    getPublishedProductInsights(),
+    getPublishedTypeInsights(),
+    getPublishedYearProductInsights(),
+    getPublishedFirmProductInsights(),
+  ]);
 
   const yearsCovered = years.length;
   const publishedPages = years.length + firms.length + products.length + types.length + yearProducts.length + firmProducts.length;
   const latestYear = years[0];
+  const featured = selectFeaturedInsights(
+    [latestYear, firms[0], products[0], types[0], yearProducts[0], firmProducts[0]],
+    [years, firms, products, types, yearProducts, firmProducts]
+  );
 
   return {
     hero: {
@@ -126,81 +218,51 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
       title: 'Search-friendly ombudsman complaint analysis by year, firm, product, theme, and curated cross-section.',
       dek: 'A public editorial layer over the Financial Ombudsman decision corpus, generated from the same intelligence model that powers the workspace and extended with stronger year-product and firm-product pages.',
     },
-    metrics: [
-      metric('Published decisions', formatNumber(dashboard.overview.totalCases), `${yearsCovered} years currently covered`),
-      metric('Public insight pages', formatNumber(publishedPages), 'SEO-ready annual, firm, product, and complaint-theme pages'),
-      metric('Current upheld rate', formatPercent(dashboard.overview.upheldRate), `${formatNumber(dashboard.overview.upheldCases)} upheld decisions in the corpus`),
-      metric('Latest year in focus', latestYear?.title || 'n/a', latestYear ? latestYear.summary : 'Awaiting sufficient yearly data'),
-    ],
-    featured: selectFeaturedInsights([latestYear, firms[0], products[0], types[0], yearProducts[0], firmProducts[0]], [years, firms, products, types, yearProducts, firmProducts]).map((item) => ({
-      title: item!.title,
-      href: item!.href,
-      description: item!.summary,
+    metrics: dashboard
+      ? [
+          metric('Published decisions', formatNumber(dashboard.totalCases), `${yearsCovered} years currently covered`),
+          metric('Public insight pages', formatNumber(publishedPages), 'SEO-ready annual, firm, product, and complaint-theme pages'),
+          metric('Current upheld rate', formatPercent(dashboard.upheldRate), `${formatNumber(dashboard.upheldCases)} upheld decisions in the corpus`),
+          metric('Latest year in focus', latestYear?.title || 'n/a', latestYear ? latestYear.summary : 'Awaiting sufficient yearly data'),
+        ]
+      : [
+          metric('Published decisions', 'Live corpus', 'Published decision counts are temporarily unavailable during this render.'),
+          metric('Public insight pages', publishedPages > 0 ? formatNumber(publishedPages) : 'Archive routes', 'The public archive remains available even when live counts are delayed.'),
+          metric('Current upheld rate', 'Live signal', 'Upheld-rate metrics are temporarily unavailable during this render.'),
+          metric('Latest year in focus', latestYear?.title || 'Current analysis', latestYear ? latestYear.summary : 'Use the archive routes while live metrics recover.'),
+        ],
+    featured: (featured.length > 0 ? featured : buildFallbackFeaturedInsights()).map((item) => ({
+      title: item.title,
+      href: item.href,
+      description: 'summary' in item ? item.summary : item.description,
     })),
-    collections: [
-      {
-        title: 'Year analysis',
-        href: '/insights/years',
-        description: 'Annual complaint patterns, shifts, and upheld-rate context across the published FOS corpus.',
-        items: years.slice(0, 6),
-      },
-      {
-        title: 'Firm analysis',
-        href: '/insights/firms',
-        description: 'Complaint volumes, product concentration, and upheld-rate context for the biggest firms in the corpus.',
-        items: firms.slice(0, 6),
-      },
-      {
-        title: 'Product analysis',
-        href: '/insights/products',
-        description: 'Deep dives into complaint performance by product line and recurring ombudsman themes.',
-        items: products.slice(0, 6),
-      },
-      {
-        title: 'Complaint themes',
-        href: '/insights/types',
-        description: 'Root-cause and complaint-theme pages built from the recurring issues tagged across published decisions.',
-        items: types.slice(0, 6),
-      },
-      {
-        title: 'Year + product analysis',
-        href: '/insights/year-products',
-        description: 'Curated cross-pages for the strongest year and product combinations in the published corpus.',
-        items: yearProducts.slice(0, 6),
-      },
-      {
-        title: 'Firm + product analysis',
-        href: '/insights/firm-products',
-        description: 'Curated cross-pages for firms with strong product-specific complaint footprints in published decisions.',
-        items: firmProducts.slice(0, 6),
-      },
-    ],
-    lastUpdated: dashboard.overview.latestDecisionDate,
+    collections: buildLandingCollections({ years, firms, products, types, yearProducts, firmProducts }),
+    lastUpdated: dashboard?.latestDecisionDate || null,
   };
 }, ['insights-landing'], { revalidate: REVALIDATE_SECONDS });
 
 export async function getPublishedYearInsights(): Promise<InsightArchiveItem[]> {
-  return applyArchiveOverrides(await getYearArchive(), await getPublicationOverrides());
+  return getPublishedArchiveWithFallback('year', getYearArchive);
 }
 
 export async function getPublishedFirmInsights(): Promise<InsightArchiveItem[]> {
-  return applyArchiveOverrides(await getFirmArchive(), await getPublicationOverrides());
+  return getPublishedArchiveWithFallback('firm', getFirmArchive);
 }
 
 export async function getPublishedProductInsights(): Promise<InsightArchiveItem[]> {
-  return applyArchiveOverrides(await getProductArchive(), await getPublicationOverrides());
+  return getPublishedArchiveWithFallback('product', getProductArchive);
 }
 
 export async function getPublishedTypeInsights(): Promise<InsightArchiveItem[]> {
-  return applyArchiveOverrides(await getTypeArchive(), await getPublicationOverrides());
+  return getPublishedArchiveWithFallback('type', getTypeArchive);
 }
 
 export async function getPublishedYearProductInsights(): Promise<InsightArchiveItem[]> {
-  return applyArchiveOverrides(await getYearProductArchive(), await getPublicationOverrides());
+  return getPublishedArchiveWithFallback('year-product', getYearProductArchive);
 }
 
 export async function getPublishedFirmProductInsights(): Promise<InsightArchiveItem[]> {
-  return applyArchiveOverrides(await getFirmProductArchive(), await getPublicationOverrides());
+  return getPublishedArchiveWithFallback('firm-product', getFirmProductArchive);
 }
 
 export async function listInsightPublicationOverrides(): Promise<InsightPublicationOverride[]> {
@@ -1658,6 +1720,52 @@ function selectFeaturedInsights(
     output.push(item);
   }
   return output.slice(0, 6);
+}
+
+function buildLandingCollections(collections: {
+  years: InsightArchiveItem[];
+  firms: InsightArchiveItem[];
+  products: InsightArchiveItem[];
+  types: InsightArchiveItem[];
+  yearProducts: InsightArchiveItem[];
+  firmProducts: InsightArchiveItem[];
+}): InsightLandingData['collections'] {
+  return LANDING_COLLECTIONS.map((collection) => {
+    const items =
+      collection.href === '/insights/years'
+        ? collections.years
+        : collection.href === '/insights/firms'
+          ? collections.firms
+          : collection.href === '/insights/products'
+            ? collections.products
+            : collection.href === '/insights/types'
+              ? collections.types
+              : collection.href === '/insights/year-products'
+                ? collections.yearProducts
+                : collections.firmProducts;
+
+    return {
+      ...collection,
+      items: items.slice(0, 6),
+    };
+  });
+}
+
+function buildFallbackFeaturedInsights(): InsightLandingData['featured'] {
+  return LANDING_COLLECTIONS.slice(0, 4).map((collection) => ({
+    title: collection.title,
+    href: collection.href,
+    description: collection.description,
+  }));
+}
+
+function logPublicDataFallback(scope: string, error: unknown): void {
+  if (process.env.NODE_ENV === 'test') return;
+  const message = error instanceof Error ? error.message : String(error);
+  const key = `${scope}:${message}`;
+  if (loggedPublicFallbacks.has(key)) return;
+  loggedPublicFallbacks.add(key);
+  console.warn(`[insights-fallback] ${scope}: ${message}`);
 }
 
 function buildSlugMap(items: Array<{ entityKey: string; title: string }>): Map<string, string> {
