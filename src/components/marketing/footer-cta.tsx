@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
 
 type FooterCtaProps = {
   workspaceHref: string;
@@ -19,25 +19,29 @@ export function FooterCta({ workspaceHref }: FooterCtaProps) {
             Public analysis, complaint handling workflow, and leadership reporting all sit on the same product layer. That is the difference between a live platform and another disconnected complaints stack.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link
+            <PublicTrackedLink
               href="/insights"
+              eventName="public_cta_clicked"
+              eventProps={{ source: 'homepage_footer', cta: 'start_analysis' }}
               className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
             >
               Start analysis
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
+            </PublicTrackedLink>
+            <PublicTrackedLink
               href={workspaceHref}
+              eventName="public_cta_clicked"
+              eventProps={{ source: 'homepage_footer', cta: 'workspace_demo' }}
               className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/8 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/12"
             >
               Request workspace demo
-            </Link>
+            </PublicTrackedLink>
           </div>
           <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/55">
-            <Link href="/insights" className="transition hover:text-white">Live Data</Link>
-            <Link href="/comparison" className="transition hover:text-white">Platform</Link>
-            <Link href={workspaceHref} className="transition hover:text-white">Workspace</Link>
-            <Link href="/insights/years" className="transition hover:text-white">Public Insights</Link>
+            <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'live_data' }} className="transition hover:text-white">Live Data</PublicTrackedLink>
+            <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'platform' }} className="transition hover:text-white">Platform</PublicTrackedLink>
+            <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'workspace' }} className="transition hover:text-white">Workspace</PublicTrackedLink>
+            <PublicTrackedLink href="/insights/years" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'public_insights' }} className="transition hover:text-white">Public Insights</PublicTrackedLink>
           </div>
         </div>
       </div>

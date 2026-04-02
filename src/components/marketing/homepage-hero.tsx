@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
 import type { HomepageSnapshot } from '@/lib/marketing/types';
 import { GuidedDemoPanel } from './guided-demo-panel';
 
@@ -22,19 +22,23 @@ export function HomepageHero({ snapshot }: HomepageHeroProps) {
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link
+            <PublicTrackedLink
               href={snapshot.hero.primaryCta.href}
+              eventName="public_cta_clicked"
+              eventProps={{ source: 'homepage_hero', cta: 'start_analysis' }}
               className="inline-flex items-center gap-2 rounded-full bg-[#0f1f4f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#0c1940]"
             >
               {snapshot.hero.primaryCta.label}
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
+            </PublicTrackedLink>
+            <PublicTrackedLink
               href={snapshot.hero.secondaryCta.href}
+              eventName="public_cta_clicked"
+              eventProps={{ source: 'homepage_hero', cta: 'workspace_demo' }}
               className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/95 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:border-sky-300 hover:text-sky-900"
             >
               {snapshot.hero.secondaryCta.label}
-            </Link>
+            </PublicTrackedLink>
           </div>
 
           <div className="mt-8 grid gap-3 md:max-w-xl">

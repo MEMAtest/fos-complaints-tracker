@@ -12,6 +12,7 @@ export function CheckResultsSummary({
   overallUpheldRate,
   firmName,
   firmRate,
+  overlayScope,
 }: {
   upheldRate: number;
   upholdRiskLevel: 'low' | 'medium' | 'high' | 'very_high';
@@ -19,6 +20,7 @@ export function CheckResultsSummary({
   overallUpheldRate: number;
   firmName?: string | null;
   firmRate?: number | null;
+  overlayScope?: 'product_root_cause' | 'product_only';
 }) {
   const cards = [
     {
@@ -49,7 +51,11 @@ export function CheckResultsSummary({
       key: 'firm',
       label: firmName ? `${firmName} overlay` : 'FOS overall context',
       value: `${(firmRate ?? overallUpheldRate).toFixed(1)}%`,
-      helper: firmName ? 'Firm rate within the same product context, where available.' : 'Overall published upheld rate across the current corpus.',
+      helper: firmName
+        ? overlayScope === 'product_only'
+          ? 'Firm rate widened to the selected product because the root-cause slice was too thin.'
+          : 'Firm rate within the same product and root-cause context, where available.'
+        : 'Overall published upheld rate across the current corpus.',
       icon: Building2,
       tone: 'soft',
     },

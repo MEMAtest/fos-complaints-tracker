@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
 import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import type { InsightPageData } from '@/lib/insights/types';
 import { buildBreadcrumbSchema, buildFaqSchema, buildWebPageSchema } from '@/lib/insights/seo';
@@ -45,7 +45,7 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
             <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
               {page.breadcrumbs.map((crumb, index) => (
                 <span key={crumb.href} className="flex items-center gap-2">
-                  <Link href={crumb.href} className="hover:text-slate-900">{crumb.title}</Link>
+                  <PublicTrackedLink href={crumb.href} eventName="public_nav_clicked" eventProps={{ source: 'insight_breadcrumb', cta: crumb.title }} className="hover:text-slate-900">{crumb.title}</PublicTrackedLink>
                   {index < page.breadcrumbs.length - 1 ? <span>/</span> : null}
                 </span>
               ))}
@@ -150,10 +150,10 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
                     <h3 className="mt-3 text-lg font-semibold text-slate-950">{item.firmName || 'Unnamed firm'}{item.productGroup ? ` · ${item.productGroup}` : ''}</h3>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{item.summary || 'No summary extracted for this decision.'}</p>
                     {href ? (
-                      <Link href={href} className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:text-sky-900" target="_blank" rel="noreferrer">
+                      <PublicTrackedLink href={href} eventName="public_cta_clicked" eventProps={{ source: 'insight_representative_case', cta: 'source_decision' }} className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:text-sky-900" target="_blank" rel="noreferrer">
                         View source decision
                         <ArrowRight className="h-4 w-4" />
-                      </Link>
+                      </PublicTrackedLink>
                     ) : null}
                   </article>
                 );
@@ -175,7 +175,7 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
                     <div key={`${section.key}-${item.label}`}>
                       <div className={sectionIndex === 0 ? 'flex items-start justify-between gap-3 text-sm text-white' : 'flex items-start justify-between gap-3 text-sm'}>
                         {item.href ? (
-                          <Link href={item.href} className={sectionIndex === 0 ? 'font-medium text-white hover:text-sky-200' : 'font-medium text-slate-900 hover:text-sky-800'}>{item.label}</Link>
+                          <PublicTrackedLink href={item.href} eventName="public_cta_clicked" eventProps={{ source: 'insight_ranked_view', cta: section.key }} className={sectionIndex === 0 ? 'font-medium text-white hover:text-sky-200' : 'font-medium text-slate-900 hover:text-sky-800'}>{item.label}</PublicTrackedLink>
                         ) : (
                           <span className={sectionIndex === 0 ? 'font-medium text-white' : 'font-medium text-slate-900'}>{item.label}</span>
                         )}
@@ -210,10 +210,10 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Keep exploring</h2>
             <div className="mt-5 grid gap-3">
               {page.relatedLinks.map((item, index) => (
-                <Link key={item.href} href={item.href} className={index % 2 === 0 ? 'rounded-[1.3rem] border border-sky-200 bg-[linear-gradient(180deg,#f6fbff_0%,#ffffff_100%)] p-4 transition hover:border-sky-300' : 'rounded-[1.3rem] border border-slate-200 bg-[#fbfcfe] p-4 transition hover:border-slate-300'}>
+                <PublicTrackedLink key={item.href} href={item.href} eventName="public_cta_clicked" eventProps={{ source: 'insight_related_links', cta: item.title }} className={index % 2 === 0 ? 'rounded-[1.3rem] border border-sky-200 bg-[linear-gradient(180deg,#f6fbff_0%,#ffffff_100%)] p-4 transition hover:border-sky-300' : 'rounded-[1.3rem] border border-slate-200 bg-[#fbfcfe] p-4 transition hover:border-slate-300'}>
                   <p className="font-semibold text-slate-950">{item.title}</p>
                   <p className="mt-1 text-sm leading-6 text-slate-600">{item.description}</p>
-                </Link>
+                </PublicTrackedLink>
               ))}
             </div>
           </section>

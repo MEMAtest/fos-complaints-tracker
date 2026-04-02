@@ -441,6 +441,125 @@ export interface EstimatorFirmOverlay {
   totalCases: number;
   upheldRate: number;
   notUpheldRate: number;
+  sourceScope: 'product_root_cause' | 'product_only';
+}
+
+const MIN_ESTIMATOR_FIRM_OVERLAY_CASES = 10;
+const FIRM_NAME_NOISE_TOKENS = new Set([
+  'and',
+  'co',
+  'company',
+  'corp',
+  'corporation',
+  'group',
+  'holdings',
+  'inc',
+  'limited',
+  'ltd',
+  'llp',
+  'of',
+  'plc',
+  'the',
+  'uk',
+]);
+
+function escapeLikePattern(input: string) {
+  return input.replace(/[%_\\]/g, '\\$&');
+}
+
+function compactFirmName(input: string) {
+  return input.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function significantFirmTokens(input: string) {
+  return input
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !FIRM_NAME_NOISE_TOKENS.has(token));
+}
+
+async function queryEstimatorFirmOverlaySummary(
+  product: string,
+  rootCause: string | null,
+  firm: string
+): Promise<Omit<EstimatorFirmOverlay, 'sourceScope'> | null> {
+  const escapedFirm = `%${escapeLikePattern(firm)}%`;
+  const compactInput = compactFirmName(firm);
+  const compactCore = compactFirmName(
+    significantFirmTokens(firm).join(' ')
+  );
+  const tokenPatterns = significantFirmTokens(firm).map((token) => `%${escapeLikePattern(token)}%`);
+
+  const params: unknown[] = [product, escapedFirm, compactInput, compactCore];
+  const tokenClauses: string[] = [];
+
+  for (const pattern of tokenPatterns) {
+    params.push(pattern);
+    tokenClauses.push(`LOWER(COALESCE(d.business_name, '')) LIKE $${params.length}`);
+  }
+
+  let rootCauseFilter = '';
+  if (rootCause) {
+    params.push(rootCause);
+    rootCauseFilter = `AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
+      WHERE LOWER(BTRIM(rt.value)) = LOWER($${params.length})
+    )`;
+  }
+
+  const tokenMatchSql = tokenClauses.length > 0 ? `(${tokenClauses.join(' AND ')})` : 'FALSE';
+
+  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `
+    WITH matched AS (
+      SELECT
+        COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm_name,
+        ${outcomeExpression('d')} AS outcome
+      FROM fos_decisions d
+      WHERE COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $1
+      ${rootCauseFilter}
+      AND (
+        d.business_name ILIKE $2 ESCAPE '\\'
+        OR ($3 <> '' AND regexp_replace(LOWER(COALESCE(d.business_name, '')), '[^a-z0-9]+', '', 'g') LIKE '%' || $3 || '%')
+        OR ($4 <> '' AND regexp_replace(LOWER(COALESCE(d.business_name, '')), '[^a-z0-9]+', '', 'g') LIKE '%' || $4 || '%')
+        OR ${tokenMatchSql}
+      )
+    ),
+    summary AS (
+      SELECT
+        COUNT(*)::INT AS total_cases,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE outcome = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE outcome = 'not_upheld') / NULLIF(COUNT(*), 0), 2) AS not_upheld_rate
+      FROM matched
+    ),
+    leading_name AS (
+      SELECT firm_name, COUNT(*)::INT AS case_count
+      FROM matched
+      GROUP BY firm_name
+      ORDER BY case_count DESC, firm_name
+      LIMIT 1
+    )
+    SELECT
+      leading_name.firm_name,
+      summary.total_cases,
+      summary.upheld_rate,
+      summary.not_upheld_rate
+    FROM summary
+    JOIN leading_name ON summary.total_cases > 0
+    `,
+    params
+  );
+
+  const totalCases = toInt(row?.total_cases);
+  if (totalCases < MIN_ESTIMATOR_FIRM_OVERLAY_CASES) return null;
+
+  return {
+    firmName: String(row?.firm_name || firm),
+    totalCases,
+    upheldRate: toNumber(row?.upheld_rate),
+    notUpheldRate: toNumber(row?.not_upheld_rate),
+  };
 }
 
 export async function getEstimatorFirmOverlay(
@@ -450,42 +569,19 @@ export async function getEstimatorFirmOverlay(
 ): Promise<EstimatorFirmOverlay | null> {
   ensureDatabaseConfigured();
 
-  // Escape ILIKE wildcards so user input can't broaden the match
-  const escapedFirm = `%${firm.replace(/[%_\\]/g, '\\$&')}%`;
-  const params: unknown[] = [product, escapedFirm];
-  let rootCauseFilter = '';
-
-  if (rootCause) {
-    rootCauseFilter = `AND EXISTS (
-      SELECT 1 FROM jsonb_array_elements_text(COALESCE(d.root_cause_tags, '[]'::jsonb)) AS rt(value)
-      WHERE LOWER(BTRIM(rt.value)) = LOWER($3)
-    )`;
-    params.push(rootCause);
+  const scopedOverlay = await queryEstimatorFirmOverlaySummary(product, rootCause, firm);
+  if (scopedOverlay) {
+    return { ...scopedOverlay, sourceScope: rootCause ? 'product_root_cause' : 'product_only' };
   }
 
-  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
-    `
-    SELECT
-      COUNT(*)::INT AS total_cases,
-      ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
-      ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld') / NULLIF(COUNT(*), 0), 2) AS not_upheld_rate
-    FROM fos_decisions d
-    WHERE COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') = $1
-    AND d.business_name ILIKE $2
-    ${rootCauseFilter}
-    `,
-    params
-  );
+  if (rootCause) {
+    const productOnlyOverlay = await queryEstimatorFirmOverlaySummary(product, null, firm);
+    if (productOnlyOverlay) {
+      return { ...productOnlyOverlay, sourceScope: 'product_only' };
+    }
+  }
 
-  const totalCases = toInt(row?.total_cases);
-  if (totalCases === 0) return null;
-
-  return {
-    firmName: firm,
-    totalCases,
-    upheldRate: toNumber(row?.upheld_rate),
-    notUpheldRate: toNumber(row?.not_upheld_rate),
-  };
+  return null;
 }
 
 // ─── Private helpers ─────────────────────────────────────────────────────────

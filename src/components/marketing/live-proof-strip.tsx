@@ -1,4 +1,5 @@
 import { formatDate } from '@/lib/utils';
+import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import type { HomepageMetric } from '@/lib/marketing/types';
 
 type LiveProofStripProps = {
@@ -68,12 +69,13 @@ export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
                   </div>
                 </div>
                 <div className="rounded-[1.35rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">Transaction filter tool</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">Platform surface</p>
+                  <div className="mt-3 overflow-hidden rounded-[1.15rem] border border-white/10 bg-white/6 p-2">
+                    <PublicIllustration variant="firm" className="aspect-[16/10] rounded-[1rem] border-white/10 bg-[linear-gradient(180deg,#fffef9_0%,#edf4ff_100%)] shadow-none" />
+                  </div>
                   <div className="mt-3 grid gap-2 text-xs text-white/75">
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Live data page</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Firm comparison</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Board pack builder</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Case status</div>
+                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Illustrated public data flow</div>
+                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Live analysis and workspace handoff</div>
                   </div>
                 </div>
               </div>

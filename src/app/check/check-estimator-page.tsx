@@ -1,10 +1,12 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { ArrowRight, AlertCircle, BookOpen, Loader2, Search, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCheckEstimator } from '@/hooks/use-check-estimator';
+import { trackPublicEvent } from '@/lib/analytics/public-events';
+import { getWorkspaceEntryHref } from '@/lib/marketing/config';
 import { PublicIllustration } from '@/components/illustrations/public-illustration';
+import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
 import { CheckExampleChip, CheckExampleChips } from '@/components/check/check-example-chips';
 import { CheckExplainerGrid } from '@/components/check/check-explainer-grid';
 import { CheckResultsSummary } from '@/components/check/check-results-summary';
@@ -51,39 +53,34 @@ function matchPreferred(options: string[], preferred: string[]): string | undefi
 function buildExampleChips(options: { products: string[]; rootCauses: string[] } | null): CheckExampleChip[] {
   if (!options?.products.length) return [];
 
-  const products = [
-    ...PREFERRED_PRODUCTS.map((candidate) => options.products.find((option) => option.toLowerCase() === candidate.toLowerCase())).filter(Boolean) as string[],
-    ...options.products,
-  ].filter((value, index, array) => array.indexOf(value) === index);
-
   const rootCause = matchPreferred(options.rootCauses, PREFERRED_ROOT_CAUSES);
-  const secondaryRootCause = options.rootCauses.find((option) => option !== rootCause) || rootCause;
+  const overlayProduct = matchPreferred(options.products, ['Banking and Payments', 'Banking and credit', 'Payment protection insurance (PPI)']) || options.products[0];
+  const signalProduct = matchPreferred(options.products, ['Banking and credit', 'Consumer Credit', 'Insurance']) || overlayProduct;
+  const secondOverlayProduct = matchPreferred(options.products, ['Payment protection insurance (PPI)', 'Mortgages', 'Insurance']) || overlayProduct;
 
   const draft: CheckExampleChip[] = [
     {
-      label: products[0] ? `${products[0]} signal` : 'Banking signal',
+      label: signalProduct ? `${signalProduct} signal` : 'Banking signal',
       helper: rootCause ? `${rootCause} · public signal only` : 'Public signal only',
-      product: products[0] || options.products[0],
+      product: signalProduct,
       rootCause,
     },
     {
-      label: products[1] ? `${products[1]} at Barclays` : 'Barclays overlay',
-      helper: 'Product view with a firm overlay',
-      product: products[1] || products[0] || options.products[0],
+      label: `${overlayProduct} at Barclays`,
+      helper: 'Reliable firm overlay with strong product depth',
+      product: overlayProduct,
       firm: PREFERRED_FIRMS[0],
-      rootCause: secondaryRootCause,
     },
     {
-      label: products[2] ? `${products[2]} depth` : 'Complaint depth',
-      helper: secondaryRootCause ? `${secondaryRootCause} context` : 'Comparable pattern view',
-      product: products[2] || products[0] || options.products[0],
-      rootCause: secondaryRootCause,
+      label: `${secondOverlayProduct} at Lloyds`,
+      helper: 'High-volume firm overlay for a deeper read',
+      product: secondOverlayProduct,
       firm: PREFERRED_FIRMS[1],
     },
     {
-      label: products[3] ? `${products[3]} snapshot` : 'Published snapshot',
-      helper: 'Start with the public estimate, then move deeper',
-      product: products[3] || products[0] || options.products[0],
+      label: `${overlayProduct} at Bank of Scotland`,
+      helper: 'Firm overlay widened to product depth if root cause is thin',
+      product: overlayProduct,
       firm: PREFERRED_FIRMS[2],
     },
   ];
@@ -96,6 +93,7 @@ function buildExampleChips(options: { products: string[]; rootCauses: string[] }
 
 export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
   const { brief, firmOverlay, loading, error, options, optionsLoading, fetchEstimate } = useCheckEstimator();
+  const workspaceHref = getWorkspaceEntryHref();
 
   const [product, setProduct] = useState('');
   const [rootCause, setRootCause] = useState('');
@@ -115,6 +113,14 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
     event.preventDefault();
     if (!product) return;
     setSubmitted(true);
+    trackPublicEvent('check_estimate_submitted', {
+      product,
+      rootCause: rootCause || 'any',
+      hasRootCause: Boolean(rootCause),
+      hasFirm: Boolean(firm),
+      firm: firm || 'none',
+      source: 'manual',
+    });
     void fetchEstimate(product, rootCause || undefined, firm || undefined);
   }
 
@@ -123,6 +129,12 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
     setRootCause(chip.rootCause || '');
     setFirm(chip.firm || '');
     setSubmitted(true);
+    trackPublicEvent('check_example_selected', {
+      label: chip.label,
+      product: chip.product,
+      rootCause: chip.rootCause || 'any',
+      firm: chip.firm || 'none',
+    });
     void fetchEstimate(chip.product, chip.rootCause, chip.firm);
   }
 
@@ -321,6 +333,7 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
             overallUpheldRate={risk.overallUpheldRate}
             firmName={firmOverlay?.firmName}
             firmRate={firmOverlay?.upheldRate ?? null}
+            overlayScope={firmOverlay?.sourceScope}
           />
 
           <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -340,7 +353,7 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
                 <ul className="mt-5 grid gap-3 text-sm leading-6 text-white/75">
                   <li className="rounded-[1.2rem] border border-white/10 bg-white/8 px-4 py-3">The upheld rate shows how similar published complaints resolved in the current corpus.</li>
                   <li className="rounded-[1.2rem] border border-white/10 bg-white/8 px-4 py-3">Sample size tells you how much decision history is behind the signal.</li>
-                  <li className="rounded-[1.2rem] border border-white/10 bg-white/8 px-4 py-3">The firm overlay only appears when the published data is deep enough in that product context.</li>
+                  <li className="rounded-[1.2rem] border border-white/10 bg-white/8 px-4 py-3">Firm overlay only appears when the published corpus has at least 10 matching decisions, and it widens back to the product view if the root-cause slice is too thin.</li>
                 </ul>
               </section>
               {firmOverlay ? (
@@ -350,9 +363,12 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
                     firmRate={firmOverlay.upheldRate}
                     productRate={risk.upheldRate}
                     overallRate={risk.overallUpheldRate}
+                    sourceScope={firmOverlay.sourceScope}
                   />
                   <p className="mt-3 text-xs leading-5 text-slate-500">
-                    Based on {firmOverlay.totalCases.toLocaleString()} published decision{firmOverlay.totalCases !== 1 ? 's' : ''} for this firm in the selected product context.
+                    {firmOverlay.sourceScope === 'product_only' && rootCause
+                      ? `Widened to the selected product because the firm + root-cause slice was too thin. Based on ${firmOverlay.totalCases.toLocaleString()} published decision${firmOverlay.totalCases !== 1 ? 's' : ''} for this firm in the wider product context.`
+                      : `Based on ${firmOverlay.totalCases.toLocaleString()} published decision${firmOverlay.totalCases !== 1 ? 's' : ''} for this firm in the selected ${rootCause ? 'product and root-cause' : 'product'} context.`}
                   </p>
                 </div>
               ) : submitted && firm && !loading ? (
@@ -389,10 +405,16 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
               <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-950">Keep moving through the public intelligence layer</h3>
               <div className="mt-5 grid gap-3">
                 {liveStats.featuredLinks.map((link) => (
-                  <Link key={link.href} href={link.href} className="rounded-[1.2rem] border border-slate-200 bg-[linear-gradient(180deg,#fff9ef_0%,#ffffff_100%)] px-4 py-3 transition hover:border-amber-300">
+                  <PublicTrackedLink
+                    key={link.href}
+                    href={link.href}
+                    eventName="public_link_clicked"
+                    eventProps={{ source: 'check_featured_links', destinationType: 'insight' }}
+                    className="rounded-[1.2rem] border border-slate-200 bg-[linear-gradient(180deg,#fff9ef_0%,#ffffff_100%)] px-4 py-3 transition hover:border-amber-300"
+                  >
                     <p className="font-semibold text-slate-950">{link.title}</p>
                     <p className="mt-1 text-sm leading-6 text-slate-600">Open a live public analysis page from the same corpus.</p>
-                  </Link>
+                  </PublicTrackedLink>
                 ))}
               </div>
             </div>
@@ -447,13 +469,23 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
                   Use the estimator to check likely exposure quickly, then open the full advisor brief for deeper narrative guidance or move into the workspace when the complaint needs handling depth.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <Link href={fullAdvisorHref} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100">
+                  <PublicTrackedLink
+                    href={fullAdvisorHref}
+                    eventName="public_cta_clicked"
+                    eventProps={{ source: 'check_next_step', cta: 'advisor_brief' }}
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+                  >
                     Get the full Advisor Brief
                     <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link href="/workspace" className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/12">
+                  </PublicTrackedLink>
+                  <PublicTrackedLink
+                    href={workspaceHref}
+                    eventName="public_cta_clicked"
+                    eventProps={{ source: 'check_next_step', cta: 'workspace' }}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/12"
+                  >
                     Open workspace
-                  </Link>
+                  </PublicTrackedLink>
                 </div>
               </div>
               <PublicIllustration variant="workflow" className="border-white/10 bg-[linear-gradient(180deg,#fffef9_0%,#eef5ff_100%)] shadow-none" />

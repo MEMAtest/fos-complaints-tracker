@@ -1,5 +1,6 @@
-import Link from 'next/link';
 import { ArrowRight, ClipboardList, Files, Search, Workflow } from 'lucide-react';
+import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import { cn } from '@/lib/utils';
 import type { HomepageStoryStep } from '@/lib/marketing/types';
 
@@ -15,6 +16,16 @@ const toneClasses = [
 ] as const;
 
 const surfaceIcons = [Search, Workflow, ClipboardList, Files] as const;
+const illustrationByStep = {
+  explore: 'insight',
+  transition: 'firm',
+  work: 'workflow',
+  report: 'reporting',
+} as const;
+
+function illustrationVariantForStep(stepKey: HomepageStoryStep['key']) {
+  return illustrationByStep[stepKey as keyof typeof illustrationByStep] || 'insight';
+}
 
 export function PhaseGrid({ steps }: PhaseGridProps) {
   return (
@@ -65,13 +76,24 @@ export function PhaseGrid({ steps }: PhaseGridProps) {
                   </div>
 
                   <div className={cn('rounded-[1.5rem] border p-4', dark ? 'border-white/10 bg-white/8' : 'border-slate-200 bg-white/88')}>
-                    <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl', dark ? 'bg-white text-[#17355b]' : 'bg-[#17355b] text-white')}>
-                      <Icon className="h-5 w-5" />
+                    <div className="grid gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl', dark ? 'bg-white text-[#17355b]' : 'bg-[#17355b] text-white')}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className={cn('rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]', dark ? 'border-white/12 bg-white/8 text-white/72' : 'border-slate-200 bg-slate-50 text-slate-500')}>
+                          {step.accentMetric}
+                        </div>
+                      </div>
+                      <PublicIllustration
+                        variant={illustrationVariantForStep(step.key)}
+                        className={cn(
+                          'aspect-[16/10] rounded-[1.35rem] shadow-none',
+                          dark ? 'border-white/12 bg-[linear-gradient(180deg,#fffef9_0%,#edf4ff_100%)]' : 'border-slate-200'
+                        )}
+                      />
                     </div>
                     <div className="mt-4 grid gap-2">
-                      <div className={cn('rounded-xl border px-3 py-2 text-xs uppercase tracking-[0.16em]', dark ? 'border-white/10 bg-white/8 text-white/58' : 'border-slate-200 bg-slate-50 text-slate-500')}>
-                        {step.accentMetric}
-                      </div>
                       <div className={cn('rounded-xl border px-3 py-2 text-xs', dark ? 'border-white/10 bg-white/8 text-white/72' : 'border-slate-200 bg-slate-50 text-slate-600')}>
                         Connected view of analysis, handling, and reporting.
                       </div>
@@ -79,13 +101,15 @@ export function PhaseGrid({ steps }: PhaseGridProps) {
                   </div>
                 </div>
 
-                <Link
+                <PublicTrackedLink
                   href={step.href}
+                  eventName="public_cta_clicked"
+                  eventProps={{ source: 'homepage_phase_grid', cta: step.key }}
                   className={cn('inline-flex w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition', dark ? 'bg-white text-slate-950 hover:bg-slate-100' : 'bg-[#0f1f4f] text-white hover:bg-[#0c1940]')}
                 >
                   {step.ctaLabel}
                   <ArrowRight className="h-4 w-4" />
-                </Link>
+                </PublicTrackedLink>
               </div>
             </article>
           );

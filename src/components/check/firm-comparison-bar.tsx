@@ -5,11 +5,20 @@ interface FirmComparisonBarProps {
   firmRate: number;
   productRate: number;
   overallRate: number;
+  sourceScope?: 'product_root_cause' | 'product_only';
 }
 
-export function FirmComparisonBar({ firmName, firmRate, productRate, overallRate }: FirmComparisonBarProps) {
+export function FirmComparisonBar({ firmName, firmRate, productRate, overallRate, sourceScope = 'product_only' }: FirmComparisonBarProps) {
   const bars: { label: string; rate: number; color: string; helper: string }[] = [
-    { label: firmName, rate: firmRate, color: '#2563eb', helper: 'Firm-specific rate in the current product slice' },
+    {
+      label: firmName,
+      rate: firmRate,
+      color: '#2563eb',
+      helper:
+        sourceScope === 'product_root_cause'
+          ? 'Firm-specific rate in the selected product and root-cause slice'
+          : 'Firm-specific rate in the wider product slice',
+    },
     { label: 'Selected product', rate: productRate, color: '#7c3aed', helper: 'Comparable product context across all firms' },
     { label: 'FOS overall average', rate: overallRate, color: '#f59e0b', helper: 'Published corpus-wide context' },
   ];
