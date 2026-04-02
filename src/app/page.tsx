@@ -8,6 +8,7 @@ import { HomepageHero } from '@/components/marketing/homepage-hero';
 import { LiveProofStrip } from '@/components/marketing/live-proof-strip';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { PhaseGrid } from '@/components/marketing/phase-grid';
+import { PublicStatusBanner } from '@/components/public/public-status-banner';
 
 export const metadata: Metadata = {
   title: 'FOS Complaints Intelligence | Live Complaint Data, Workspace, and Board Reporting',
@@ -66,6 +67,9 @@ export default async function MarketingHomepage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <MarketingHeader />
       <main className="overflow-hidden">
+        <div className="mx-auto w-full max-w-7xl px-4 pt-6 md:px-8">
+          <PublicStatusBanner status={snapshot.status} />
+        </div>
         <HomepageHero snapshot={snapshot} />
         <LiveProofStrip metrics={snapshot.liveProof} updatedAt={snapshot.updatedAt} />
         <PhaseGrid steps={snapshot.storySteps} />

@@ -1,3 +1,5 @@
+import type { PublicDataStatus } from '@/lib/insights/types';
+
 export type HomepageMetric = {
   label: string;
   value: string;
@@ -46,6 +48,7 @@ export type HomepageAudienceCard = {
 };
 
 export type HomepageSnapshot = {
+  status: PublicDataStatus;
   hero: {
     eyebrow: string;
     title: string;

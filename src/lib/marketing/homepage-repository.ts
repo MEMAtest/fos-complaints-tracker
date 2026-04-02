@@ -18,6 +18,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
   const topTheme = landing.collections.find((collection) => collection.href === '/insights/types')?.items[0];
 
   return {
+    status: landing.status,
     hero: {
       eyebrow: 'Live FOS complaints intelligence',
       title: 'See live complaint intelligence clearly, then move straight into the workflow.',

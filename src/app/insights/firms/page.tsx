@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { InsightArchiveList } from '@/components/insights/archive-list';
-import { getPublishedFirmInsights } from '@/lib/insights/repository';
+import { getPublishedFirmInsightsState } from '@/lib/insights/repository';
 import { absoluteUrl } from '@/lib/insights/seo';
 
 export const metadata: Metadata = {
@@ -10,12 +10,13 @@ export const metadata: Metadata = {
 };
 
 export default async function InsightFirmsPage() {
-  const items = await getPublishedFirmInsights();
+  const { items, status } = await getPublishedFirmInsightsState();
   return (
     <InsightArchiveList
       title="Firm complaint analysis"
       description="Public firm-by-firm analysis pages built from published Financial Ombudsman decisions, covering complaint volume, product mix, upheld-rate context, complaint themes, and representative cases."
       items={items}
+      status={status}
       placeholder="Search firms"
       variant="firms"
     />

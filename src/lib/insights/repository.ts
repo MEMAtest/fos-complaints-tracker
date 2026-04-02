@@ -13,6 +13,7 @@ import { ensureInsightsSchema } from './schema';
 import { slugify } from './seo';
 import type {
   InsightArchiveItem,
+  InsightArchiveResult,
   InsightFaqItem,
   InsightLandingData,
   InsightMetric,
@@ -24,6 +25,7 @@ import type {
   InsightRankedItem,
   InsightRelatedLink,
   InsightRepresentativeCase,
+  PublicDataStatus,
 } from './types';
 
 const REVALIDATE_SECONDS = 60 * 60;
@@ -35,6 +37,8 @@ const MIN_TYPE_CASES = 100;
 const MIN_YEAR_PRODUCT_CASES = 500;
 const MIN_FIRM_PRODUCT_CASES = 1000;
 const MAX_REPRESENTATIVE_CASES = 5;
+const DEGRADED_PUBLIC_DATA_MESSAGE =
+  'Live public data is temporarily unavailable. Core public routes remain online with safe fallback content while the data layer recovers.';
 
 const EMPTY_FILTERS: FOSDashboardFilters = {
   query: '',
@@ -134,6 +138,12 @@ const getProductArchive = unstable_cache(async () => queryArchiveWithFallback('p
 const getTypeArchive = unstable_cache(async () => queryArchiveWithFallback('type', queryTypeArchive), ['insights-type-archive'], { revalidate: REVALIDATE_SECONDS });
 const getYearProductArchive = unstable_cache(async () => queryArchiveWithFallback('year-product', queryYearProductArchive), ['insights-year-product-archive'], { revalidate: REVALIDATE_SECONDS });
 const getFirmProductArchive = unstable_cache(async () => queryArchiveWithFallback('firm-product', queryFirmProductArchive), ['insights-firm-product-archive'], { revalidate: REVALIDATE_SECONDS });
+const getYearArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('year', queryYearArchive), ['insights-year-archive-state'], { revalidate: REVALIDATE_SECONDS });
+const getFirmArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('firm', queryFirmArchive), ['insights-firm-archive-state'], { revalidate: REVALIDATE_SECONDS });
+const getProductArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('product', queryProductArchive), ['insights-product-archive-state'], { revalidate: REVALIDATE_SECONDS });
+const getTypeArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('type', queryTypeArchive), ['insights-type-archive-state'], { revalidate: REVALIDATE_SECONDS });
+const getYearProductArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('year-product', queryYearProductArchive), ['insights-year-product-archive-state'], { revalidate: REVALIDATE_SECONDS });
+const getFirmProductArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('firm-product', queryFirmProductArchive), ['insights-firm-product-archive-state'], { revalidate: REVALIDATE_SECONDS });
 let publicationOverridesPromise: Promise<InsightPublicationOverride[]> | null = null;
 const loggedPublicFallbacks = new Set<string>();
 
@@ -156,6 +166,24 @@ async function queryArchiveWithFallback(
   } catch (error) {
     logPublicDataFallback(`${kind}-archive`, error);
     return [];
+  }
+}
+
+async function queryArchiveStateWithFallback(
+  kind: InsightArchiveItem['kind'],
+  loader: () => Promise<InsightArchiveItem[]>
+): Promise<InsightArchiveResult> {
+  try {
+    return {
+      items: await loader(),
+      status: livePublicDataStatus(),
+    };
+  } catch (error) {
+    logPublicDataFallback(`${kind}-archive`, error);
+    return {
+      items: [],
+      status: degradedPublicDataStatus(),
+    };
   }
 }
 
@@ -189,20 +217,49 @@ async function getPublishedArchiveWithFallback(
   return applyArchiveOverrides(archive, overrides);
 }
 
+async function getPublishedArchiveResult(
+  kind: InsightArchiveItem['kind'],
+  loader: () => Promise<InsightArchiveResult>
+): Promise<InsightArchiveResult> {
+  const [archiveResult, overridesResult] = await Promise.allSettled([loader(), getPublicationOverrides()]);
+  const archive = archiveResult.status === 'fulfilled' ? archiveResult.value : { items: [], status: degradedPublicDataStatus() };
+  const overrides = overridesResult.status === 'fulfilled' ? overridesResult.value : [];
+
+  if (archiveResult.status === 'rejected') {
+    logPublicDataFallback(`${kind}-archive-state`, archiveResult.reason);
+  }
+
+  if (overridesResult.status === 'rejected') {
+    logPublicDataFallback(`${kind}-overrides`, overridesResult.reason);
+  }
+
+  return {
+    items: applyArchiveOverrides(archive.items, overrides),
+    status: archive.status,
+  };
+}
+
 export function resetInsightPublicationOverridesCache(): void {
   publicationOverridesPromise = null;
 }
 
 export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLandingData> => {
-  const [dashboard, years, firms, products, types, yearProducts, firmProducts] = await Promise.all([
+  const [dashboard, yearsResult, firmsResult, productsResult, typesResult, yearProductsResult, firmProductsResult] = await Promise.all([
     getSafePublicDashboardOverview(),
-    getPublishedYearInsights(),
-    getPublishedFirmInsights(),
-    getPublishedProductInsights(),
-    getPublishedTypeInsights(),
-    getPublishedYearProductInsights(),
-    getPublishedFirmProductInsights(),
+    getPublishedYearInsightsState(),
+    getPublishedFirmInsightsState(),
+    getPublishedProductInsightsState(),
+    getPublishedTypeInsightsState(),
+    getPublishedYearProductInsightsState(),
+    getPublishedFirmProductInsightsState(),
   ]);
+
+  const years = yearsResult.items;
+  const firms = firmsResult.items;
+  const products = productsResult.items;
+  const types = typesResult.items;
+  const yearProducts = yearProductsResult.items;
+  const firmProducts = firmProductsResult.items;
 
   const yearsCovered = years.length;
   const publishedPages = years.length + firms.length + products.length + types.length + yearProducts.length + firmProducts.length;
@@ -218,6 +275,15 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
       title: 'Search-friendly ombudsman complaint analysis by year, firm, product, theme, and curated cross-section.',
       dek: 'A public editorial layer over the Financial Ombudsman decision corpus, generated from the same intelligence model that powers the workspace and extended with stronger year-product and firm-product pages.',
     },
+    status: mergePublicDataStatuses([
+      dashboard ? livePublicDataStatus() : degradedPublicDataStatus(),
+      yearsResult.status,
+      firmsResult.status,
+      productsResult.status,
+      typesResult.status,
+      yearProductsResult.status,
+      firmProductsResult.status,
+    ]),
     metrics: dashboard
       ? [
           metric('Published decisions', formatNumber(dashboard.totalCases), `${yearsCovered} years currently covered`),
@@ -263,6 +329,30 @@ export async function getPublishedYearProductInsights(): Promise<InsightArchiveI
 
 export async function getPublishedFirmProductInsights(): Promise<InsightArchiveItem[]> {
   return getPublishedArchiveWithFallback('firm-product', getFirmProductArchive);
+}
+
+export async function getPublishedYearInsightsState(): Promise<InsightArchiveResult> {
+  return getPublishedArchiveResult('year', getYearArchiveState);
+}
+
+export async function getPublishedFirmInsightsState(): Promise<InsightArchiveResult> {
+  return getPublishedArchiveResult('firm', getFirmArchiveState);
+}
+
+export async function getPublishedProductInsightsState(): Promise<InsightArchiveResult> {
+  return getPublishedArchiveResult('product', getProductArchiveState);
+}
+
+export async function getPublishedTypeInsightsState(): Promise<InsightArchiveResult> {
+  return getPublishedArchiveResult('type', getTypeArchiveState);
+}
+
+export async function getPublishedYearProductInsightsState(): Promise<InsightArchiveResult> {
+  return getPublishedArchiveResult('year-product', getYearProductArchiveState);
+}
+
+export async function getPublishedFirmProductInsightsState(): Promise<InsightArchiveResult> {
+  return getPublishedArchiveResult('firm-product', getFirmProductArchiveState);
 }
 
 export async function listInsightPublicationOverrides(): Promise<InsightPublicationOverride[]> {
@@ -1757,6 +1847,24 @@ function buildFallbackFeaturedInsights(): InsightLandingData['featured'] {
     href: collection.href,
     description: collection.description,
   }));
+}
+
+function livePublicDataStatus(): PublicDataStatus {
+  return {
+    mode: 'live',
+    message: null,
+  };
+}
+
+function degradedPublicDataStatus(): PublicDataStatus {
+  return {
+    mode: 'degraded',
+    message: DEGRADED_PUBLIC_DATA_MESSAGE,
+  };
+}
+
+function mergePublicDataStatuses(statuses: PublicDataStatus[]): PublicDataStatus {
+  return statuses.some((status) => status.mode === 'degraded') ? degradedPublicDataStatus() : livePublicDataStatus();
 }
 
 function logPublicDataFallback(scope: string, error: unknown): void {

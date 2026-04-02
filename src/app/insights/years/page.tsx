@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { InsightArchiveList } from '@/components/insights/archive-list';
-import { getPublishedYearInsights } from '@/lib/insights/repository';
+import { getPublishedYearInsightsState } from '@/lib/insights/repository';
 import { absoluteUrl } from '@/lib/insights/seo';
 
 export const metadata: Metadata = {
@@ -10,12 +10,13 @@ export const metadata: Metadata = {
 };
 
 export default async function InsightYearsPage() {
-  const items = await getPublishedYearInsights();
+  const { items, status } = await getPublishedYearInsightsState();
   return (
     <InsightArchiveList
       title="Annual ombudsman complaint analysis"
       description="Browse year-by-year public analysis of the Financial Ombudsman decisions corpus, including upheld-rate context, leading firms, product concentration, complaint themes, and representative cases."
       items={items}
+      status={status}
       placeholder="Search years"
       variant="years"
     />

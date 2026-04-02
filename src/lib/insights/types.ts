@@ -1,5 +1,10 @@
 export type InsightKind = 'year' | 'firm' | 'product' | 'type' | 'year-product' | 'firm-product';
 
+export type PublicDataStatus = {
+  mode: 'live' | 'degraded';
+  message: string | null;
+};
+
 export type InsightArchiveItem = {
   kind: InsightKind;
   slug: string;
@@ -13,6 +18,11 @@ export type InsightArchiveItem = {
   highlight: string;
   featuredRank?: number | null;
   isNoindex?: boolean;
+};
+
+export type InsightArchiveResult = {
+  items: InsightArchiveItem[];
+  status: PublicDataStatus;
 };
 
 export type InsightMetric = {
@@ -100,6 +110,7 @@ export type InsightLandingData = {
     title: string;
     dek: string;
   };
+  status: PublicDataStatus;
   metrics: InsightMetric[];
   featured: Array<{
     title: string;

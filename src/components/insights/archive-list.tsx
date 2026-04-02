@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { PublicIllustration } from '@/components/illustrations/public-illustration';
-import type { InsightArchiveItem } from '@/lib/insights/types';
+import { PublicStatusBanner } from '@/components/public/public-status-banner';
+import type { InsightArchiveItem, PublicDataStatus } from '@/lib/insights/types';
 import { formatDate, formatNumber, formatPercent } from '@/lib/utils';
 
 const ILLUSTRATION_BY_VARIANT = {
@@ -20,12 +21,14 @@ export function InsightArchiveList({
   title,
   description,
   items,
+  status,
   placeholder,
   variant,
 }: {
   title: string;
   description: string;
   items: InsightArchiveItem[];
+  status?: PublicDataStatus;
   placeholder: string;
   variant: keyof typeof ILLUSTRATION_BY_VARIANT;
 }) {
@@ -42,6 +45,7 @@ export function InsightArchiveList({
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-10 md:px-8 md:py-14">
+      <PublicStatusBanner status={status || { mode: 'live', message: null }} />
       <section className="overflow-hidden rounded-[2.2rem] border border-slate-200/70 bg-[linear-gradient(140deg,#fffdf7_0%,#f5f8ff_52%,#edf3ff_100%)] shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
         <div className="grid gap-5 p-6 md:grid-cols-[1.05fr_0.95fr] md:p-8">
           <div>

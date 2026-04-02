@@ -58,6 +58,7 @@ export default async function CheckPage() {
       <MarketingHeader />
       <main className="overflow-hidden">
         <CheckEstimatorPage
+          status={landing.status}
           liveStats={{
             publishedDecisions: landing.metrics[0]?.value || 'Live',
             publicPages: landing.metrics[1]?.value || 'Live',

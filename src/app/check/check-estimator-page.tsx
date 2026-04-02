@@ -14,8 +14,11 @@ import { ConfidenceBadge } from '@/components/check/confidence-badge';
 import { FirmComparisonBar } from '@/components/check/firm-comparison-bar';
 import { OutcomeBreakdown } from '@/components/check/outcome-breakdown';
 import { RiskGauge } from '@/components/check/risk-gauge';
+import { PublicStatusBanner } from '@/components/public/public-status-banner';
+import type { PublicDataStatus } from '@/lib/insights/types';
 
 type CheckEstimatorPageProps = {
+  status: PublicDataStatus;
   liveStats: {
     publishedDecisions: string;
     publicPages: string;
@@ -91,7 +94,7 @@ function buildExampleChips(options: { products: string[]; rootCauses: string[] }
   });
 }
 
-export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
+export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProps) {
   const { brief, firmOverlay, loading, error, options, optionsLoading, fetchEstimate } = useCheckEstimator();
   const workspaceHref = getWorkspaceEntryHref();
 
@@ -201,6 +204,7 @@ export function CheckEstimatorPage({ liveStats }: CheckEstimatorPageProps) {
       </section>
 
       <div className="mx-auto -mt-6 w-full max-w-7xl px-4 md:px-8">
+        <PublicStatusBanner status={status} className="mb-6" />
         <section className="relative z-10 grid gap-6 rounded-[2.3rem] border border-slate-200 bg-white/96 p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] md:p-8 xl:grid-cols-[0.95fr_1.05fr]">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">

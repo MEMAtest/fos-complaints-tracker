@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ArrowRight } from 'lucide-react';
 import { PublicIllustration } from '@/components/illustrations/public-illustration';
+import { PublicStatusBanner } from '@/components/public/public-status-banner';
 import { getInsightsLandingData } from '@/lib/insights/repository';
 import { absoluteUrl } from '@/lib/insights/seo';
 
@@ -29,6 +30,7 @@ export default async function InsightsHomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-10 md:px-8 md:py-14">
+      <PublicStatusBanner status={landing.status} />
       <section className="overflow-hidden rounded-[2.4rem] border border-slate-200/70 bg-[linear-gradient(140deg,#fffdf7_0%,#f4f8ff_50%,#ecf3ff_100%)] shadow-[0_30px_90px_rgba(15,23,42,0.10)]">
         <div className="grid gap-8 p-6 md:grid-cols-[1.05fr_0.95fr] md:p-10 xl:grid-cols-[0.96fr_1.04fr]">
           <div>
