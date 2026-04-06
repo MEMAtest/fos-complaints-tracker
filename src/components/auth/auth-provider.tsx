@@ -36,7 +36,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    if (pathname === '/' || pathname === '/login' || pathname.startsWith('/insights')) {
+    if (
+      pathname === '/' ||
+      pathname === '/login' ||
+      pathname.startsWith('/insights') ||
+      pathname.startsWith('/check') ||
+      pathname.startsWith('/advisor')
+    ) {
       setLoading(false);
       return;
     }

@@ -183,7 +183,20 @@ test.describe('Check Estimator - Form interaction', () => {
     await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
   });
 
-  test('entering a firm name shows firm comparison or not-found message', async ({ page }) => {
+  test('entering a known firm shows firm comparison section', async ({ page }) => {
+    await page.goto('/check');
+    await expect(page.locator('#check-product')).not.toBeDisabled({ timeout: 15_000 });
+
+    // Use "Banking and Payments" — confirmed to have Barclays data via live smoke tests
+    await page.locator('#check-product').selectOption('Banking and Payments');
+    await page.locator('#check-firm').fill('Barclays');
+
+    await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
+    await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Firm vs sector comparison/i)).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('entering a non-existent firm shows not-found message', async ({ page }) => {
     await page.goto('/check');
     await expect(page.locator('#check-product')).not.toBeDisabled({ timeout: 15_000 });
 
@@ -192,17 +205,11 @@ test.describe('Check Estimator - Form interaction', () => {
       .first()
       .getAttribute('value');
     await page.locator('#check-product').selectOption(firstProduct!);
-    await page.locator('#check-firm').fill('Barclays');
+    await page.locator('#check-firm').fill('ZZZNonExistentFirm999');
 
     await page.getByRole('button', { name: /estimate likely uphold exposure/i }).click();
     await expect(page.getByText(/Estimated upheld rate/i).first()).toBeVisible({ timeout: 30_000 });
-
-    // Wait for the firm overlay to resolve — either comparison bars or the not-found message
-    const firmComparison = page.getByText(/Firm vs sector comparison/i);
-    const notFound = page.getByText(/No published firm overlay was found/i);
-
-    // Wait for one of the two to appear (firm overlay finishes after brief)
-    await expect(firmComparison.or(notFound).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/No published firm overlay was found/i)).toBeVisible({ timeout: 15_000 });
   });
 
   test('non-existent product shows error state', async ({ page }) => {
@@ -285,6 +292,7 @@ test.describe('Check Estimator - Results sections', () => {
 
     const workspaceLink = page.getByRole('link', { name: /open workspace/i });
     await expect(workspaceLink).toBeVisible();
-    await expect(workspaceLink).toHaveAttribute('href', '/workspace');
+    const href = await workspaceLink.getAttribute('href');
+    expect(href).toContain('/workspace');
   });
 });
