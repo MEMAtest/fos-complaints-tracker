@@ -17,3 +17,19 @@ export function trackPublicEvent(name: string, properties: PublicEventProperties
     // Instrumentation must never block public navigation or submissions.
   }
 }
+
+export function trackOwnedEvent(
+  name: 'lead_submitted' | 'signup_completed' | 'demo_requested' | 'download_completed' | 'checkout_started' | 'purchase_completed',
+  properties: Record<string, string | number | boolean> = {},
+) {
+  if (typeof window === 'undefined') return false;
+  const analyticsWindow = window as typeof window & {
+    ownedPortfolioTrack?: (eventName: string, values?: Record<string, string | number | boolean>) => boolean;
+    ownedPortfolioQueue?: Array<[string, Record<string, string | number | boolean>]>;
+  };
+  if (analyticsWindow.ownedPortfolioTrack) {
+    return analyticsWindow.ownedPortfolioTrack(name, properties);
+  }
+  (analyticsWindow.ownedPortfolioQueue ||= []).push([name, properties]);
+  return true;
+}

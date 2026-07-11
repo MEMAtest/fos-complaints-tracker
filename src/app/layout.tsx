@@ -62,6 +62,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </SidebarLayout>
         </AuthProvider>
         <Analytics />
+        <script
+          defer
+          src="https://owned-portfolio-analytics.mema-consultants.workers.dev/tracker.js"
+          data-project="fos-complaints-tracker"
+        />
       </body>
     </html>
   );

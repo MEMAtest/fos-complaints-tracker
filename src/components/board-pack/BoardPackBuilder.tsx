@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/ComplaintWorkspaceSettingsPanel';
 import type { BoardPackDefinition, BoardPackPreview, BoardPackRequest, BoardPackTemplateKey } from '@/lib/board-pack/types';
 import { formatDateTime, formatNumber } from '@/lib/utils';
+import { trackOwnedEvent } from '@/lib/analytics/public-events';
 
 const DEFAULT_FROM = new Date(new Date().getUTCFullYear(), 0, 1).toISOString().slice(0, 10);
 const DEFAULT_TO = new Date().toISOString().slice(0, 10);
@@ -97,6 +98,7 @@ export function BoardPackBuilder() {
       anchor.download = `${slugify(form.title)}.${format}`;
       anchor.click();
       URL.revokeObjectURL(url);
+      trackOwnedEvent('download_completed', { format, report: 'board_pack' });
       setMessage(`Generated ${format.toUpperCase()} board pack successfully.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to generate board pack.');
