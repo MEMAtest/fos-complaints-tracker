@@ -89,7 +89,7 @@ function MetricLabel({ label, explainer }: { label: string; explainer: string })
   );
 }
 
-function SingleTable({ firm, rows }: { firm: FOSFirmComparisonData; rows: { label: string; explainer: string; value: string }[] }) {
+function SingleTable({ rows }: { rows: { label: string; explainer: string; value: string }[] }) {
   return (
     <Table>
       <TableHeader>
@@ -130,7 +130,7 @@ export function ComparisonTable({ firms, split }: ComparisonTableProps) {
                 <CardTitle className="text-base">{firm.name}</CardTitle>
               </CardHeader>
               <CardContent>
-                <SingleTable firm={firm} rows={singleRows} />
+                <SingleTable rows={singleRows} />
               </CardContent>
             </Card>
           );

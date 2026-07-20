@@ -1,15 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ClipboardList, Loader2, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/components/auth/auth-provider';
-import type { ComplaintAction, ComplaintActionStatus, ComplaintSlaSummary } from '@/lib/complaints/types';
+import type { ComplaintAction, ComplaintSlaSummary } from '@/lib/complaints/types';
 import { formatDate } from '@/lib/utils';
-
-const ACTION_STATUS_OPTIONS: ComplaintActionStatus[] = ['open', 'in_progress', 'completed', 'cancelled'];
 
 export function ComplaintActionsPanel({
   complaintId,

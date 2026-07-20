@@ -24,6 +24,7 @@ export function KpiCard({ label, value, helper, accent, borderColor, trendDirect
       }`}
       style={borderColor ? { borderTopColor: borderColor, borderTopWidth: '3px' } : undefined}
     >
+      <div aria-hidden="true" className={`absolute inset-x-0 top-0 h-1 ${accent}`} />
       <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
       {loading ? (
         <Skeleton className="mt-3 h-8 w-20" />

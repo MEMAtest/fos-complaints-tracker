@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     return Response.json(payload, {
       headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=900' },
     });
-  } catch (error) {
+  } catch {
     return Response.json(
       { success: false, error: 'Service temporarily unavailable. Please try again.' },
       { status: 500 }

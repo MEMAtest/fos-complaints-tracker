@@ -15,7 +15,6 @@ import {
   ensureDatabaseConfigured,
   ensureFosDecisionsTableExists,
   hasActiveScopeFilters,
-  normalizeLabel,
   normalizeOutcome,
   normalizeTagLabel,
   nullableString,

@@ -1,22 +1,87 @@
 import { NextRequest } from 'next/server';
 import { DatabaseClient } from '@/lib/database';
-import { FOSDashboardFilters, FOSSubsetAnalysis } from '@/lib/fos/types';
+import { FOSDashboardFilters, FOSOutcome, FOSSubsetAnalysis } from '@/lib/fos/types';
 import {
   buildFilteredCte,
   ensureDatabaseConfigured,
   ensureFosDecisionsTableExists,
-  hasActiveScopeFilters,
   normalizeTagLabel,
-  outcomeExpression,
   toInt,
   toNumber,
 } from '@/lib/fos/repo-helpers';
 import { callGroq } from '@/lib/fos/groq-client';
+import { clientKeyFromRequest, RateLimitError, rateLimitOrThrow } from '@/lib/server/rate-limit';
+import { logRouteMetric } from '@/lib/server/route-metrics';
 import { FOSSynthesisApiResponse } from '@/types/fos-dashboard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
+
+const ROUTE = '/api/fos/analysis/synthesise';
+const MAX_REQUEST_BYTES = 64 * 1024;
+const MAX_FILTER_VALUE_LENGTH = 200;
+const ALLOWED_OUTCOMES = new Set<FOSOutcome>([
+  'upheld',
+  'not_upheld',
+  'partially_upheld',
+  'settled',
+  'not_settled',
+  'unknown',
+]);
+const SYNTHESIS_RATE_LIMIT = parsePositiveInt(process.env.FOS_SYNTHESIS_RATE_LIMIT, 6, 1, 100);
+const SYNTHESIS_RATE_WINDOW_MS = parsePositiveInt(
+  process.env.FOS_SYNTHESIS_RATE_WINDOW_MS,
+  10 * 60_000,
+  10_000,
+  24 * 60 * 60_000
+);
+
+function parsePositiveInt(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function boundedStrings(value: unknown, limit: number): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return [];
+  return value
+    .slice(0, limit)
+    .map((item) => item.trim().slice(0, MAX_FILTER_VALUE_LENGTH))
+    .filter(Boolean);
+}
+
+function boundedOutcomes(value: unknown): FOSOutcome[] {
+  return boundedStrings(value, 10).filter((item): item is FOSOutcome => ALLOWED_OUTCOMES.has(item as FOSOutcome));
+}
+
+function logSynthesisMetric(startedAt: number, status: number, detail?: Record<string, unknown>) {
+  logRouteMetric({
+    route: ROUTE,
+    method: 'POST',
+    status,
+    durationMs: Date.now() - startedAt,
+    detail,
+  });
+}
+
+function errorResponse(startedAt: number, status: number, message: string, detail?: Record<string, unknown>, headers?: HeadersInit) {
+  logSynthesisMetric(startedAt, status, detail);
+  return Response.json({ success: false, error: message }, { status, headers });
+}
+
+async function readBoundedJson(request: Request): Promise<{ body?: unknown; error?: 'invalid_json' | 'request_too_large' }> {
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
+    return { error: 'request_too_large' };
+  }
+
+  try {
+    return { body: JSON.parse(rawBody) as unknown };
+  } catch {
+    return { error: 'invalid_json' };
+  }
+}
 
 const SYSTEM_PROMPT = `You are a Principal Compliance Analyst at an FCA-authorised firm, specialising in Financial Ombudsman Service (FOS) complaint intelligence. You produce institutional-grade analysis briefs that compliance officers, risk managers, and financial advisors rely on to shape policy, training, and complaint-handling strategy.
 
@@ -247,38 +312,57 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
 
   try {
-    ensureDatabaseConfigured();
-    await ensureFosDecisionsTableExists();
-
-    const body = await request.json();
-    const raw = body?.filters;
-    if (!raw || typeof raw !== 'object') {
-      return Response.json({ success: false, error: 'Missing filters in request body.' }, { status: 400 });
+    const contentLength = Number(request.headers.get('content-length') || 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+      return errorResponse(startedAt, 413, 'Request body is too large.', { reason: 'request_too_large' });
     }
 
-    // Validate filter structure — each array field must be an array of primitives
-    const isStringArray = (v: unknown): v is string[] =>
-      Array.isArray(v) && v.every((item) => typeof item === 'string');
-    const isNumberArray = (v: unknown): v is number[] =>
-      Array.isArray(v) && v.every((item) => typeof item === 'number');
+    const parsedBody = await readBoundedJson(request);
+    if (parsedBody.error === 'request_too_large') {
+      return errorResponse(startedAt, 413, 'Request body is too large.', { reason: 'request_too_large' });
+    }
+    if (parsedBody.error === 'invalid_json') {
+      return errorResponse(startedAt, 400, 'Invalid JSON request body.', { reason: 'invalid_json' });
+    }
+
+    const raw = (parsedBody.body as { filters?: unknown } | null)?.filters;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return errorResponse(startedAt, 400, 'Missing filters in request body.', { reason: 'invalid_filters' });
+    }
+
+    const rawFilters = raw as Record<string, unknown>;
+    const years = Array.isArray(rawFilters.years)
+      ? rawFilters.years.filter((item): item is number => Number.isInteger(item) && item >= 1900 && item <= 2200).slice(0, 20)
+      : [];
 
     const filters: FOSDashboardFilters = {
-      years: isNumberArray(raw.years) ? raw.years.slice(0, 20) : [],
-      outcomes: isStringArray(raw.outcomes) ? raw.outcomes.slice(0, 10) : [],
-      products: isStringArray(raw.products) ? raw.products.slice(0, 50) : [],
-      firms: isStringArray(raw.firms) ? raw.firms.slice(0, 50) : [],
-      tags: isStringArray(raw.tags) ? raw.tags.slice(0, 20) : [],
-      query: typeof raw.query === 'string' ? raw.query.slice(0, 500) : '',
+      years,
+      outcomes: boundedOutcomes(rawFilters.outcomes),
+      products: boundedStrings(rawFilters.products, 50),
+      firms: boundedStrings(rawFilters.firms, 50),
+      tags: boundedStrings(rawFilters.tags, 20),
+      query: typeof rawFilters.query === 'string' ? rawFilters.query.trim().slice(0, 500) : '',
       page: 1,
       pageSize: 25,
     };
 
+    await rateLimitOrThrow(
+      clientKeyFromRequest(request, 'fos-synthesis'),
+      SYNTHESIS_RATE_LIMIT,
+      SYNTHESIS_RATE_WINDOW_MS
+    );
+
+    ensureDatabaseConfigured();
+    await ensureFosDecisionsTableExists();
+
     const stats = await gatherSynthesisStats(filters);
 
     if (stats.totalCases < 5) {
-      return Response.json(
-        { success: false, error: `Too few decisions (${stats.totalCases}) for meaningful analysis. Apply fewer filters.` },
-        { status: 400 }
+      return errorResponse(
+        startedAt,
+        400,
+        `Too few decisions (${stats.totalCases}) for meaningful analysis. Apply fewer filters.`,
+        { reason: 'insufficient_sample', totalCases: stats.totalCases }
       );
     }
 
@@ -298,6 +382,8 @@ export async function POST(request: NextRequest) {
       upheldRate: stats.upheldRate,
     };
 
+    logSynthesisMetric(startedAt, 200, { totalCases: stats.totalCases, cached: false });
+
     return Response.json(
       {
         success: true,
@@ -311,15 +397,22 @@ export async function POST(request: NextRequest) {
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    // Don't leak internal/Groq API error details to the client
-    const safeMessage =
-      message.includes('GROQ_API_KEY') || message.includes('api.groq.com') || message.includes('429')
-        ? 'AI analysis service is temporarily unavailable. Please try again later.'
-        : message || 'Failed to generate synthesis.';
-    return Response.json(
-      { success: false, error: safeMessage },
-      { status: 500 }
+    if (error instanceof RateLimitError) {
+      return errorResponse(
+        startedAt,
+        error.status,
+        'Too many analysis requests. Please try again later.',
+        { reason: 'rate_limited', retryAfterSeconds: error.retryAfterSeconds },
+        { 'Retry-After': String(error.retryAfterSeconds) }
+      );
+    }
+
+    const internalMessage = error instanceof Error ? error.message : 'Unknown synthesis failure.';
+    return errorResponse(
+      startedAt,
+      500,
+      'AI analysis service is temporarily unavailable. Please try again later.',
+      { reason: 'synthesis_failed', internalMessage }
     );
   }
 }

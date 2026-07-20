@@ -8,7 +8,7 @@ import { getDashboardSnapshot } from '@/lib/fos/dashboard-repository';
 import { getComparisonSnapshot } from '@/lib/fos/repository';
 import { ensureDatabaseConfigured, ensureFosDecisionsTableExists, normalizeTagLabel, outcomeExpression, caseIdExpression } from '@/lib/fos/repo-helpers';
 import type { FOSDashboardFilters, FOSCaseListItem } from '@/lib/fos/types';
-import { formatDate, formatNumber, formatPercent } from '@/lib/utils';
+import { formatNumber, formatPercent } from '@/lib/utils';
 import { ensureInsightsSchema } from './schema';
 import { slugify } from './seo';
 import type {
@@ -1173,11 +1173,10 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
 
 export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string, productSlug: string): Promise<InsightPageData | null> => {
   const path = `/insights/firm/${firmSlug}/product/${productSlug}`;
-  const [firmProducts, firms, products, years, types, yearProducts] = await Promise.all([
+  const [firmProducts, firms, products, types, yearProducts] = await Promise.all([
     getFirmProductArchive(),
     getFirmArchive(),
     getProductArchive(),
-    getYearArchive(),
     getTypeArchive(),
     getYearProductArchive(),
   ]);

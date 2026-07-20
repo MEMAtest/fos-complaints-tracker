@@ -1,4 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { clientKeyFromRequest, RateLimitError, rateLimitOrThrow } from '@/lib/server/rate-limit';
+import { logRouteMetric } from '@/lib/server/route-metrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,27 +20,119 @@ const PAGE_WIDTH = 595.28; // A4 width in points
 const PAGE_HEIGHT = 841.89; // A4 height in points
 const MARGIN = 50;
 const CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN;
+const ROUTE = '/api/fos/export';
+const MAX_REQUEST_BYTES = 64 * 1024;
+const MAX_FILTER_ENTRIES = 20;
+const EXPORT_RATE_LIMIT = parsePositiveInt(process.env.FOS_EXPORT_RATE_LIMIT, 20, 1, 1_000);
+const EXPORT_RATE_WINDOW_MS = parsePositiveInt(
+  process.env.FOS_EXPORT_RATE_WINDOW_MS,
+  60_000,
+  10_000,
+  24 * 60 * 60_000
+);
+
+function parsePositiveInt(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function safePdfText(value: unknown, maxLength: number): string {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[^\x20-\x7e\u00a0-\u00ff]/g, '?')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function logExportMetric(startedAt: number, status: number, detail?: Record<string, unknown>) {
+  logRouteMetric({ route: ROUTE, method: 'POST', status, durationMs: Date.now() - startedAt, detail });
+}
+
+function exportError(startedAt: number, status: number, message: string, detail?: Record<string, unknown>, headers?: HeadersInit) {
+  logExportMetric(startedAt, status, detail);
+  return Response.json({ success: false, error: message }, { status, headers });
+}
+
+async function readBoundedJson(request: Request): Promise<{ body?: unknown; error?: 'invalid_json' | 'request_too_large' }> {
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
+    return { error: 'request_too_large' };
+  }
+
+  try {
+    return { body: JSON.parse(rawBody) as unknown };
+  } catch {
+    return { error: 'invalid_json' };
+  }
+}
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   try {
-    let body: ExportRequestBody;
-    try {
-      body = await request.json();
-    } catch {
-      return Response.json(
-        { success: false, error: 'Invalid JSON request body.' },
-        { status: 400 }
-      );
+    const contentLength = Number(request.headers.get('content-length') || 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+      return exportError(startedAt, 413, 'Request body is too large.', { reason: 'request_too_large' });
     }
 
-    const { title, filters, kpis, generatedAt } = body;
-
-    if (!kpis || typeof kpis.totalCases !== 'number' || typeof kpis.upheldRate !== 'number' || typeof kpis.notUpheldRate !== 'number') {
-      return Response.json(
-        { success: false, error: 'Missing or invalid kpis object. Required: totalCases, upheldRate, notUpheldRate (numbers).' },
-        { status: 400 }
-      );
+    const parsedBody = await readBoundedJson(request);
+    if (parsedBody.error === 'request_too_large') {
+      return exportError(startedAt, 413, 'Request body is too large.', { reason: 'request_too_large' });
     }
+    if (parsedBody.error === 'invalid_json') {
+      return exportError(startedAt, 400, 'Invalid JSON request body.', { reason: 'invalid_json' });
+    }
+
+    const body = parsedBody.body as ExportRequestBody;
+
+    if (!body || typeof body !== 'object') {
+      return exportError(startedAt, 400, 'Invalid request body.', { reason: 'invalid_body' });
+    }
+
+    const { kpis } = body;
+
+    if (
+      !kpis ||
+      !Number.isInteger(kpis.totalCases) ||
+      kpis.totalCases < 0 ||
+      kpis.totalCases > 10_000_000 ||
+      !Number.isFinite(kpis.upheldRate) ||
+      kpis.upheldRate < 0 ||
+      kpis.upheldRate > 1 ||
+      !Number.isFinite(kpis.notUpheldRate) ||
+      kpis.notUpheldRate < 0 ||
+      kpis.notUpheldRate > 1
+    ) {
+      return exportError(startedAt, 400, 'Missing or invalid KPI values.', { reason: 'invalid_kpis' });
+    }
+
+    if (!body.filters || typeof body.filters !== 'object' || Array.isArray(body.filters)) {
+      return exportError(startedAt, 400, 'Missing or invalid filters object.', { reason: 'invalid_filters' });
+    }
+
+    const rawFilterEntries = Object.entries(body.filters);
+    if (rawFilterEntries.length > MAX_FILTER_ENTRIES) {
+      return exportError(startedAt, 400, `A maximum of ${MAX_FILTER_ENTRIES} filters is allowed.`, { reason: 'too_many_filters' });
+    }
+
+    const title = safePdfText(body.title, 160);
+    const generatedDate = body.generatedAt ? new Date(body.generatedAt) : new Date();
+    if (Number.isNaN(generatedDate.getTime())) {
+      return exportError(startedAt, 400, 'Invalid generatedAt date.', { reason: 'invalid_date' });
+    }
+
+    const filters = Object.fromEntries(
+      rawFilterEntries.map(([key, value]) => {
+        const safeKey = safePdfText(key, 50);
+        const safeValue = Array.isArray(value)
+          ? value.slice(0, 50).map((item) => safePdfText(item, 200))
+          : safePdfText(value, 500);
+        return [safeKey, safeValue];
+      })
+    );
+
+    await rateLimitOrThrow(clientKeyFromRequest(request, 'fos-export'), EXPORT_RATE_LIMIT, EXPORT_RATE_WINDOW_MS);
 
     const pdfDoc = await PDFDocument.create();
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -75,12 +169,7 @@ export async function POST(request: Request) {
     }
 
     // Date
-    const dateStr = generatedAt
-      ? new Date(generatedAt).toLocaleString('en-GB', {
-          dateStyle: 'long',
-          timeStyle: 'short',
-        })
-      : new Date().toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' });
+    const dateStr = generatedDate.toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' });
 
     page.drawText(`Generated: ${dateStr}`, {
       x: MARGIN,
@@ -228,21 +317,31 @@ export async function POST(request: Request) {
 
     const pdfBytes = await pdfDoc.save();
 
+    logExportMetric(startedAt, 200, { totalCases: kpis.totalCases, filterCount: filterEntries.length });
+
     return new Response(pdfBytes, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="fos-report-${new Date().toISOString().slice(0, 10)}.pdf"`,
         'Content-Length': String(pdfBytes.length),
+        'Cache-Control': 'no-store',
       },
     });
   } catch (error) {
-    return Response.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate PDF.',
-      },
-      { status: 500 }
-    );
+    if (error instanceof RateLimitError) {
+      return exportError(
+        startedAt,
+        error.status,
+        'Too many export requests. Please try again later.',
+        { reason: 'rate_limited', retryAfterSeconds: error.retryAfterSeconds },
+        { 'Retry-After': String(error.retryAfterSeconds) }
+      );
+    }
+
+    return exportError(startedAt, 500, 'Failed to generate PDF.', {
+      reason: 'export_failed',
+      internalMessage: error instanceof Error ? error.message : 'Unknown export failure.',
+    });
   }
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters, buildQueryParams } from '@/hooks/use-fos-filters';
 import { useLoadingProgress } from '@/hooks/use-loading-progress';

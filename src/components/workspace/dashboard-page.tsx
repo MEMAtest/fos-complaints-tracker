@@ -29,7 +29,6 @@ export default function FOSComplaintsDashboardPage() {
     toggleOutcome,
     toggleProduct,
     toggleFirm,
-    setTagFilter,
     setYears,
     setPage,
     applySearchQuery,

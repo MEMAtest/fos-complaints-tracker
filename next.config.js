@@ -1,7 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // You can add any Next.js configuration options here if needed in the future.
-  // For now, an empty object is all we need.
+  outputFileTracingRoot: __dirname,
+  serverExternalPackages: ['read-excel-file'],
+  eslint: {
+    // Application CI runs the ESLint CLI directly; Next 15's build-time wrapper
+    // is incompatible with this repository's flat ESLint configuration.
+    ignoreDuringBuilds: true,
+  },
 };
 
 module.exports = nextConfig;

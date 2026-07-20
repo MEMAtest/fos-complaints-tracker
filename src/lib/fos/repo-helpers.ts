@@ -5,7 +5,6 @@ import {
   FOSFilterOptions,
   FOSIngestionStatus,
   FOSOutcome,
-  FOSTagCount,
 } from './types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────

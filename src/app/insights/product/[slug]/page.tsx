@@ -4,13 +4,17 @@ import { InsightDetailView } from '@/components/insights/detail-view';
 import { buildInsightMetadata } from '@/lib/insights/seo';
 import { getProductInsightPage } from '@/lib/insights/repository';
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const page = await getProductInsightPage(params.slug);
+type PageProps = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const page = await getProductInsightPage(slug);
   return page ? buildInsightMetadata(page) : {};
 }
 
-export default async function InsightProductDetailPage({ params }: { params: { slug: string } }) {
-  const page = await getProductInsightPage(params.slug);
+export default async function InsightProductDetailPage({ params }: PageProps) {
+  const { slug } = await params;
+  const page = await getProductInsightPage(slug);
   if (!page) notFound();
   return <InsightDetailView page={page} />;
 }

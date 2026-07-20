@@ -7,10 +7,10 @@ export const runtime = 'nodejs';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { caseId: string } }
+  { params }: { params: Promise<{ caseId: string }> }
 ) {
   try {
-    const { caseId } = params;
+    const { caseId } = await params;
     if (!caseId || caseId.length > 200 || !/^[a-zA-Z0-9_\-]+$/.test(caseId)) {
       return Response.json({ success: false, error: 'Invalid or missing caseId.' }, { status: 400 });
     }

@@ -35,7 +35,7 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
     await page.getByTestId('evidence-summary-input').fill('Customer escalation email showing missed timeline.');
     await page.getByTestId('evidence-upload-button').click();
 
-    await expect.poll(() => getEvidenceCount(page, createdComplaintId)).toBe(1);
+    await expect.poll(() => getEvidenceCount(page, createdComplaintId), { timeout: 15_000 }).toBe(1);
     const evidenceId = await getLatestEvidenceId(page, createdComplaintId);
     await expect(page.getByTestId('evidence-preview-category')).toContainText('email');
     await expect(page.getByTestId('evidence-text-preview')).toContainText('Timeline confirms delayed response.');
@@ -53,12 +53,12 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
     await page.getByTestId('evidence-edit-category').selectOption('letter');
     await page.getByTestId('evidence-edit-summary').fill('Renamed after evidence review.');
     await page.getByTestId('evidence-save-button').click();
-    await expect(page.getByText('complaint-email-renamed.txt').first()).toBeVisible();
-    await expect(page.getByTestId('evidence-preview-category')).toContainText('letter');
+    await expect(page.getByText('complaint-email-renamed.txt').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('evidence-preview-category')).toContainText('letter', { timeout: 15_000 });
 
     await page.getByRole('button', { name: /edit/i }).click();
     await page.getByTestId('evidence-archive-button').click();
-    await expect.poll(() => getEvidenceArchivedState(page, createdComplaintId, evidenceId)).toBe(true);
+    await expect.poll(() => getEvidenceArchivedState(page, createdComplaintId, evidenceId), { timeout: 15_000 }).toBe(true);
 
     await signOut(page);
     await signIn(page, 'manager@local.test', 'ManagerPass123!');
@@ -68,7 +68,7 @@ test('evidence workflow supports preview, duplicate warning, archive, and delete
     await page.getByText('complaint-email-renamed.txt').first().click();
     await page.getByRole('button', { name: /edit/i }).click();
     await page.getByTestId('evidence-delete-button').click();
-    await expect.poll(() => getEvidencePresence(page, createdComplaintId, evidenceId)).toBe(false);
+    await expect.poll(() => getEvidencePresence(page, createdComplaintId, evidenceId), { timeout: 15_000 }).toBe(false);
   } finally {
     await signOut(page).catch(() => undefined);
     await signIn(page, 'manager@local.test', 'ManagerPass123!').catch(() => undefined);

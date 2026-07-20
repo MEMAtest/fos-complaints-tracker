@@ -4,14 +4,15 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 type RouteParams = {
-  params: {
+  params: Promise<{
     caseId: string;
-  };
+  }>;
 };
 
 export async function GET(_: Request, context: RouteParams) {
   try {
-    const caseId = decodeURIComponent(context.params.caseId || '').trim();
+    const { caseId: rawCaseId } = await context.params;
+    const caseId = decodeURIComponent(rawCaseId || '').trim();
     if (!caseId) {
       return Response.json({ success: false, error: 'Case ID is required.' }, { status: 400 });
     }

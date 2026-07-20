@@ -1,7 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMemo } from 'react';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters } from '@/hooks/use-fos-filters';
 import { useFosAnalysis } from '@/hooks/use-fos-analysis';
@@ -26,7 +25,7 @@ import { SubsetAnalysisPanel } from '@/components/analysis/subset-analysis-panel
 import { SubsetDecisionsTable } from '@/components/analysis/subset-decisions-table';
 import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
 import { OUTCOME_LABELS } from '@/lib/fos/constants';
-import { formatNumber, formatPercent, formatDateTime } from '@/lib/utils';
+import { formatNumber, formatPercent } from '@/lib/utils';
 
 export default function AnalysisPage() {
   const {

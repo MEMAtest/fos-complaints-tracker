@@ -28,15 +28,6 @@ type CheckEstimatorPageProps = {
   };
 };
 
-const PREFERRED_PRODUCTS = [
-  'Banking and credit',
-  'Banking and Payments',
-  'Payment protection insurance (PPI)',
-  'Mortgage and home finance',
-  'Insurance',
-  'Consumer Credit',
-];
-
 const PREFERRED_ROOT_CAUSES = [
   'Delay in claim handling',
   'Fraud Or Scam Concern',

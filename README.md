@@ -58,6 +58,10 @@ Optional DB runtime env vars:
 - `DB_RETRY_MAX_MS` (default `4000` for scripts, `2000` for app runtime) max retry delay
 - `DEBUG_API_SECRET` (required for `/api/debug-*` endpoints, bearer token)
 - `CRON_SECRET` (recommended in production for `/api/fos/keepalive`)
+- `FOS_SYNTHESIS_RATE_LIMIT` (default `6`) public AI synthesis requests allowed per client window
+- `FOS_SYNTHESIS_RATE_WINDOW_MS` (default `600000`) public AI synthesis fixed-window duration
+- `FOS_EXPORT_RATE_LIMIT` (default `20`) public PDF exports allowed per client window
+- `FOS_EXPORT_RATE_WINDOW_MS` (default `60000`) public PDF export fixed-window duration
 - `NEXT_PUBLIC_APP_BASE_URL` (optional) public app origin for secure workspace and app CTAs; when unset, homepage workspace entry falls back to `/workspace`
 
 ## Local auth users
@@ -78,8 +82,14 @@ Heavier routes now use Postgres-backed fixed-window limits:
 
 - `/api/fos/board-pack` preview
 - `/api/fos/board-pack/generate`
+- `/api/fos/analysis/synthesise`
+- `/api/fos/export`
 - `/api/complaints/import`
 - `/api/complaints/export`
+
+The `app_rate_limit_windows` table is provisioned by `db/migrations/20260320_app_rate_limit_windows.sql`; request handlers never perform schema DDL.
+
+Advisor brief storage is provisioned by `db/migrations/20260720_fos_advisor_briefs.sql`; the generation script populates and refreshes that read model.
 
 When a limit is hit, the API returns `429` with `Retry-After`.
 
@@ -96,6 +106,25 @@ Watch these in local logs or Vercel runtime logs to trace:
 - duration
 - actor
 - request detail such as template key or export scope
+
+Complaint imports accept `.csv` and `.xlsx` files up to 4 MB, 5,000 data rows, and 100 columns. The 4 MB file ceiling leaves room beneath Vercel's 4.5 MB Function request-body limit for multipart framing. Legacy binary `.xls` files are not accepted.
+
+## Verification and isolated browser tests
+
+Pull requests and pushes to `main` run type-checking, ESLint, unit tests, a production build, a high-severity production dependency audit, and focused browser tests in `.github/workflows/ci.yml`.
+
+Playwright refuses to start without an explicit `DATABASE_URL`. The database name must end in `_test`, and the known production database host is always rejected. To prepare a disposable test database and run the same focused suites locally:
+
+```bash
+DATABASE_URL=postgresql://127.0.0.1:5432/fos_complaints_test \
+DB_SSL_MODE=disable npm run db:test:prepare
+
+DATABASE_URL=postgresql://127.0.0.1:5432/fos_complaints_test \
+PLAYWRIGHT_DB_SSL_MODE=disable npm run test:e2e:public
+
+DATABASE_URL=postgresql://127.0.0.1:5432/fos_complaints_test \
+PLAYWRIGHT_DB_SSL_MODE=disable npm run test:e2e:authenticated-smoke
+```
 
 ## Public insights section
 

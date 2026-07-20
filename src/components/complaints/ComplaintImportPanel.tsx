@@ -71,8 +71,8 @@ export function ComplaintImportPanel() {
           <label className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
             <FileUp className="h-8 w-8 text-slate-400" />
             <p className="mt-4 text-sm font-semibold text-slate-900">Drop a complaints CSV/XLSX here or click to choose a file</p>
-            <p className="mt-1 text-xs text-slate-500">Supported formats: .csv, .xlsx, .xls</p>
-            <input type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <p className="mt-1 text-xs text-slate-500">Supported formats: .csv and .xlsx (maximum 4 MB and 5,000 rows)</p>
+            <input type="file" className="hidden" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           </label>
 
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">

@@ -1,5 +1,21 @@
-import * as XLSX from 'xlsx';
+import { readSheet, type CellValue } from 'read-excel-file/node';
+import { parse as parseCsv } from 'csv-parse/sync';
 import type { ComplaintImportPreviewRow, ComplaintMutationInput } from './types';
+
+const MAX_IMPORT_ROWS = 5_000;
+const MAX_IMPORT_COLUMNS = 100;
+const MAX_CELL_LENGTH = 5_000;
+const MAX_XLSX_ARCHIVE_ENTRIES = 2_000;
+const MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+
+export class ComplaintImportValidationError extends Error {
+  status = 400;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ComplaintImportValidationError';
+  }
+}
 
 const HEADER_ALIASES: Record<string, keyof ComplaintMutationInput> = {
   ref: 'complaintReference',
@@ -58,26 +74,124 @@ const HEADER_ALIASES: Record<string, keyof ComplaintMutationInput> = {
 const VALID_STATUSES = new Set(['open', 'investigating', 'resolved', 'closed', 'escalated', 'referred_to_fos']);
 const VALID_PRIORITIES = new Set(['low', 'medium', 'high', 'urgent']);
 
-export function parseComplaintImportFile(fileName: string, buffer: Buffer): {
+export async function parseComplaintImportFile(fileName: string, buffer: Buffer): Promise<{
   fileName: string;
   rows: Array<{ rowNumber: number; normalizedFields: ComplaintMutationInput; issues: string[] }>;
   warnings: string[];
-} {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const firstSheet = workbook.SheetNames[0];
-  if (!firstSheet) {
-    throw new Error('No worksheet found in uploaded file.');
-  }
-
-  const sheet = workbook.Sheets[firstSheet];
-  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+}> {
+  const lowerName = fileName.trim().toLowerCase();
   const warnings: string[] = [];
-  if (workbook.SheetNames.length > 1) {
-    warnings.push(`Only the first worksheet (${firstSheet}) was processed.`);
+  let sheetRows: Array<Array<CellValue | null>>;
+
+  if (lowerName.endsWith('.csv')) {
+    try {
+      sheetRows = parseCsv(buffer, {
+        bom: true,
+        relax_column_count: true,
+        skip_empty_lines: true,
+      }) as string[][];
+    } catch {
+      throw new ComplaintImportValidationError('Unable to read the uploaded CSV file.');
+    }
+  } else if (lowerName.endsWith('.xlsx')) {
+    validateXlsxArchive(buffer);
+    try {
+      sheetRows = await readSheet(buffer, 1, { dateFormat: 'yyyy-mm-dd' });
+    } catch {
+      throw new ComplaintImportValidationError('Unable to read the uploaded XLSX file.');
+    }
+    if (sheetRows.length === 0) {
+      throw new ComplaintImportValidationError('No worksheet found in uploaded file.');
+    }
+  } else {
+    throw new ComplaintImportValidationError('Unsupported file type. Use CSV or .xlsx Excel files.');
   }
 
+  const rawRows = buildRecordRows(sheetRows);
   const rows = rawRows.map((row, index) => normalizeComplaintImportRow(index + 2, row));
   return { fileName, rows, warnings };
+}
+
+function validateXlsxArchive(buffer: Buffer): void {
+  // XLSX is a ZIP container. Inspect its central directory before decompression
+  // so a small compressed upload cannot expand without a bounded ceiling.
+  const minimumEocdSize = 22;
+  const maximumCommentSize = 65_535;
+  const searchStart = Math.max(0, buffer.length - minimumEocdSize - maximumCommentSize);
+  let eocdOffset = -1;
+
+  for (let offset = buffer.length - minimumEocdSize; offset >= searchStart; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+
+  if (eocdOffset < 0) {
+    throw new ComplaintImportValidationError('Unable to read the uploaded XLSX file.');
+  }
+
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  if (
+    entryCount === 0xffff ||
+    centralDirectorySize === 0xffffffff ||
+    centralDirectoryOffset === 0xffffffff ||
+    entryCount > MAX_XLSX_ARCHIVE_ENTRIES ||
+    centralDirectoryOffset + centralDirectorySize > buffer.length
+  ) {
+    throw new ComplaintImportValidationError('The uploaded XLSX archive is too large or unsupported.');
+  }
+
+  let offset = centralDirectoryOffset;
+  let totalUncompressedBytes = 0;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== 0x02014b50) {
+      throw new ComplaintImportValidationError('Unable to read the uploaded XLSX file.');
+    }
+
+    totalUncompressedBytes += buffer.readUInt32LE(offset + 24);
+    if (totalUncompressedBytes > MAX_XLSX_UNCOMPRESSED_BYTES) {
+      throw new ComplaintImportValidationError('The uploaded XLSX archive expands beyond the 50 MB safety limit.');
+    }
+
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+}
+
+function buildRecordRows(sheetRows: Array<Array<CellValue | null>>): Record<string, unknown>[] {
+  if (sheetRows.length === 0) {
+    throw new ComplaintImportValidationError('No worksheet rows found in uploaded file.');
+  }
+  if (sheetRows.length - 1 > MAX_IMPORT_ROWS) {
+    throw new ComplaintImportValidationError(`Import files are limited to ${MAX_IMPORT_ROWS.toLocaleString()} data rows.`);
+  }
+
+  const headerRow = sheetRows[0] || [];
+  if (headerRow.length === 0) {
+    throw new ComplaintImportValidationError('No header row found in uploaded file.');
+  }
+  if (headerRow.length > MAX_IMPORT_COLUMNS) {
+    throw new ComplaintImportValidationError(`Import files are limited to ${MAX_IMPORT_COLUMNS} columns.`);
+  }
+
+  const headers = headerRow.map((value) => sanitizeCellValue(value));
+  return sheetRows.slice(1).map((row) => {
+    if (row.length > MAX_IMPORT_COLUMNS) {
+      throw new ComplaintImportValidationError(`Import files are limited to ${MAX_IMPORT_COLUMNS} columns.`);
+    }
+    return Object.fromEntries(headers.map((header, index) => [header, sanitizeCellValue(row[index])])) as Record<string, unknown>;
+  });
+}
+
+function sanitizeCellValue(value: CellValue | null | undefined): string | number | boolean | Date {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  return String(value ?? '').trim().slice(0, MAX_CELL_LENGTH);
 }
 
 export function buildComplaintImportRows(params: {

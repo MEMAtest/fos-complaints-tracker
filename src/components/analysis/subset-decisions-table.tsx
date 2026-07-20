@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { FOSCaseListItem, FOSDashboardFilters, FOSPagination } from '@/lib/fos/types';
+import { FOSDashboardFilters } from '@/lib/fos/types';
 import { OUTCOME_LABELS } from '@/lib/fos/constants';
 import { formatDate, truncate } from '@/lib/utils';
 import { useSubsetCases } from '@/hooks/use-fos-analysis';

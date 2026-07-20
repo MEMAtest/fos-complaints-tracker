@@ -2,7 +2,7 @@ import { INITIAL_FILTERS } from '@/lib/fos/constants';
 import type { FOSDashboardFilters } from '@/lib/fos/types';
 import { getDashboardSnapshot, getAnalysisSnapshot, getRootCauseSnapshot } from '@/lib/fos/repository';
 import { getComplaintOperationsSummary, getComplaintWorkspaceSettings, listBoardPackDefinitions, listBoardPackRuns, listComplaintAppendixArtifacts } from '@/lib/complaints/repository';
-import type { BoardPackData, BoardPackDefinition, BoardPackPreview, BoardPackRequest, BoardPackSection, BoardPackTemplateKey } from './types';
+import type { BoardPackData, BoardPackPreview, BoardPackRequest, BoardPackSection, BoardPackTemplateKey } from './types';
 
 const BOARD_PACK_TEMPLATES: Array<{ key: BoardPackTemplateKey; label: string; description: string }> = [
   { key: 'board', label: 'Board', description: 'Balanced board pack with outcomes, concentrations, operations, and appendix.' },

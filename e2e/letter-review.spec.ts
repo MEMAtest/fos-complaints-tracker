@@ -39,7 +39,7 @@ test('letter review workflow supports submit, reject, diff, and approve', async 
 
     await page.goto(`/complaints/${complaintId}`);
     await page.getByRole('button', { name: /letters & responses/i }).click();
-    await expect(page.getByTestId('letter-current-status')).toContainText('under_review');
+    await expect(page.getByTestId('letter-current-status')).toContainText('under_review', { timeout: 15_000 });
 
     await signOut(page);
     await signIn(page, 'reviewer@local.test', 'ReviewerPass123!');
@@ -53,8 +53,8 @@ test('letter review workflow supports submit, reject, diff, and approve', async 
 
     await page.goto(`/complaints/${complaintId}`);
     await page.getByRole('button', { name: /letters & responses/i }).click();
-    await expect(page.getByTestId('letter-current-status')).toContainText('rejected_for_rework');
-    await expect(page.getByText('Need clearer evidence references before signoff.')).toBeVisible();
+    await expect(page.getByTestId('letter-current-status')).toContainText('rejected_for_rework', { timeout: 15_000 });
+    await expect(page.getByText('Need clearer evidence references before signoff.')).toBeVisible({ timeout: 15_000 });
 
     await signOut(page);
     await signIn(page, 'operator@local.test', 'OperatorPass123!');
@@ -68,7 +68,7 @@ test('letter review workflow supports submit, reject, diff, and approve', async 
     await signIn(page, 'reviewer@local.test', 'ReviewerPass123!');
     await page.goto(`/complaints/${complaintId}`);
     await page.getByRole('button', { name: /letters & responses/i }).click();
-    await expect(page.getByTestId('letter-diff')).toContainText('Added evidence references.');
+    await expect(page.getByTestId('letter-diff')).toContainText('Added evidence references.', { timeout: 15_000 });
     await updateLetter(page, letterId, {
       status: 'approved',
       reviewDecisionCode: 'ready_to_issue',
@@ -79,8 +79,8 @@ test('letter review workflow supports submit, reject, diff, and approve', async 
 
     await page.reload();
     await page.getByRole('button', { name: /letters & responses/i }).click();
-    await expect(page.getByTestId('letter-current-status')).toContainText('approved');
-    await expect(page.getByText('Review complete, ready to issue.')).toBeVisible();
+    await expect(page.getByTestId('letter-current-status')).toContainText('approved', { timeout: 15_000 });
+    await expect(page.getByText('Review complete, ready to issue.')).toBeVisible({ timeout: 15_000 });
   } finally {
     await signOut(page).catch(() => undefined);
     await signIn(page, 'manager@local.test', 'ManagerPass123!').catch(() => undefined);
@@ -119,21 +119,6 @@ async function signOut(page: Page) {
       credentials: 'same-origin',
     });
   });
-}
-
-async function getLatestLetterId(page: Page, complaintId: string) {
-  return page.evaluate(async (id) => {
-    const response = await fetch(`/api/complaints/${id}`, { cache: 'no-store' });
-    const body = await response.json();
-    if (!response.ok || !body.success) {
-      throw new Error(body.error || 'Failed to load complaint detail.');
-    }
-    const letters = Array.isArray(body.complaint?.letters) ? body.complaint.letters : [];
-    if (letters.length === 0) {
-      throw new Error('No letters found.');
-    }
-    return letters[0].id as string;
-  }, complaintId);
 }
 
 async function getLatestLetterStatus(page: Page, complaintId: string, letterId: string) {

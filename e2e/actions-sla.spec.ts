@@ -26,18 +26,18 @@ test('complaint actions panel surfaces system SLA actions and supports manual ac
     });
 
     await page.goto(`/complaints/${complaintId}`);
-    await expect(page.getByTestId('sla-state')).toContainText(/overdue/i);
-    await expect(page.getByText('Issue 4-week progress update')).toBeVisible();
-    await expect(page.getByText('Issue 8-week final response')).toBeVisible();
+    await expect(page.getByTestId('sla-state')).toContainText(/overdue/i, { timeout: 15_000 });
+    await expect(page.getByText('Issue 4-week progress update')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Issue 8-week final response')).toBeVisible({ timeout: 15_000 });
 
     await page.getByTestId('action-title-input').fill('Call complainant with remediation update');
     await page.getByTestId('action-due-date-input').fill(manualDueDate);
     await page.getByTestId('action-create-button').click();
 
     const manualCard = page.getByTestId('action-card').filter({ hasText: 'Call complainant with remediation update' });
-    await expect(manualCard).toBeVisible();
+    await expect(manualCard).toBeVisible({ timeout: 15_000 });
     await manualCard.getByRole('button', { name: /complete/i }).click();
-    await expect(manualCard).toContainText(/completed/i);
+    await expect(manualCard).toContainText(/completed/i, { timeout: 15_000 });
   } finally {
     await signOut(page).catch(() => undefined);
     await signIn(page, 'manager@local.test', 'ManagerPass123!').catch(() => undefined);

@@ -22,9 +22,15 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `DB_SSL_MODE=require npm run dev -- --hostname ${host} --port ${port}`,
+    command: `npm run test:db:guard && npm run dev -- --hostname ${host} --port ${port}`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 30_000,
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      DB_SSL_MODE: process.env.PLAYWRIGHT_DB_SSL_MODE || process.env.DB_SSL_MODE || 'require',
+      FOS_EXPORT_RATE_WINDOW_MS: process.env.FOS_EXPORT_RATE_WINDOW_MS || '600000',
+    },
   },
 });

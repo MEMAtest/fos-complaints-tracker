@@ -45,9 +45,26 @@ test.describe('Letters API', () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(Array.isArray(body.records)).toBe(true);
-    if (body.records.length > 0) {
-      complaintId = body.records[0].id;
-    }
+
+    const createRes = await request.post('/api/complaints', {
+      headers: { Cookie: cookie },
+      data: {
+        complaintReference: `E2E-LETTERS-${Date.now()}`,
+        complainantName: 'Letters API Tester',
+        firmName: 'MEMA Test Firm',
+        receivedDate: new Date().toISOString().slice(0, 10),
+        complaintType: 'service',
+        complaintCategory: 'service issue',
+        description: 'Isolated complaint for the letters API suite.',
+        product: 'Banking and credit',
+        status: 'open',
+        priority: 'medium',
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const created = await createRes.json();
+    expect(created.success).toBe(true);
+    complaintId = created.complaint.id;
   });
 
   test('GET /api/complaints/[id]/letters returns letters array', async ({ request }) => {

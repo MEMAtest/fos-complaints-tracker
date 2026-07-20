@@ -1,25 +1,8 @@
 import { DatabaseClient } from '@/lib/database';
 
-const RATE_LIMIT_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS app_rate_limit_windows (
-  scope_key TEXT NOT NULL,
-  bucket_start_ms BIGINT NOT NULL,
-  count INTEGER NOT NULL DEFAULT 0,
-  reset_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (scope_key, bucket_start_ms)
-);
-
-CREATE INDEX IF NOT EXISTS idx_app_rate_limit_windows_reset_at
-  ON app_rate_limit_windows (reset_at);
-`;
-
 type RateLimitRow = {
   count: number | string | null;
 };
-
-let schemaPromise: Promise<void> | null = null;
 
 export class RateLimitError extends Error {
   status: number;
@@ -34,8 +17,6 @@ export class RateLimitError extends Error {
 }
 
 export async function rateLimitOrThrow(key: string, limit: number, windowMs: number): Promise<void> {
-  await ensureRateLimitSchema();
-
   const now = Date.now();
   const bucketStartMs = Math.floor(now / windowMs) * windowMs;
   const resetAtMs = bucketStartMs + windowMs;
@@ -65,17 +46,6 @@ export async function rateLimitOrThrow(key: string, limit: number, windowMs: num
 export function clientKeyFromRequest(request: Request, actorKey: string) {
   const forwardedFor = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
   return `${actorKey}:${forwardedFor.split(',')[0].trim() || 'unknown'}`;
-}
-
-async function ensureRateLimitSchema(): Promise<void> {
-  if (!schemaPromise) {
-    schemaPromise = DatabaseClient.query(RATE_LIMIT_SCHEMA_SQL)
-      .then(() => undefined)
-      .finally(() => {
-        schemaPromise = null;
-      });
-  }
-  await schemaPromise;
 }
 
 async function pruneExpiredWindows(now: number): Promise<void> {
