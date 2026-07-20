@@ -95,6 +95,16 @@ const DEFAULT_COMPLAINT_WORKSPACE_SETTINGS: ComplaintWorkspaceSettings = {
   updatedAt: new Date(0).toISOString(),
 };
 
+export class ComplaintLetterWorkflowError extends Error {
+  status: number;
+
+  constructor(message: string, status: 400 | 403 | 409) {
+    super(message);
+    this.name = 'ComplaintLetterWorkflowError';
+    this.status = status;
+  }
+}
+
 export function parseComplaintFilters(searchParams: URLSearchParams): ComplaintFilters {
   const statusRaw = (searchParams.get('status') || 'all').trim();
   const priorityRaw = (searchParams.get('priority') || 'all').trim();
@@ -1265,13 +1275,16 @@ export async function updateComplaintLetter(input: {
     const incomingReviewDecisionNote = sanitizeNullable(input.reviewDecisionNote ?? input.approvalNote);
 
     if (requestedStatus === 'sent' && !['approved', 'sent'].includes(existingStatus)) {
-      throw new Error('Letter must be approved before it can be marked as sent.');
+      throw new ComplaintLetterWorkflowError('Letter must be approved before it can be marked as sent.', 409);
     }
     if (requestedStatus === 'sent' && contentChanged) {
-      throw new Error('Edited letter content must be approved again before it can be marked as sent.');
+      throw new ComplaintLetterWorkflowError('Edited letter content must be approved again before it can be marked as sent.', 409);
     }
     if ((requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework' || requestedStatus === 'sent') && !canMeetApprovalRole(actor.role, requiredApprovalRole)) {
-      throw new Error(`A ${requiredApprovalRole} role is required before this letter can be ${requestedStatus === 'sent' ? 'sent' : 'reviewed'}.`);
+      throw new ComplaintLetterWorkflowError(
+        `A ${requiredApprovalRole} role is required before this letter can be ${requestedStatus === 'sent' ? 'sent' : 'reviewed'}.`,
+        403
+      );
     }
     if (
       (requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework')
@@ -1279,13 +1292,13 @@ export async function updateComplaintLetter(input: {
       && actor.name
       && actor.name === sanitizeNullable(existing.updated_by)
     ) {
-      throw new Error('Independent reviewer is required before approval.');
+      throw new ComplaintLetterWorkflowError('Independent reviewer is required before approval.', 403);
     }
     if ((requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework') && !['under_review', 'approved', 'rejected_for_rework'].includes(existingStatus)) {
-      throw new Error('Letter must be submitted for review before it can be approved or rejected.');
+      throw new ComplaintLetterWorkflowError('Letter must be submitted for review before it can be approved or rejected.', 409);
     }
     if ((requestedStatus === 'approved' || requestedStatus === 'rejected_for_rework') && (!incomingReviewDecisionCode || !incomingReviewDecisionNote)) {
-      throw new Error('Reviewer decision code and reviewer decision note are required.');
+      throw new ComplaintLetterWorkflowError('Reviewer decision code and reviewer decision note are required.', 400);
     }
 
     let nextStatus = requestedStatus ?? existingStatus;

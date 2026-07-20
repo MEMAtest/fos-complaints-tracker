@@ -177,6 +177,20 @@ test.describe('Letters API', () => {
     expect(submitRes.status()).toBe(200);
     expect((await submitRes.json()).letter.status).toBe('under_review');
 
+    const operatorApproval = await request.patch(`/api/complaints/letters/${letterId}`, {
+      headers: { Cookie: cookie },
+      data: {
+        status: 'approved',
+        reviewDecisionCode: 'ready_to_issue',
+        reviewDecisionNote: 'An operator must not be able to approve this letter.',
+      },
+    });
+    expect(operatorApproval.status()).toBe(403);
+    await expect(operatorApproval.json()).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining('reviewer role is required'),
+    });
+
     // Approve as reviewer (needs higher role than operator)
     const reviewerCookie = await loginViaApi(request, 'reviewer@local.test', 'ReviewerPass123!');
     const approveRes = await request.patch(`/api/complaints/letters/${letterId}`, {
@@ -212,7 +226,7 @@ test.describe('Letters API', () => {
       headers: { Cookie: reviewerCookie },
       data: { status: 'approved' },
     });
-    expect(res.status()).toBe(500);
+    expect(res.status()).toBe(400);
     const body = await res.json();
     expect(body.error).toContain('decision');
   });

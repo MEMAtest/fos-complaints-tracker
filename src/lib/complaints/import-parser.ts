@@ -35,6 +35,7 @@ const HEADER_ALIASES: Record<string, keyof ComplaintMutationInput> = {
   datereceived: 'receivedDate',
   received: 'receivedDate',
   firmname: 'firmName',
+  firm_name: 'firmName',
   firm: 'firmName',
   business_name: 'firmName',
   product: 'product',

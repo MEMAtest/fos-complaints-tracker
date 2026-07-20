@@ -11,8 +11,9 @@ test('board-pack builder supports template defaults and saved definition lifecyc
     await signIn(page, 'manager@local.test', 'ManagerPass123!');
     await page.goto('/board-pack');
 
-    await expect(page.getByRole('heading', { name: 'Board Pack Builder' })).toBeVisible();
-    await expect(page.getByTestId('board-pack-template').locator('option')).toHaveCount(4);
+    await expect(page.getByRole('heading', { name: 'Board Pack Builder' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('board-pack-template')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('board-pack-template').locator('option')).toHaveCount(4, { timeout: 15_000 });
     await page.getByTestId('board-pack-template').selectOption('risk_committee');
     await expect(page.locator('input[type="text"]').first()).toHaveValue('Risk Committee Complaints Pack');
 

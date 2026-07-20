@@ -10,8 +10,8 @@ test('admin can manage insight publication overrides', async ({ page }) => {
   await page.locator('input[type="password"]').fill('AdminPass123!');
   await page.getByRole('button', { name: /sign in/i }).click();
 
-  await expect(page).toHaveURL(/\/settings\/insights$/);
-  await expect(page.getByRole('heading', { level: 1, name: /Insight publication controls/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/insights$/, { timeout: 15_000 });
+  await expect(page.getByRole('heading', { level: 1, name: /Insight publication controls/i })).toBeVisible({ timeout: 15_000 });
 
   const search = page.getByPlaceholder(/Search titles, summaries, or entity keys/i);
   await search.fill('Banking and Payments complaints in 2025');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lightbulb, Loader2 } from 'lucide-react';
 
 interface AdvisorInputFormProps {
@@ -8,13 +8,28 @@ interface AdvisorInputFormProps {
   rootCauses: string[];
   loading: boolean;
   optionsLoading: boolean;
+  initialProduct?: string;
+  initialRootCause?: string;
   onSubmit: (product: string, rootCause: string | null, freeText: string | null) => void;
 }
 
-export function AdvisorInputForm({ products, rootCauses, loading, optionsLoading, onSubmit }: AdvisorInputFormProps) {
+export function AdvisorInputForm({
+  products,
+  rootCauses,
+  loading,
+  optionsLoading,
+  initialProduct = '',
+  initialRootCause = '',
+  onSubmit,
+}: AdvisorInputFormProps) {
   const [product, setProduct] = useState('');
   const [rootCause, setRootCause] = useState('');
   const [freeText, setFreeText] = useState('');
+
+  useEffect(() => {
+    setProduct(initialProduct);
+    setRootCause(initialRootCause);
+  }, [initialProduct, initialRootCause]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

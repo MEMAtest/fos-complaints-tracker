@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { SkeletonCard } from '@/components/shared/skeleton-card';
 import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
@@ -23,6 +23,30 @@ export default function AdvisorPage() {
   const { brief, loading, error, options, optionsLoading, fetchBrief } = useFosAdvisor();
   const { selectedCaseId, setSelectedCaseId, selectedCase, caseLoading, caseError } = useCaseDetail();
   const [hasQueried, setHasQueried] = useState(false);
+  const [initialQuery, setInitialQuery] = useState({ product: '', rootCause: '' });
+  const loadedDeepLinkRef = useRef('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setInitialQuery({
+      product: String(params.get('product') || '').trim(),
+      rootCause: String(params.get('rootCause') || '').trim(),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (optionsLoading || !initialQuery.product || !options?.products.includes(initialQuery.product)) return;
+
+    const rootCause = initialQuery.rootCause && options.rootCauses.includes(initialQuery.rootCause)
+      ? initialQuery.rootCause
+      : null;
+    const queryKey = `${initialQuery.product}\u0000${rootCause || ''}`;
+    if (loadedDeepLinkRef.current === queryKey) return;
+
+    loadedDeepLinkRef.current = queryKey;
+    setHasQueried(true);
+    void fetchBrief({ product: initialQuery.product, rootCause, freeText: null });
+  }, [fetchBrief, initialQuery, options, optionsLoading]);
 
   const handleSubmit = (product: string, rootCause: string | null, freeText: string | null) => {
     setHasQueried(true);
@@ -53,6 +77,8 @@ export default function AdvisorPage() {
           rootCauses={options?.rootCauses || []}
           loading={loading}
           optionsLoading={optionsLoading}
+          initialProduct={initialQuery.product}
+          initialRootCause={initialQuery.rootCause}
           onSubmit={handleSubmit}
         />
 
