@@ -16,12 +16,12 @@ export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
         <div className="absolute right-0 top-0 h-28 w-56 rounded-full bg-sky-100 blur-3xl" />
         <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="border-b border-slate-200/80 p-6 md:p-8 lg:border-b-0 lg:border-r">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Live platform pulse</p>
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Evidence and data pulse</p>
             <h2 className="mt-4 max-w-xl text-3xl font-semibold tracking-tight text-slate-950 md:text-[2.25rem]">
-              A homepage that shows the product through live data, not generic claims.
+              Defensible decisions start with visible sources, scope and freshness.
             </h2>
             <p className="mt-4 max-w-xl text-base leading-8 text-slate-600">
-              Live corpus coverage, public insight depth, and current complaint context are visible immediately. The page should feel like a live product front door, not a static marketing shell.
+              Published corpus coverage, public insight depth, and complaint context are visible immediately, alongside the date of the underlying evidence.
             </p>
             {primary ? (
               <div className="mt-6 rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-5 shadow-sm">
@@ -31,7 +31,7 @@ export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
               </div>
             ) : null}
             <div className="mt-5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-              {updatedAt ? `Last updated ${formatDate(updatedAt)}` : 'Live data surface'}
+              {updatedAt ? `Data through ${formatDate(updatedAt)}` : 'Data date unavailable'}
             </div>
           </div>
 
@@ -40,10 +40,10 @@ export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.18em] text-white/55">Platform health dashboard</p>
-                  <p className="mt-2 text-xl font-semibold tracking-tight">Real-time platform pulse.</p>
+                  <p className="mt-2 text-xl font-semibold tracking-tight">Published evidence at a glance.</p>
                 </div>
                 <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-white/70">
-                  Live now
+                  Source-backed
                 </div>
               </div>
 
@@ -59,7 +59,7 @@ export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
 
               <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-[1.35rem] border border-white/10 bg-white/6 p-4">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">Live platform access</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">Connected platform access</p>
                   <p className="mt-2 text-sm font-semibold leading-6">Public insights, comparison views, workspace complaint handling, and board-ready outputs all sit on the same intelligence stack.</p>
                   <div className="mt-4 grid gap-2 text-xs text-white/65 md:grid-cols-2">
                     <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Public insights</div>
@@ -75,7 +75,7 @@ export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-white/75">
                     <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Illustrated public data flow</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Live analysis and workspace handoff</div>
+                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Illustrative analysis and workspace handoff</div>
                   </div>
                 </div>
               </div>

@@ -8,11 +8,14 @@ import { ComplaintWorkspaceSettingsPanel } from '@/components/complaints/Complai
 import type { BoardPackDefinition, BoardPackPreview, BoardPackRequest, BoardPackTemplateKey } from '@/lib/board-pack/types';
 import { formatDateTime, formatNumber } from '@/lib/utils';
 import { trackOwnedEvent } from '@/lib/analytics/public-events';
+import { useAuth } from '@/components/auth/auth-provider';
 
 const DEFAULT_FROM = new Date(new Date().getUTCFullYear(), 0, 1).toISOString().slice(0, 10);
 const DEFAULT_TO = new Date().toISOString().slice(0, 10);
 
 export function BoardPackBuilder() {
+  const { can } = useAuth();
+  const canGenerate = can('manager');
   const [form, setForm] = useState<Omit<BoardPackRequest, 'format'>>({
     title: 'FOS Complaints Board Pack',
     templateKey: 'board',
@@ -47,6 +50,9 @@ export function BoardPackBuilder() {
     params.set('includeComparison', String(form.includeComparison));
     params.set('includeRootCauseDeepDive', String(form.includeRootCauseDeepDive));
     params.set('includeAppendix', String(form.includeAppendix));
+    form.firms.forEach((value) => params.append('firm', value));
+    form.products.forEach((value) => params.append('product', value));
+    form.outcomes.forEach((value) => params.append('outcome', value));
     return params.toString();
   }, [form]);
 
@@ -62,9 +68,7 @@ export function BoardPackBuilder() {
         }
         if (!cancelled) {
           setPreview(payload);
-          if (!definitionName.trim()) {
-            setDefinitionName(`${payload.branding.organizationName} ${form.title}`.trim());
-          }
+          setDefinitionName((current) => current.trim() ? current : `${payload.branding.organizationName} ${form.title}`.trim());
         }
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : 'Failed to build board pack preview.');
@@ -76,7 +80,7 @@ export function BoardPackBuilder() {
     return () => {
       cancelled = true;
     };
-  }, [definitionName, form.title, previewParams]);
+  }, [form.title, previewParams]);
 
   async function download(format: 'pdf' | 'pptx') {
     setDownloading(format);
@@ -175,14 +179,14 @@ export function BoardPackBuilder() {
           <h1 className="text-2xl font-semibold text-slate-900">Board Pack Builder</h1>
           <p className="mt-1 text-sm text-slate-600">Generate executive-ready complaints reporting in PDF or PPTX with reusable templates, saved definitions, and operational appendix detail.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {canGenerate ? <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="gap-2" onClick={() => void download('pdf')} disabled={downloading !== null}>
             {downloading === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} PDF pack
           </Button>
           <Button className="gap-2" onClick={() => void download('pptx')} disabled={downloading !== null}>
             {downloading === 'pptx' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />} PPTX deck
           </Button>
-        </div>
+        </div> : null}
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
@@ -201,7 +205,10 @@ export function BoardPackBuilder() {
             <Field label="Title" value={form.title} onChange={(value) => setForm((current) => ({ ...current, title: value }))} />
             <Field label="Date from" type="date" value={form.dateFrom} onChange={(value) => setForm((current) => ({ ...current, dateFrom: value }))} />
             <Field label="Date to" type="date" value={form.dateTo} onChange={(value) => setForm((current) => ({ ...current, dateTo: value }))} />
-            <label className="space-y-1 md:col-span-2">
+            <ScopeSelect label="Firms" values={form.firms} options={preview?.scopeOptions.firms || []} onChange={(firms) => setForm((current) => ({ ...current, firms }))} />
+            <ScopeSelect label="Products" values={form.products} options={preview?.scopeOptions.products || []} onChange={(products) => setForm((current) => ({ ...current, products }))} />
+            <ScopeSelect label="Outcomes" values={form.outcomes} options={preview?.scopeOptions.outcomes || ['upheld', 'not_upheld', 'partially_upheld', 'settled', 'not_settled', 'unknown']} onChange={(outcomes) => setForm((current) => ({ ...current, outcomes }))} />
+            {canGenerate ? <label className="space-y-1 md:col-span-2">
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Definition name</span>
               <div className="flex gap-2">
                 <input data-testid="board-pack-definition-name" value={definitionName} onChange={(event) => setDefinitionName(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
@@ -210,7 +217,7 @@ export function BoardPackBuilder() {
                   Save
                 </Button>
               </div>
-            </label>
+            </label> : null}
             <label className="space-y-1 md:col-span-2">
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Executive summary note</span>
               <textarea rows={4} value={form.executiveSummaryNote || ''} onChange={(event) => setForm((current) => ({ ...current, executiveSummaryNote: event.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
@@ -287,10 +294,10 @@ export function BoardPackBuilder() {
                       <Button size="sm" variant="outline" className="gap-2" onClick={() => loadDefinition(definition)}>
                         <Bookmark className="h-3.5 w-3.5" /> Load
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => void deleteDefinition(definition.id)} disabled={deletingDefinitionId === definition.id}>
+                      {canGenerate ? <Button size="sm" variant="outline" className="gap-2" onClick={() => void deleteDefinition(definition.id)} disabled={deletingDefinitionId === definition.id}>
                         {deletingDefinitionId === definition.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         Delete
-                      </Button>
+                      </Button> : null}
                     </div>
                   </div>
                 ))
@@ -334,6 +341,27 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
     <label className="space-y-1 md:col-span-2">
       <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</span>
       <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+    </label>
+  );
+}
+
+function ScopeSelect({ label, values, options, onChange }: { label: string; values: string[]; options: string[]; onChange: (values: string[]) => void }) {
+  return (
+    <label className="space-y-1 md:col-span-2">
+      <span className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+        <button type="button" className="normal-case tracking-normal text-blue-600" onClick={() => onChange([])}>Clear</button>
+      </span>
+      <select
+        multiple
+        value={values}
+        onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))}
+        className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+        aria-label={`${label} scope`}
+      >
+        {options.map((option) => <option key={option} value={option}>{option.replace(/_/g, ' ')}</option>)}
+      </select>
+      <span className="block text-xs text-slate-500">{values.length === 0 ? `All ${label.toLowerCase()}` : `${values.length} selected`} · hold Ctrl/Cmd to choose more than one.</span>
     </label>
   );
 }

@@ -4,7 +4,7 @@ test.describe('Marketing homepage', () => {
   test('guided demo panel switches between product states', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('See live complaint intelligence clearly');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Make defensible complaint decisions');
     await expect(page.getByRole('link', { name: /start analysis/i }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Compare' }).click();
@@ -29,7 +29,7 @@ test.describe('Marketing homepage', () => {
     await page.goto('/');
     const header = page.getByRole('banner');
 
-    await expect(header.getByRole('link', { name: 'Live Data' })).toHaveAttribute('href', '/insights');
+    await expect(header.getByRole('link', { name: 'Evidence Explorer' })).toHaveAttribute('href', '/insights');
     await expect(header.getByRole('link', { name: 'How it works' })).toHaveAttribute('href', '/#how-it-works');
     await expect(header.getByRole('link', { name: 'Platform' })).toHaveAttribute('href', '/workspace');
     await expect(header.getByRole('link', { name: 'Who it helps' })).toHaveAttribute('href', '/#roles');

@@ -69,6 +69,7 @@ export interface FOSCaseListItem {
   year: number | null;
   firmName: string | null;
   productGroup: string | null;
+  productGroupOriginal: string | null;
   outcome: FOSOutcome;
   ombudsmanName: string | null;
   decisionSummary: string | null;
@@ -137,6 +138,10 @@ export interface FOSIngestionStatus {
   windowsTotal: number | null;
   failedWindows: number | null;
   recordsIngested: number | null;
+  dataThrough: string | null;
+  lastSuccessfulIngestion: string | null;
+  lastSummaryRefresh: string | null;
+  pipelineStatus: 'healthy' | 'delayed' | 'stale' | 'running' | 'error';
 }
 
 export interface FOSDataQuality {
@@ -327,6 +332,7 @@ export interface FOSAdvisorChecklist {
 export interface FOSAdvisorBrief {
   query: FOSAdvisorQuery;
   generatedAt: string;
+  dataThrough: string | null;
   riskAssessment: FOSAdvisorRiskAssessment;
   keyPrecedents: FOSAdvisorPrecedent[];
   rootCausePatterns: FOSAdvisorRootCausePattern[];

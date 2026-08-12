@@ -5,6 +5,7 @@ import { Loader2, MessageSquarePlus, Send, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ComplaintPriority, ComplaintRecord, ComplaintStatus } from '@/lib/complaints/types';
+import { useAuth } from '@/components/auth/auth-provider';
 
 const STATUS_OPTIONS: ComplaintStatus[] = ['open', 'investigating', 'escalated', 'referred_to_fos', 'resolved', 'closed'];
 const PRIORITY_OPTIONS: ComplaintPriority[] = ['low', 'medium', 'high', 'urgent'];
@@ -22,6 +23,8 @@ export function QuickActions({
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const hasNote = useMemo(() => note.trim().length > 0, [note]);
+  const { can } = useAuth();
+  const canManage = can('operator');
 
   async function updateComplaint(body: Record<string, unknown>) {
     setSaving(true);
@@ -60,6 +63,8 @@ export function QuickActions({
       setSaving(false);
     }
   }
+
+  if (!canManage) return null;
 
   return (
     <Card>

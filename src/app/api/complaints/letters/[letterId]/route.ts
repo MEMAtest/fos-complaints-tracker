@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth/session';
 import { buildComplaintLetterPdf } from '@/lib/complaints/build-letter-pdf';
 import { getComplaintLetterContext, updateComplaintLetter } from '@/lib/complaints/repository';
-import type { ComplaintLetterReviewDecisionCode, ComplaintLetterStatus, ComplaintWorkspaceActorRole } from '@/lib/complaints/types';
+import type { ComplaintLetterAssistanceProvenance, ComplaintLetterEvidenceLink, ComplaintLetterReviewDecisionCode, ComplaintLetterStatus, ComplaintWorkspaceActorRole } from '@/lib/complaints/types';
 
 const VALID_LETTER_STATUSES: ComplaintLetterStatus[] = ['draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded'];
 const VALID_REVIEW_CODES: ComplaintLetterReviewDecisionCode[] = ['ready_to_issue', 'reasoning_strengthened', 'evidence_gap', 'template_non_compliant', 'redress_unclear', 'fos_rights_missing', 'other'];
@@ -90,6 +90,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       reviewerNotes: typeof (body as { reviewerNotes?: string }).reviewerNotes === 'string' ? (body as { reviewerNotes?: string }).reviewerNotes : null,
       performedBy: user.fullName,
       performedByRole: user.role as ComplaintWorkspaceActorRole,
+      assistanceProvenance: sanitizeAssistanceProvenance((body as { assistanceProvenance?: unknown }).assistanceProvenance, user.fullName),
+      evidenceLinks: sanitizeEvidenceLinks((body as { evidenceLinks?: unknown }).evidenceLinks),
     });
 
     if (!letter) {
@@ -100,6 +102,53 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   } catch (error) {
     const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
     return Response.json({ success: false, error: error instanceof Error ? error.message : 'Failed to update complaint letter.' }, { status });
+  }
+}
+
+function sanitizeAssistanceProvenance(value: unknown, authenticatedAuthor: string): ComplaintLetterAssistanceProvenance[] {
+  if (!Array.isArray(value)) return [];
+  const actions = new Set(['approved_template', 'improve_passage', 'evidence_review', 'evidence_example']);
+  const sources = new Set(['approved_template', 'fos_corpus', 'complaint_evidence', 'internal_note']);
+  return value.slice(0, 50).flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (!actions.has(String(row.action)) || !sources.has(String(row.source))) return [];
+    return [{
+      action: String(row.action) as ComplaintLetterAssistanceProvenance['action'],
+      source: String(row.source) as ComplaintLetterAssistanceProvenance['source'],
+      sourceIds: Array.isArray(row.sourceIds) ? row.sourceIds.filter((id): id is string => typeof id === 'string').slice(0, 25).map((id) => id.slice(0, 240)) : [],
+      author: authenticatedAuthor.slice(0, 200),
+      acceptedAt: new Date().toISOString(),
+      aiInvolved: row.aiInvolved === true,
+    }];
+  });
+}
+
+function sanitizeEvidenceLinks(value: unknown): ComplaintLetterEvidenceLink[] {
+  if (!Array.isArray(value)) return [];
+  const types = new Set(['complaint_evidence', 'fos_decision', 'regulatory_reference', 'internal_note']);
+  return value.slice(0, 100).flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (!types.has(String(row.evidenceType))) return [];
+    return [{
+      paragraphId: typeof row.paragraphId === 'string' ? row.paragraphId.slice(0, 120) : 'body',
+      paragraphLabel: typeof row.paragraphLabel === 'string' ? row.paragraphLabel.slice(0, 200) : 'Letter body',
+      evidenceType: String(row.evidenceType) as ComplaintLetterEvidenceLink['evidenceType'],
+      evidenceId: typeof row.evidenceId === 'string' ? row.evidenceId.slice(0, 240) : '',
+      title: typeof row.title === 'string' ? row.title.slice(0, 300) : 'Linked evidence',
+      url: safeEvidenceUrl(row.url),
+    }];
+  }).filter((link) => link.evidenceId);
+}
+
+function safeEvidenceUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString().slice(0, 1000) : null;
+  } catch {
+    return null;
   }
 }
 

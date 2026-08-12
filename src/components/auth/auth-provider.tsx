@@ -41,7 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       pathname === '/login' ||
       pathname.startsWith('/insights') ||
       pathname.startsWith('/check') ||
-      pathname.startsWith('/advisor')
+      pathname.startsWith('/advisor') ||
+      pathname.startsWith('/comparison')
     ) {
       setLoading(false);
       return;

@@ -96,9 +96,11 @@ export default function FOSComplaintsDashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-            <span className={`h-2 w-2 rounded-full ${loading ? 'animate-pulse bg-blue-500' : 'bg-emerald-500'}`} />
+            <span className={`h-2 w-2 rounded-full ${loading ? 'animate-pulse bg-blue-500' : error ? 'bg-rose-500' : 'bg-emerald-500'}`} />
             {loading
               ? loadingStatusText
+              : error
+                ? 'Temporarily unavailable'
               : responseMeta?.snapshotAt
                 ? `Updated ${formatDateTime(responseMeta.snapshotAt)}`
                 : 'Ready'}

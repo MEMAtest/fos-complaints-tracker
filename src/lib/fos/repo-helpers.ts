@@ -6,6 +6,7 @@ import {
   FOSIngestionStatus,
   FOSOutcome,
 } from './types';
+import { canonicalProductOptions } from './taxonomy';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -41,6 +42,10 @@ export const DEFAULT_INGESTION_STATUS: FOSIngestionStatus = {
   windowsTotal: null,
   failedWindows: null,
   recordsIngested: null,
+  dataThrough: null,
+  lastSuccessfulIngestion: null,
+  lastSummaryRefresh: null,
+  pipelineStatus: 'stale',
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -274,6 +279,7 @@ export function buildFilteredCte(filters: FOSDashboardFilters): CteBuildResult {
       'd.decision_date',
       'd.business_name',
       'd.product_sector',
+      'd.product_sector_original',
       'd.outcome',
       'd.ombudsman_name',
       'd.decision_summary',
@@ -449,7 +455,7 @@ export async function queryFilterOptions(): Promise<FOSFilterOptions> {
   const value = {
     years: yearRows.map((row) => toInt(row.year)).filter((year) => year > 0),
     outcomes: SUPPORTED_OUTCOMES,
-    products: productRows.map((row) => normalizeLabel(row.product, 'Unspecified')).filter(Boolean),
+    products: canonicalProductOptions(productRows.map((row) => normalizeLabel(row.product, 'Unspecified')).filter(Boolean)),
     firms: firmRows.map((row) => normalizeLabel(row.firm, 'Unknown firm')).filter(Boolean),
     tags: [],
   };
@@ -522,17 +528,20 @@ export async function queryIngestionStatus(): Promise<FOSIngestionStatus> {
   const row = rows[0];
   const status = normalizeRunStatus(nullableString(row.status));
   const lastRunAt = toIsoTimestamp(row.updated_at || row.finished_at || row.started_at);
+  const freshness = await queryPipelineFreshness();
 
   return {
     status,
     source: 'fos_ingestion_runs',
     lastRunAt,
-    lastSuccessAt: toIsoTimestamp(row.last_success_at || row.finished_at),
+    lastSuccessAt: freshness.lastSuccessfulIngestion,
     activeYear: row.active_year == null ? null : toInt(row.active_year),
     windowsDone: row.windows_done == null ? null : toInt(row.windows_done),
     windowsTotal: row.windows_total == null ? null : toInt(row.windows_total),
     failedWindows: row.failed_windows == null ? null : toInt(row.failed_windows),
     recordsIngested: row.records_ingested == null ? null : toInt(row.records_ingested),
+    ...freshness,
+    pipelineStatus: status === 'running' ? 'running' : status === 'error' ? 'error' : freshness.pipelineStatus,
   };
 }
 
@@ -546,13 +555,58 @@ export async function deriveIngestionStatus(): Promise<FOSIngestionStatus> {
     `
   );
 
+  const dataThrough = toIsoDate(summary?.latest_decision_date);
   return {
     ...DEFAULT_INGESTION_STATUS,
     source: 'derived',
-    lastRunAt: toIsoDate(summary?.latest_decision_date),
-    lastSuccessAt: toIsoDate(summary?.latest_decision_date),
+    lastRunAt: dataThrough,
+    lastSuccessAt: dataThrough,
     recordsIngested: toInt(summary?.total_cases),
+    dataThrough,
+    lastSuccessfulIngestion: dataThrough,
+    lastSummaryRefresh: null,
+    pipelineStatus: freshnessStatus(dataThrough),
   };
+}
+
+async function queryPipelineFreshness(): Promise<Pick<FOSIngestionStatus, 'dataThrough' | 'lastSuccessfulIngestion' | 'lastSummaryRefresh' | 'pipelineStatus'>> {
+  const [source, successfulRun, summaryRefresh] = await Promise.all([
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `SELECT MAX(decision_date) AS data_through FROM fos_decisions`
+    ),
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `
+        SELECT COALESCE(last_success_at, finished_at, updated_at, started_at) AS successful_at
+        FROM fos_ingestion_runs
+        WHERE last_success_at IS NOT NULL
+          OR LOWER(status) IN ('success', 'succeeded', 'complete', 'completed')
+        ORDER BY COALESCE(last_success_at, finished_at, updated_at, started_at) DESC NULLS LAST
+        LIMIT 1
+      `
+    ),
+    DatabaseClient.queryOne<Record<string, unknown>>(
+      `SELECT MAX(refreshed_at) AS refreshed_at FROM fos_summary_snapshots`
+    ).catch((error) => {
+      if (isMissingRelationError(error, 'fos_summary_snapshots')) return null;
+      throw error;
+    }),
+  ]);
+
+  const lastSuccessfulIngestion = toIsoTimestamp(successfulRun?.successful_at);
+  return {
+    dataThrough: toIsoDate(source?.data_through),
+    lastSuccessfulIngestion,
+    lastSummaryRefresh: toIsoTimestamp(summaryRefresh?.refreshed_at),
+    pipelineStatus: freshnessStatus(lastSuccessfulIngestion),
+  };
+}
+
+function freshnessStatus(lastSuccessfulIngestion: string | null): FOSIngestionStatus['pipelineStatus'] {
+  if (!lastSuccessfulIngestion) return 'stale';
+  const ageMs = Date.now() - new Date(lastSuccessfulIngestion).getTime();
+  if (!Number.isFinite(ageMs) || ageMs > 72 * 60 * 60_000) return 'stale';
+  if (ageMs > 36 * 60 * 60_000) return 'delayed';
+  return 'healthy';
 }
 
 // ─── Type conversion ─────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@ export function AudienceSplit({ links, audienceCards }: AudienceSplitProps) {
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">See how different roles benefit.</h2>
         </div>
         <PublicTrackedLink href="/insights" eventName="public_cta_clicked" eventProps={{ source: 'homepage_roles', cta: 'browse_live_pages' }} className="inline-flex items-center gap-2 text-sm font-semibold text-sky-800 transition hover:text-sky-950">
-          Browse live pages
+          Browse evidence pages
           <ArrowRight className="h-4 w-4" />
         </PublicTrackedLink>
       </div>
@@ -48,7 +48,7 @@ export function AudienceSplit({ links, audienceCards }: AudienceSplitProps) {
               <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-950">{link.title}</h3>
               <p className="mt-3 text-sm leading-6 text-slate-600">{link.description}</p>
               <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 transition group-hover:text-sky-900">
-                Open live page
+                Open evidence page
                 <ArrowRight className="h-4 w-4" />
               </div>
             </PublicTrackedLink>

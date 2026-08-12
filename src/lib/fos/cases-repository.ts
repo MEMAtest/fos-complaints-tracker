@@ -25,6 +25,7 @@ import {
   toNumber,
   trimText,
 } from './repo-helpers';
+import { canonicalProductSector } from './taxonomy';
 
 // ─── Section marker constants ────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | nul
         EXTRACT(YEAR FROM d.decision_date)::INT AS year,
         NULLIF(BTRIM(d.business_name), '') AS firm_name,
         NULLIF(BTRIM(d.product_sector), '') AS product_group,
+        NULLIF(BTRIM(COALESCE(d.product_sector_original, d.product_sector)), '') AS product_group_original,
         ${outcomeExpression('d')} AS outcome,
         NULLIF(BTRIM(d.ombudsman_name), '') AS ombudsman_name,
         d.decision_summary,
@@ -162,7 +164,8 @@ export async function getCaseDetail(caseId: string): Promise<FOSCaseDetail | nul
     decisionDate: toIsoDate(row.decision_date),
     year: row.year == null ? null : toInt(row.year),
     firmName: nullableString(row.firm_name),
-    productGroup: nullableString(row.product_group),
+    productGroup: canonicalProductSector(row.product_group),
+    productGroupOriginal: nullableString(row.product_group_original || row.product_group),
     outcome: normalizeOutcome(String(row.outcome || 'unknown')),
     ombudsmanName: nullableString(row.ombudsman_name),
     decisionSummary: nullableString(row.decision_summary),
@@ -247,6 +250,7 @@ export async function queryCases(filters: FOSDashboardFilters, totalOverride?: n
           EXTRACT(YEAR FROM d.decision_date)::INT AS year,
           NULLIF(BTRIM(d.business_name), '') AS firm_name,
           NULLIF(BTRIM(d.product_sector), '') AS product_group,
+          NULLIF(BTRIM(COALESCE(d.product_sector_original, d.product_sector)), '') AS product_group_original,
           ${outcomeExpression('d')} AS outcome,
           NULLIF(BTRIM(d.ombudsman_name), '') AS ombudsman_name,
           d.decision_summary,
@@ -291,6 +295,7 @@ export async function queryCases(filters: FOSDashboardFilters, totalOverride?: n
           EXTRACT(YEAR FROM f.decision_date)::INT AS year,
           NULLIF(BTRIM(f.business_name), '') AS firm_name,
           NULLIF(BTRIM(f.product_sector), '') AS product_group,
+          NULLIF(BTRIM(f.product_sector_original), '') AS product_group_original,
           f.outcome_bucket AS outcome,
           NULLIF(BTRIM(f.ombudsman_name), '') AS ombudsman_name,
           f.decision_summary,
@@ -380,6 +385,7 @@ export async function getSimilarCases(caseId: string, limit = 10): Promise<FOSSi
         d.decision_date,
         NULLIF(BTRIM(d.business_name), '') AS firm_name,
         NULLIF(BTRIM(d.product_sector), '') AS product_group,
+        NULLIF(BTRIM(COALESCE(d.product_sector_original, d.product_sector)), '') AS product_group_original,
         ${outcomeExpression('d')} AS outcome,
         d.decision_summary,
         (
@@ -422,7 +428,8 @@ export async function getSimilarCases(caseId: string, limit = 10): Promise<FOSSi
     decisionReference: String(row.decision_reference || ''),
     decisionDate: toIsoDate(row.decision_date),
     firmName: nullableString(row.firm_name),
-    productGroup: nullableString(row.product_group),
+    productGroup: canonicalProductSector(row.product_group),
+    productGroupOriginal: nullableString(row.product_group_original || row.product_group),
     outcome: normalizeOutcome(String(row.outcome || 'unknown')),
     decisionSummary: nullableString(row.decision_summary),
     similarityScore: toInt(row.similarity_score),
@@ -504,7 +511,8 @@ function mapCaseListItem(row: Record<string, unknown>): FOSCaseListItem {
     decisionDate: toIsoDate(row.decision_date),
     year: row.year == null ? null : toInt(row.year),
     firmName: nullableString(row.firm_name),
-    productGroup: nullableString(row.product_group),
+    productGroup: canonicalProductSector(row.product_group),
+    productGroupOriginal: nullableString(row.product_group_original || row.product_group),
     outcome: normalizeOutcome(String(row.outcome || 'unknown')),
     ombudsmanName: nullableString(row.ombudsman_name),
     decisionSummary: nullableString(row.decision_summary),

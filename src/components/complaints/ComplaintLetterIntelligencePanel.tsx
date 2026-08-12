@@ -10,6 +10,8 @@ import { CaseDetailSheet } from '@/components/dashboard/case-detail-sheet';
 import { useCaseDetail } from '@/hooks/use-fos-dashboard';
 import {
   ComplaintLetterIntelligenceResponse,
+  ComplaintLetterIntelligence,
+  ComplaintLetterAssistanceProvenance,
   ComplaintLetterTemplateKey,
   ComplaintRecord,
 } from '@/lib/complaints/types';
@@ -17,6 +19,7 @@ import {
   buildAcknowledgementScaffoldBlock,
   buildChallengeAreasBlock,
   buildComparableCaseChallengeBlock,
+  buildComparableCaseNoteBlock,
   buildComparableCaseReviewerNoteBlock,
   buildComparableCaseSummaryBlock,
   buildFinalResponseReasoningBlock,
@@ -81,14 +84,18 @@ export function ComplaintLetterIntelligencePanel({
   complaint,
   activeTemplateKey,
   hasActiveLetter,
-  onInsertDraft,
-  onInsertReviewerNote,
+  canEdit,
+  onPropose,
+  onImprovePassage,
+  onIntelligenceLoaded,
 }: {
   complaint: ComplaintRecord;
   activeTemplateKey: ComplaintLetterTemplateKey | null;
   hasActiveLetter: boolean;
-  onInsertDraft: (text: string) => void;
-  onInsertReviewerNote: (text: string) => void;
+  canEdit: boolean;
+  onPropose: (target: InsertTarget, text: string, provenance: Pick<ComplaintLetterAssistanceProvenance, 'action' | 'source' | 'sourceIds' | 'aiInvolved'>) => void;
+  onImprovePassage: () => void;
+  onIntelligenceLoaded?: (intelligence: ComplaintLetterIntelligence | null) => void;
 }) {
   const [payload, setPayload] = useState<ComplaintLetterIntelligenceResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,6 +145,10 @@ export function ComplaintLetterIntelligencePanel({
   }, [intelligence, selectedReviewCaseId]);
 
   useEffect(() => {
+    onIntelligenceLoaded?.(intelligence);
+  }, [intelligence, onIntelligenceLoaded]);
+
+  useEffect(() => {
     if (!intelligence) {
       setSelectedReviewCaseId(null);
       return;
@@ -148,11 +159,47 @@ export function ComplaintLetterIntelligencePanel({
   }, [intelligence, selectedReviewCaseId]);
 
   function insertText(target: InsertTarget, text: string) {
-    if (target === 'draft') {
-      onInsertDraft(text);
+    onPropose(target, text, {
+      action: target === 'draft' ? 'approved_template' : 'evidence_review',
+      source: 'fos_corpus',
+      sourceIds: intelligence?.sampleCases.map((item) => item.caseId).slice(0, 5) || [],
+      aiInvolved: Boolean(intelligence?.aiGuidance),
+    });
+  }
+
+  function proposePrimaryAction(action: ComplaintLetterAssistanceProvenance['action']) {
+    if (!intelligence) return;
+    if (action === 'improve_passage') {
+      onImprovePassage();
       return;
     }
-    onInsertReviewerNote(text);
+    if (action === 'approved_template') {
+      const text = activeTemplateKey === 'acknowledgement'
+        ? buildAcknowledgementScaffoldBlock(intelligence)
+        : activeTemplateKey === 'holding_response'
+          ? buildHoldingResponseScaffoldBlock(intelligence)
+          : activeTemplateKey === 'fos_referral'
+            ? buildReferralResponseScaffoldBlock(intelligence)
+            : buildFinalResponseReasoningBlock(intelligence);
+      onPropose('draft', text, { action, source: 'approved_template', sourceIds: [activeTemplateKey || 'custom'], aiInvolved: false });
+      return;
+    }
+    if (action === 'evidence_review') {
+      onPropose('reviewer', buildReviewPointsBlock(intelligence), {
+        action,
+        source: 'complaint_evidence',
+        sourceIds: intelligence.sampleCases.map((item) => item.caseId).slice(0, 5),
+        aiInvolved: false,
+      });
+      return;
+    }
+    const sample = intelligence.sampleCases[0];
+    onPropose('reviewer', sample ? buildComparableCaseNoteBlock(sample) : buildComparableCaseSummaryBlock(intelligence), {
+      action,
+      source: 'fos_corpus',
+      sourceIds: sample ? [sample.caseId] : [],
+      aiInvolved: false,
+    });
   }
 
   function insertBlock(kind: string, target: InsertTarget) {
@@ -254,7 +301,7 @@ export function ComplaintLetterIntelligencePanel({
                 <MetricCard label="Trend" value={intelligence.riskSnapshot.trendDirection} />
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              {canEdit ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Draft assist</p>
@@ -263,6 +310,28 @@ export function ComplaintLetterIntelligencePanel({
                   {!hasActiveLetter ? <Badge variant="outline">Select a letter to insert guidance</Badge> : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {([
+                    ['approved_template', 'Start from approved template'],
+                    ['improve_passage', 'Improve selected passage'],
+                    ['evidence_review', 'Review against evidence'],
+                    ['evidence_example', 'View evidence-backed example'],
+                  ] as const).map(([action, label]) => (
+                    <Button
+                      key={action}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!hasActiveLetter}
+                      onClick={() => proposePrimaryAction(action)}
+                      data-testid={`letter-assist-${action}`}
+                    >
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-slate-500">Suggestions open as a diff and require Accept or Reject. Nothing is inserted automatically.</p>
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
                   {actions.map((action) => (
                     <Button
                       key={action.key}
@@ -277,7 +346,7 @@ export function ComplaintLetterIntelligencePanel({
                     </Button>
                   ))}
                 </div>
-              </div>
+              </div> : null}
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <InsightList
@@ -406,7 +475,7 @@ export function ComplaintLetterIntelligencePanel({
                           size="sm"
                           variant="outline"
                           disabled={!hasActiveLetter}
-                          onClick={() => onInsertReviewerNote(buildComparableCaseReviewerNoteBlock(activeReview))}
+                          onClick={() => onPropose('reviewer', buildComparableCaseReviewerNoteBlock(activeReview), { action: 'evidence_review', source: 'fos_corpus', sourceIds: [activeReview.caseId], aiInvolved: false })}
                         >
                           <Scale className="mr-1.5 h-3.5 w-3.5" />
                           Add reviewer note
@@ -416,7 +485,7 @@ export function ComplaintLetterIntelligencePanel({
                           size="sm"
                           variant="outline"
                           disabled={!hasActiveLetter}
-                          onClick={() => onInsertReviewerNote(buildComparableCaseChallengeBlock(activeReview))}
+                          onClick={() => onPropose('reviewer', buildComparableCaseChallengeBlock(activeReview), { action: 'evidence_review', source: 'fos_corpus', sourceIds: [activeReview.caseId], aiInvolved: false })}
                         >
                           <Scale className="mr-1.5 h-3.5 w-3.5" />
                           Add challenge summary

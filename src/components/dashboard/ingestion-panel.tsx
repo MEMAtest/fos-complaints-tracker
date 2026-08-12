@@ -38,8 +38,11 @@ export function IngestionPanel({ ingestion, dataQuality, loading }: IngestionPan
             <dl className="mt-4 space-y-2 text-sm">
               <QualityRow
                 label="Last successful run"
-                value={ingestion.lastSuccessAt ? formatDateTime(ingestion.lastSuccessAt) : 'n/a'}
+                value={ingestion.lastSuccessfulIngestion ? formatDateTime(ingestion.lastSuccessfulIngestion) : 'n/a'}
               />
+              <QualityRow label="Pipeline status" value={ingestion.pipelineStatus} />
+              <QualityRow label="Data through" value={ingestion.dataThrough || 'n/a'} />
+              <QualityRow label="Summary refreshed" value={ingestion.lastSummaryRefresh ? formatDateTime(ingestion.lastSummaryRefresh) : 'n/a'} />
               <QualityRow
                 label="Windows progress"
                 value={

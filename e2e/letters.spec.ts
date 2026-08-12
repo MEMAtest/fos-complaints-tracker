@@ -25,6 +25,44 @@ async function loginAsOperator(page: Page) {
   await page.waitForLoadState('networkidle');
 }
 
+async function openAssistanceTestLetter(page: Page, request: APIRequestContext) {
+  const cookie = await loginViaApi(request);
+  const createComplaint = await request.post('/api/complaints', {
+    headers: { Cookie: cookie },
+    data: {
+      complaintReference: `E2E-ASSIST-${Date.now()}`,
+      complainantName: 'Assistance UI Tester',
+      firmName: 'MEMA Test Firm',
+      receivedDate: new Date().toISOString().slice(0, 10),
+      complaintType: 'service',
+      complaintCategory: 'service issue',
+      description: 'Evidence-linked drafting UI test.',
+      product: 'Banking and credit',
+      status: 'open',
+      priority: 'medium',
+    },
+  });
+  expect(createComplaint.status()).toBe(201);
+  const complaintId = (await createComplaint.json()).complaint.id as string;
+  const createLetter = await request.post(`/api/complaints/${complaintId}/letters`, {
+    headers: { Cookie: cookie },
+    data: {
+      templateKey: 'custom',
+      subject: 'Assistance test letter',
+      bodyText: 'We looked at the complaint evidence.',
+      recipientName: 'Assistance UI Tester',
+    },
+  });
+  expect(createLetter.status()).toBe(201);
+
+  await page.goto('/login');
+  const value = cookie.slice('fci_session='.length);
+  await page.context().addCookies([{ name: 'fci_session', value, url: new URL(page.url()).origin }]);
+  await page.goto(`/complaints/${complaintId}`);
+  await page.getByRole('button', { name: 'Letters & Responses' }).click();
+  await expect(page.locator('[data-testid="letter-body"]')).toBeVisible({ timeout: 15_000 });
+}
+
 // ─── API tests ──────────────────────────────────────────────────────────────
 
 test.describe('Letters API', () => {
@@ -166,6 +204,52 @@ test.describe('Letters API', () => {
     expect(body.error).toContain('review decision code');
   });
 
+  test('PATCH records accepted assistance and paragraph-to-evidence links in the version', async ({ request }) => {
+    test.skip(!letterId, 'No letter available');
+    const acceptedAt = '2000-01-01T00:00:00.000Z';
+    const res = await request.patch(`/api/complaints/letters/${letterId}`, {
+      headers: { Cookie: cookie },
+      data: {
+        bodyText: 'Evidence-linked drafting version.',
+        assistanceProvenance: [{
+          action: 'evidence_review',
+          source: 'complaint_evidence',
+          sourceIds: ['evidence-e2e'],
+          author: 'Letters API Tester',
+          acceptedAt,
+          aiInvolved: false,
+        }],
+        evidenceLinks: [{
+          paragraphId: 'body',
+          paragraphLabel: 'Letter body',
+          evidenceType: 'complaint_evidence',
+          evidenceId: 'evidence-e2e',
+          title: 'Evidence E2E',
+          url: 'javascript:alert(1)',
+        }],
+      },
+    });
+    expect(res.status()).toBe(200);
+
+    const versions = await request.get(`/api/complaints/letters/${letterId}/versions`, {
+      headers: { Cookie: cookie },
+    });
+    expect(versions.status()).toBe(200);
+    const latest = (await versions.json()).versions[0];
+    expect(latest.assistanceProvenance).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: 'evidence_review',
+        source: 'complaint_evidence',
+        author: 'Workspace Operator',
+        aiInvolved: false,
+      }),
+    ]));
+    expect(latest.assistanceProvenance[0].acceptedAt).not.toBe(acceptedAt);
+    expect(latest.evidenceLinks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ paragraphId: 'body', evidenceId: 'evidence-e2e', url: null }),
+    ]));
+  });
+
   test('PATCH submit-for-review then approve workflow', async ({ request }) => {
     test.skip(!letterId, 'No letter available');
 
@@ -301,6 +385,7 @@ test.describe('Letters UI', () => {
     test.skip(!hasComplaints, 'No complaints in workspace');
     await openLink.click();
     await expect(page).toHaveURL(/\/complaints\/[a-f0-9-]+/, { timeout: 10_000 });
+    await page.getByRole('button', { name: 'Letters & Responses' }).click();
 
     const templateBtn = page.locator('[data-testid="letter-template-acknowledgement"]');
     const visible = await templateBtn.isVisible({ timeout: 15_000 }).catch(() => false);
@@ -316,6 +401,7 @@ test.describe('Letters UI', () => {
     test.skip(!hasComplaints, 'No complaints in workspace');
     await openLink.click();
     await expect(page).toHaveURL(/\/complaints\/[a-f0-9-]+/, { timeout: 10_000 });
+    await page.getByRole('button', { name: 'Letters & Responses' }).click();
 
     const templateBtn = page.locator('[data-testid="letter-template-acknowledgement"]');
     const visible = await templateBtn.isVisible({ timeout: 15_000 }).catch(() => false);
@@ -332,6 +418,7 @@ test.describe('Letters UI', () => {
     test.skip(!hasComplaints, 'No complaints in workspace');
     await openLink.click();
     await expect(page).toHaveURL(/\/complaints\/[a-f0-9-]+/, { timeout: 10_000 });
+    await page.getByRole('button', { name: 'Letters & Responses' }).click();
 
     const bodyEditor = page.locator('[data-testid="letter-body"]');
     const hasEditor = await bodyEditor.isVisible({ timeout: 10_000 }).catch(() => false);
@@ -349,5 +436,42 @@ test.describe('Letters UI', () => {
     await saveBtn.click();
     // After saving, button should disable again (no pending changes)
     await expect(saveBtn).toBeDisabled({ timeout: 10_000 });
+  });
+
+  test('drafting assistance requires explicit reject or accept and records an offline draft before save', async ({ page, request }) => {
+    await openAssistanceTestLetter(page, request);
+    const bodyEditor = page.locator('[data-testid="letter-body"]');
+
+    const assist = page.locator('[data-testid="letter-assist-approved_template"]');
+    await expect(assist).toBeVisible({ timeout: 20_000 });
+    const original = await bodyEditor.inputValue();
+    await assist.click();
+    await expect(page.locator('[data-testid="letter-assistance-diff"]')).toBeVisible();
+    await page.locator('[data-testid="letter-assistance-reject"]').click();
+    await expect(bodyEditor).toHaveValue(original);
+
+    await assist.click();
+    await page.locator('[data-testid="letter-assistance-accept"]').click();
+    await expect(page.locator('[data-testid="letter-save-state"]')).toHaveText('Offline draft—not submitted');
+    await page.locator('[data-testid="letter-save-draft"]').click();
+    await expect(page.locator('[data-testid="letter-save-state"]')).toHaveText('Saved to workspace', { timeout: 10_000 });
+  });
+
+  test('server save failure prevents submission and retains the offline draft state', async ({ page, request }) => {
+    await openAssistanceTestLetter(page, request);
+    const bodyEditor = page.locator('[data-testid="letter-body"]');
+    await bodyEditor.fill(`${await bodyEditor.inputValue()}\nUnsaved failure-path edit.`);
+
+    await page.route('**/api/complaints/letters/*', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Simulated persistence failure.' }) });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.locator('[data-testid="letter-submit-review"]').click();
+    await expect(page.locator('[data-testid="letter-save-state"]')).toHaveText('Offline draft—not submitted');
+    await expect(page.locator('[data-testid="letter-current-status"]')).not.toContainText('under_review');
   });
 });

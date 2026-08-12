@@ -11,14 +11,14 @@ import { PhaseGrid } from '@/components/marketing/phase-grid';
 import { PublicStatusBanner } from '@/components/public/public-status-banner';
 
 export const metadata: Metadata = {
-  title: 'FOS Complaints Intelligence | Live Complaint Data, Workspace, and Board Reporting',
+  title: 'FOS Complaints Intelligence | Evidence, Workflow, and Board Reporting',
   description:
-    'Explore live Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
+    'Explore source-backed Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
   alternates: { canonical: absoluteUrl('/') },
   openGraph: {
-    title: 'FOS Complaints Intelligence | Live Complaint Data, Workspace, and Board Reporting',
+    title: 'FOS Complaints Intelligence | Evidence, Workflow, and Board Reporting',
     description:
-      'Explore live Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
+      'Explore source-backed Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
     url: absoluteUrl('/'),
     type: 'website',
   },
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'FOS Complaints Intelligence',
     description:
-      'Live complaint data, comparison, complaint handling workflow, and board-ready reporting in one platform.',
+      'Source-backed complaint data, comparison, complaint handling workflow, and board-ready reporting in one platform.',
   },
 };
 
@@ -53,7 +53,7 @@ export default async function MarketingHomepage() {
           availability: 'https://schema.org/InStock',
         },
         featureList: [
-          'Live public complaints intelligence',
+          'Source-backed public complaints intelligence',
           'Firm and product comparison',
           'Complaints workspace',
           'Board-ready reporting',

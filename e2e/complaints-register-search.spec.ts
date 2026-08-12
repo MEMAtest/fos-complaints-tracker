@@ -42,7 +42,7 @@ test('complaints register searches correspondence and exports filtered CSV', asy
     await page.getByTestId('complaints-query').fill(searchToken);
     await page.getByTestId('complaints-letter-status').selectOption('approved');
     await page.getByTestId('complaints-has-evidence').selectOption('yes');
-    await page.getByPlaceholder('Filter by reviewer').fill('Workspace Reviewer');
+    await page.getByTestId('complaints-reviewer').selectOption({ label: 'Workspace Reviewer' });
 
     const row = page.getByRole('row').filter({ hasText: complaintReference });
     await expect(row).toBeVisible();

@@ -2,6 +2,7 @@ import { unstable_cache } from 'next/cache';
 import { getInsightsLandingData } from '@/lib/insights/repository';
 import { getWorkspaceEntryHref } from './config';
 import type { HomepageSnapshot } from './types';
+import { getIngestionStatus } from '@/lib/fos/repository';
 
 const REVALIDATE_SECONDS = 60 * 60;
 
@@ -10,7 +11,10 @@ function helper(metric: string | undefined, fallback: string): string {
 }
 
 export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnapshot> => {
-  const landing = await getInsightsLandingData();
+  const [landing, ingestion] = await Promise.all([
+    getInsightsLandingData(),
+    getIngestionStatus().catch(() => null),
+  ]);
   const workspaceHref = getWorkspaceEntryHref();
   const latestYear = landing.collections.find((collection) => collection.href === '/insights/years')?.items[0];
   const topFirm = landing.collections.find((collection) => collection.href === '/insights/firms')?.items[0];
@@ -18,10 +22,15 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
   const topTheme = landing.collections.find((collection) => collection.href === '/insights/types')?.items[0];
 
   return {
-    status: landing.status,
+    status: ingestion && ['stale', 'error'].includes(ingestion.pipelineStatus)
+      ? {
+          mode: 'degraded',
+          message: `Published evidence is available through ${ingestion.dataThrough || 'an unavailable date'}, but the ingestion pipeline is ${ingestion.pipelineStatus}. Treat current-period conclusions cautiously while refresh is restored.`,
+        }
+      : landing.status,
     hero: {
-      eyebrow: 'Live FOS complaints intelligence',
-      title: 'See live complaint intelligence clearly, then move straight into the workflow.',
+      eyebrow: 'Evidence-led FOS complaints intelligence',
+      title: 'Make defensible complaint decisions, then carry the evidence into action.',
       dek:
         'Explore the public complaint signal first. Then move into the workspace to investigate complaints, manage evidence and letters, and produce reporting that leadership can actually use.',
       primaryCta: {
@@ -33,7 +42,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         href: workspaceHref,
       },
       trustPoints: [
-        'Live firm, product, year, and theme analysis',
+        'Source-backed firm, product, year, and theme analysis',
         'Workspace for evidence, letters, approvals, and actions',
         'Board-ready outputs built from the same intelligence layer',
       ],
@@ -41,8 +50,8 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
     liveProof: [
       {
         label: 'Published decisions',
-        value: helper(landing.metrics[0]?.value, 'Live'),
-        helper: helper(landing.metrics[0]?.helper, 'Live published ombudsman decision coverage.'),
+        value: helper(landing.metrics[0]?.value, 'Published'),
+        helper: helper(landing.metrics[0]?.helper, 'Published ombudsman decision coverage with a visible data date.'),
       },
       {
         label: 'Public insight pages',
@@ -51,8 +60,8 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       },
       {
         label: 'Current upheld rate',
-        value: helper(landing.metrics[2]?.value, 'Live'),
-        helper: helper(landing.metrics[2]?.helper, 'A live read on the current published decision mix.'),
+        value: helper(landing.metrics[2]?.value, 'Published'),
+        helper: helper(landing.metrics[2]?.helper, 'A computed read on the published decision mix.'),
       },
       {
         label: 'Latest year in focus',
@@ -69,20 +78,20 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Start with public year, firm, product, and theme pages so users can understand the complaint landscape before they ever enter the secure workspace.',
         href: '/insights',
         actionLabel: 'Start analysis',
-        eyebrow: 'Live public access',
+        eyebrow: 'Published public access',
         metrics: [
-          { label: 'Published decisions', value: helper(landing.metrics[0]?.value, 'Live'), helper: 'Corpus coverage' },
+          { label: 'Published decisions', value: helper(landing.metrics[0]?.value, 'Published'), helper: 'Corpus coverage' },
           { label: 'Latest year', value: latestYear?.title || helper(landing.metrics[3]?.value, 'Current'), helper: 'Annual analysis' },
           { label: 'Theme focus', value: topTheme?.title || 'Complaint themes', helper: 'Root-cause and complaint-theme view' },
         ],
         bullets: [
-          'Search live annual, firm, product, and complaint-theme analysis.',
+          'Search published annual, firm, product, and complaint-theme analysis.',
           'Use public pages as the front door into the product.',
           'Move from search visibility into real complaint context immediately.',
         ],
         previewRows: [
           { label: 'Search query', value: 'Lloyds · Banking and credit', tone: 'accent' },
-          { label: 'Live archive', value: 'Years · Firms · Products · Themes' },
+          { label: 'Published archive', value: 'Years · Firms · Products · Themes' },
           { label: 'Featured page', value: latestYear?.title ? `${latestYear.title} annual analysis` : 'Latest annual analysis', tone: 'positive' },
         ],
       },
@@ -101,7 +110,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           { label: 'Compare by', value: 'Volume + upheld', helper: 'Relative context across the corpus' },
         ],
         bullets: [
-          'Compare live firm footprints against the wider published corpus.',
+          'Compare firm footprints against the wider published corpus.',
           'Spot product concentration and upheld-rate context quickly.',
           'Use comparison as the bridge between browsing and investigation.',
         ],
@@ -148,7 +157,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         metrics: [
           { label: 'Outputs', value: 'PDF + PPTX', helper: 'Export-ready board reporting' },
           { label: 'Appendix inputs', value: 'Letters + evidence', helper: 'Operational detail included' },
-          { label: 'Reporting lens', value: 'Board-ready', helper: 'Built from live complaint context' },
+          { label: 'Reporting lens', value: 'Board-ready', helper: 'Built from source-backed complaint context' },
         ],
         bullets: [
           'Generate reporting directly from the intelligence and complaint workflow.',
@@ -156,7 +165,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Avoid rebuilding slides and commentary in separate tools each cycle.',
         ],
         previewRows: [
-          { label: 'Executive summary', value: 'Live portfolio and complaint context', tone: 'accent' },
+          { label: 'Executive summary', value: 'Portfolio and complaint context', tone: 'accent' },
           { label: 'Appendix', value: 'Evidence · letters · overdue items' },
           { label: 'Exports', value: 'Board-ready PDF and PPTX', tone: 'positive' },
         ],
@@ -168,15 +177,15 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         stage: 'Phase 1',
         title: 'Explore the Public Signal',
         body:
-          'Search the public complaint layer by year, firm, product, and complaint theme. The homepage should make it obvious that the platform is live from the first click, not hidden behind a brochure.',
+          'Search the public complaint layer by year, firm, product, and complaint theme, with visible source and data dates from the first click.',
         bullets: [
           'SEO-friendly analysis pages',
-          'Live firm, product, year, and theme coverage',
+          'Published firm, product, year, and theme coverage',
           'Direct path into real complaint context',
         ],
         href: '/insights',
         ctaLabel: 'Start analysis',
-        accentMetric: helper(landing.metrics[1]?.value, 'Live pages'),
+        accentMetric: helper(landing.metrics[1]?.value, 'Published pages'),
       },
       {
         key: 'transition',
@@ -213,11 +222,11 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         stage: 'Phase 4',
         title: 'Finish with outputs leadership can actually use.',
         body:
-          'Board packs, appendix material, and leadership reporting are generated from the same complaint and intelligence layer, so the reporting story stays grounded in the live operating record.',
+          'Board packs, appendix material, and leadership reporting are generated from the same complaint and intelligence layer, so the reporting story stays grounded in the operating record.',
         bullets: [
           'Board-ready PDF and PPTX output',
           'Appendix material from evidence and letters',
-          'Leadership reporting built on live complaint context',
+          'Leadership reporting built on complaint evidence',
         ],
         href: workspaceHref,
         ctaLabel: 'See reporting flow',
@@ -230,7 +239,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         eyebrow: 'For Public-Facing Data Teams',
         title: 'Use the public intelligence layer to understand the complaint signal fast.',
         body:
-          'Analysts, researchers, and decision-makers can start publicly with live year, firm, product, and complaint-theme pages before they ever need access to the secure workspace.',
+          'Analysts, researchers, and decision-makers can start publicly with published year, firm, product, and complaint-theme pages before they ever need access to the secure workspace.',
         bullets: [
           'Search-friendly public insight pages',
           'Comparison and context before deeper review',
@@ -260,8 +269,8 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       title: item.title,
       href: item.href,
       description: item.description,
-      tag: index === 0 ? 'Live annual page' : index === 1 ? 'Firm page' : 'Featured live page',
+      tag: index === 0 ? 'Annual evidence page' : index === 1 ? 'Firm page' : 'Featured evidence page',
     })),
-    updatedAt: landing.lastUpdated,
+    updatedAt: ingestion?.dataThrough || landing.lastUpdated,
   };
 }, ['marketing-homepage-snapshot'], { revalidate: REVALIDATE_SECONDS });

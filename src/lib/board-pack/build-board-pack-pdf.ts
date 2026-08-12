@@ -68,6 +68,7 @@ function drawCoverPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bol
     font: regular,
     color: theme.slate,
   });
+  page.drawText(`FOS data through: ${data.dataThrough || 'Unavailable'}`, { x: MARGIN + 300, y: PAGE_HEIGHT - 408, size: 10, font: regular, color: theme.slate });
   const included = data.sections.filter((section) => section.status === 'included').map((section) => section.title);
   drawWrappedText(page, included.join(' • '), MARGIN + 18, PAGE_HEIGHT - 434, PAGE_WIDTH - MARGIN * 2 - 36, 10, regular, theme.muted, 13);
 
@@ -77,6 +78,7 @@ function drawCoverPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bol
   drawMetricCard(page, MARGIN + cardWidth + 8, metricY, cardWidth, 82, 'Upheld rate', `${data.summary.upheldRate.toFixed(1)}%`, theme.blue, regular, bold);
   drawMetricCard(page, MARGIN + (cardWidth + 8) * 2, metricY, cardWidth, 82, 'Open complaints', formatNumber(data.summary.openComplaints), theme.teal, regular, bold);
   drawMetricCard(page, MARGIN + (cardWidth + 8) * 3, metricY, cardWidth, 82, 'Overdue complaints', formatNumber(data.summary.overdueComplaints), theme.red, regular, bold);
+  drawWrappedText(page, `Source: ${data.sourceUrl}. ${data.regulatoryDisclaimer}`, MARGIN, 94, PAGE_WIDTH - MARGIN * 2, 7, regular, theme.muted, 9);
 }
 
 function drawSummaryPage(page: PDFPage, data: BoardPackData, regular: PDFFont, bold: PDFFont) {

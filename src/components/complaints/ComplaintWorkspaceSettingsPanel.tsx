@@ -5,6 +5,7 @@ import { Loader2, Save } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { COMPLAINT_WORKSPACE_ACTOR_ROLES, type ComplaintWorkspaceSettings } from '@/lib/complaints/types';
+import { useAuth } from '@/components/auth/auth-provider';
 
 const DEFAULT_SETTINGS: ComplaintWorkspaceSettings = {
   organizationName: 'MEMA Consultants',
@@ -35,6 +36,8 @@ export function ComplaintWorkspaceSettingsPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const { can } = useAuth();
+  const canManage = can('admin');
 
   useEffect(() => {
     let cancelled = false;
@@ -99,16 +102,17 @@ export function ComplaintWorkspaceSettingsPanel({
         ) : (
           <>
             <div className={`grid gap-4 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-2'}`}>
-              <Field label="Organisation name" value={settings.organizationName} onChange={(value) => setSettings((current) => ({ ...current, organizationName: value }))} />
-              <Field label="Complaints team name" value={settings.complaintsTeamName} onChange={(value) => setSettings((current) => ({ ...current, complaintsTeamName: value }))} />
-              <Field label="Complaints email" value={settings.complaintsEmail || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsEmail: value }))} />
-              <Field label="Complaints phone" value={settings.complaintsPhone || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsPhone: value }))} />
+              <Field disabled={!canManage} label="Organisation name" value={settings.organizationName} onChange={(value) => setSettings((current) => ({ ...current, organizationName: value }))} />
+              <Field disabled={!canManage} label="Complaints team name" value={settings.complaintsTeamName} onChange={(value) => setSettings((current) => ({ ...current, complaintsTeamName: value }))} />
+              <Field disabled={!canManage} label="Complaints email" value={settings.complaintsEmail || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsEmail: value }))} />
+              <Field disabled={!canManage} label="Complaints phone" value={settings.complaintsPhone || ''} onChange={(value) => setSettings((current) => ({ ...current, complaintsPhone: value }))} />
             </div>
             <div className={`grid gap-4 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-2'}`}>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Required approval role</span>
                 <select
                   value={settings.letterApprovalRole}
+                  disabled={!canManage}
                   onChange={(event) => setSettings((current) => ({ ...current, letterApprovalRole: event.target.value as ComplaintWorkspaceSettings['letterApprovalRole'] }))}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 >
@@ -121,18 +125,20 @@ export function ComplaintWorkspaceSettingsPanel({
                 <input
                   type="checkbox"
                   checked={settings.requireIndependentReviewer}
+                  disabled={!canManage}
                   onChange={(event) => setSettings((current) => ({ ...current, requireIndependentReviewer: event.target.checked }))}
                   className="h-4 w-4 rounded border-slate-300"
                 />
                 Independent reviewer required before approval
               </label>
             </div>
-            <Field label="Board pack subtitle" value={settings.boardPackSubtitle || ''} onChange={(value) => setSettings((current) => ({ ...current, boardPackSubtitle: value }))} />
+            <Field disabled={!canManage} label="Board pack subtitle" value={settings.boardPackSubtitle || ''} onChange={(value) => setSettings((current) => ({ ...current, boardPackSubtitle: value }))} />
             <label className="block text-sm">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Complaints address</span>
               <textarea
                 rows={compact ? 2 : 3}
                 value={settings.complaintsAddress || ''}
+                disabled={!canManage}
                 onChange={(event) => setSettings((current) => ({ ...current, complaintsAddress: event.target.value }))}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
               />
@@ -141,6 +147,7 @@ export function ComplaintWorkspaceSettingsPanel({
               <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Late-referral policy</span>
               <select
                 value={settings.lateReferralPosition}
+                disabled={!canManage}
                 onChange={(event) => setSettings((current) => ({ ...current, lateReferralPosition: event.target.value as ComplaintWorkspaceSettings['lateReferralPosition'] }))}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
               >
@@ -158,6 +165,7 @@ export function ComplaintWorkspaceSettingsPanel({
                 <textarea
                   rows={compact ? 3 : 4}
                   value={settings.lateReferralCustomText || ''}
+                  disabled={!canManage}
                   onChange={(event) => setSettings((current) => ({ ...current, lateReferralCustomText: event.target.value }))}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   placeholder={settings.lateReferralPosition === 'custom' ? 'Enter the exact wording to include in complaint letters.' : 'Optional internal note to replace the default review-required paragraph.'}
@@ -166,10 +174,10 @@ export function ComplaintWorkspaceSettingsPanel({
             ) : null}
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
               <span>These settings control complaint correspondence policy, reviewer thresholds, and board-pack branding across the workspace.</span>
-              <Button size="sm" className="gap-2" onClick={() => void save()} disabled={saving}>
+              {canManage ? <Button size="sm" className="gap-2" onClick={() => void save()} disabled={saving}>
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 Save settings
-              </Button>
+              </Button> : <span>Read-only · admin role required to change policy.</span>}
             </div>
           </>
         )}
@@ -179,11 +187,11 @@ export function ComplaintWorkspaceSettingsPanel({
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function Field({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return (
     <label className="block text-sm">
       <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+      <input disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-500" />
     </label>
   );
 }

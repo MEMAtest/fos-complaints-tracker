@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3 } from 'lucide-react';
+import { ArrowRight, BarChart3, Menu } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
 import { getWorkspaceEntryHref } from '@/lib/marketing/config';
 
@@ -19,14 +19,34 @@ export function MarketingHeader() {
         </PublicTrackedLink>
 
         <nav className="hidden items-center gap-6 lg:flex">
-          <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'live_data' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Live Data</PublicTrackedLink>
+          <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'evidence_explorer' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Evidence Explorer</PublicTrackedLink>
           <PublicTrackedLink href="/check" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'outcome_estimator' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Outcome Estimator</PublicTrackedLink>
+          <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'comparison' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Compare Firms</PublicTrackedLink>
+          <PublicTrackedLink href="/advisor" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'advisor' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Advisor</PublicTrackedLink>
           <PublicTrackedLink href="/#how-it-works" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'how_it_works' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">How it works</PublicTrackedLink>
           <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'platform' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Platform</PublicTrackedLink>
           <PublicTrackedLink href="/#roles" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'who_it_helps' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Who it helps</PublicTrackedLink>
         </nav>
 
         <div className="flex items-center gap-2">
+          <details className="relative lg:hidden">
+            <summary role="button" className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-slate-300 bg-white text-slate-800" aria-label="Open navigation">
+              <Menu className="h-5 w-5" />
+            </summary>
+            <nav className="absolute right-0 mt-3 grid w-64 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+              {[
+                ['/insights', 'Evidence Explorer'],
+                ['/check', 'Outcome Estimator'],
+                ['/comparison', 'Compare Firms'],
+                ['/advisor', 'Advisor'],
+                [workspaceHref, 'Workspace'],
+              ].map(([href, label]) => (
+                <PublicTrackedLink key={href} href={href} eventName="public_nav_clicked" eventProps={{ source: 'mobile_marketing_header', cta: label }} className="rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                  {label}
+                </PublicTrackedLink>
+              ))}
+            </nav>
+          </details>
           <PublicTrackedLink
             href="/insights"
             eventName="public_cta_clicked"

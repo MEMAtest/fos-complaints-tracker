@@ -12,10 +12,13 @@ import {
   ComplaintEvidence,
   ComplaintEvidenceCategory,
   ComplaintFilters,
+  ComplaintFacets,
   ComplaintImportPreviewRow,
   ComplaintImportRun,
   ComplaintLateReferralPosition,
   ComplaintLetter,
+  ComplaintLetterAssistanceProvenance,
+  ComplaintLetterEvidenceLink,
   ComplaintLetterReviewDecisionCode,
   ComplaintLetterVersion,
   ComplaintLetterStatus,
@@ -321,6 +324,26 @@ export async function listComplaints(filters: ComplaintFilters): Promise<Complai
     pageSize: filters.pageSize,
     totalPages,
     stats: mapComplaintStats(statsRow),
+  };
+}
+
+export async function getComplaintFacets(): Promise<ComplaintFacets> {
+  await ensureComplaintsWorkspaceSchema();
+  const row = await DatabaseClient.queryOne<Record<string, unknown>>(
+    `
+      SELECT
+        ARRAY(SELECT DISTINCT BTRIM(firm_name) FROM complaints_records WHERE NULLIF(BTRIM(firm_name), '') IS NOT NULL ORDER BY BTRIM(firm_name)) AS firms,
+        ARRAY(SELECT DISTINCT BTRIM(product) FROM complaints_records WHERE NULLIF(BTRIM(product), '') IS NOT NULL ORDER BY BTRIM(product)) AS products,
+        ARRAY(SELECT DISTINCT BTRIM(assigned_to) FROM complaints_records WHERE NULLIF(BTRIM(assigned_to), '') IS NOT NULL ORDER BY BTRIM(assigned_to)) AS assigned_to,
+        ARRAY(SELECT DISTINCT BTRIM(reviewed_by) FROM complaint_letters WHERE NULLIF(BTRIM(reviewed_by), '') IS NOT NULL ORDER BY BTRIM(reviewed_by)) AS reviewers
+    `
+  );
+  const strings = (value: unknown) => Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+  return {
+    firms: strings(row?.firms),
+    products: strings(row?.products),
+    assignedTo: strings(row?.assigned_to),
+    reviewers: strings(row?.reviewers),
   };
 }
 
@@ -1238,6 +1261,8 @@ export async function updateComplaintLetter(input: {
   reviewerNotes?: string | null;
   performedBy?: string | null;
   performedByRole?: ComplaintWorkspaceActorRole | null;
+  assistanceProvenance?: ComplaintLetterAssistanceProvenance[];
+  evidenceLinks?: ComplaintLetterEvidenceLink[];
 }): Promise<ComplaintLetter | null> {
   await ensureComplaintsWorkspaceSchema();
   const settings = await getComplaintWorkspaceSettings();
@@ -1266,6 +1291,7 @@ export async function updateComplaintLetter(input: {
       || nextRecipientEmail !== sanitizeNullable(existing.recipient_email)
       || nextBody !== String(existing.body_text || '');
     const reviewerNotesChanged = nextReviewerNotes !== sanitizeNullable(existing.reviewer_notes);
+    const provenanceChanged = Boolean(input.assistanceProvenance?.length || input.evidenceLinks?.length);
 
     const existingStatus = normalizeLetterStatus(existing.status);
     const requestedStatus = input.status == null ? null : normalizeLetterStatus(input.status);
@@ -1306,7 +1332,7 @@ export async function updateComplaintLetter(input: {
       nextStatus = 'draft';
     }
 
-    const nextVersionNumber = contentChanged || reviewerNotesChanged || requestedStatus !== null
+    const nextVersionNumber = contentChanged || reviewerNotesChanged || provenanceChanged || requestedStatus !== null
       ? Math.max(1, toInt(existing.version_number) + 1)
       : Math.max(1, toInt(existing.version_number) || 1);
     const reviewedAt =
@@ -1394,7 +1420,7 @@ export async function updateComplaintLetter(input: {
     );
 
     const updated = updatedResult.rows[0];
-    if (contentChanged || reviewerNotesChanged || requestedStatus !== null) {
+    if (contentChanged || reviewerNotesChanged || provenanceChanged || requestedStatus !== null) {
       await insertComplaintLetterVersionTx(client, {
         letter: updated,
         complaintId: String(existing.complaint_id || ''),
@@ -1409,6 +1435,8 @@ export async function updateComplaintLetter(input: {
         }),
         snapshotBy: actor.name,
         snapshotByRole: actor.role,
+        assistanceProvenance: input.assistanceProvenance,
+        evidenceLinks: input.evidenceLinks,
       });
     }
 
@@ -2230,6 +2258,8 @@ async function insertComplaintLetterVersionTx(
     snapshotReason?: string | null;
     snapshotBy?: string | null;
     snapshotByRole?: ComplaintWorkspaceActorRole | null;
+    assistanceProvenance?: ComplaintLetterAssistanceProvenance[];
+    evidenceLinks?: ComplaintLetterEvidenceLink[];
   }
 ) {
   await client.query(
@@ -2254,8 +2284,10 @@ async function insertComplaintLetterVersionTx(
         snapshot_reason,
         snapshot_by,
         snapshot_by_role,
+        assistance_provenance,
+        evidence_links,
         created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::jsonb, $21::jsonb, NOW())
       ON CONFLICT (letter_id, version_number) DO NOTHING
     `,
     [
@@ -2278,6 +2310,8 @@ async function insertComplaintLetterVersionTx(
       sanitizeNullable(input.snapshotReason),
       sanitizeNullable(input.snapshotBy),
       input.snapshotByRole ? normalizeActorRole(input.snapshotByRole) : null,
+      JSON.stringify(input.assistanceProvenance || []),
+      JSON.stringify(input.evidenceLinks || []),
     ]
   );
 }
@@ -3040,6 +3074,8 @@ function mapComplaintLetterVersion(row: Record<string, unknown>): ComplaintLette
     snapshotReason: sanitizeNullable(row.snapshot_reason),
     snapshotBy: sanitizeNullable(row.snapshot_by),
     snapshotByRole: sanitizeNullable(row.snapshot_by_role) ? normalizeActorRole(row.snapshot_by_role) : null,
+    assistanceProvenance: parseJsonObjectArray(row.assistance_provenance) as unknown as ComplaintLetterAssistanceProvenance[],
+    evidenceLinks: parseJsonObjectArray(row.evidence_links) as unknown as ComplaintLetterEvidenceLink[],
     createdAt: toIsoDateTime(row.created_at),
   };
 }
@@ -3364,6 +3400,17 @@ function diffDays(dateText: string, fromDate: Date): number | null {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonObjectArray(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.filter(isPlainObject);
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter(isPlainObject) : [];
+  } catch {
+    return [];
+  }
 }
 
 function parseJsonStringArray(value: unknown): string[] {

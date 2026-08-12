@@ -244,7 +244,7 @@ export function ComplaintEvidencePanel({
 
   return (
     <div className="space-y-5">
-      <Card>
+      {canManageEvidence ? <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><Upload className="h-4 w-4" />Add complaint evidence</CardTitle>
         </CardHeader>
@@ -301,7 +301,7 @@ export function ComplaintEvidencePanel({
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card> : null}
 
       <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>

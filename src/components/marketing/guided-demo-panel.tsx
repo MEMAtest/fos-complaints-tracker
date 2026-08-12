@@ -153,7 +153,7 @@ export function GuidedDemoPanel({ steps }: GuidedDemoPanelProps) {
                 <div className="mt-5 overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white/90 p-4 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Live panel</p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Illustrative workflow</p>
                       <p className="mt-1 text-sm font-semibold text-slate-950">{activeStep.previewRows[0]?.value || activeStep.actionLabel}</p>
                     </div>
                     <div className={cn('rounded-full bg-gradient-to-r px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white', accentClasses[activeStep.key])}>
@@ -203,7 +203,7 @@ export function GuidedDemoPanel({ steps }: GuidedDemoPanelProps) {
         </div>
 
         <div className="absolute -left-3 top-10 hidden w-56 rotate-[-4deg] rounded-[1.7rem] border border-slate-200 bg-white/95 p-4 shadow-[0_22px_70px_rgba(15,23,42,0.14)] md:block xl:-left-14">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Live insight</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Illustrative insight</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{activeStep.previewRows[0]?.value}</p>
           <div className="mt-4 h-1.5 rounded-full bg-slate-100">
             <div className={cn('h-full rounded-full bg-gradient-to-r', accentClasses[activeStep.key])} style={{ width: `${58 + activeStep.metrics.length * 10}%` }} />

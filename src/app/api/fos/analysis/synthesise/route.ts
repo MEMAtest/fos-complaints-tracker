@@ -6,6 +6,7 @@ import {
   ensureDatabaseConfigured,
   ensureFosDecisionsTableExists,
   normalizeTagLabel,
+  outcomeExpression,
   toInt,
   toNumber,
 } from '@/lib/fos/repo-helpers';
@@ -144,7 +145,7 @@ ${excerptLines || 'No reasoning excerpts available.'}
 Generate the following sections. Use markdown headings (##). Each section must be 2-3 substantial paragraphs minimum.
 
 ## Executive Overview
-Summarise the key findings from this subset in 2 paragraphs. State the total volume, the upheld rate relative to the FOS overall average (~40%), and the dominant patterns. Highlight the single most significant finding or risk.
+Summarise the key findings from this subset in 2 paragraphs. State the total volume, the upheld rate relative to the current computed FOS corpus average (${stats.overallUpheldRate.toFixed(1)}%), and the dominant patterns. Highlight the single most significant finding or risk.
 
 ## Root Cause Analysis
 Analyse WHY these complaints arose. For each of the top 3-5 root causes, what specific conduct triggered the complaints? What did the ombudsman reasoning reveal? What is the upheld rate for each root cause? Flag any root cause with an upheld rate above 50% as high-risk.
@@ -167,6 +168,7 @@ interface SynthesisStats {
   notUpheldRate: number;
   partialCount: number;
   partialRate: number;
+  overallUpheldRate: number;
   rootCauses: { label: string; count: number; upheldRate: number }[];
   precedents: { label: string; count: number; percentOfCases: number }[];
   vulnerabilities: { label: string; count: number; percentOfCases: number }[];
@@ -198,7 +200,11 @@ async function gatherSynthesisStats(filters: FOSDashboardFilters): Promise<Synth
         COUNT(*)::INT AS total,
         COUNT(*) FILTER (WHERE f.outcome_bucket = 'upheld')::INT AS upheld,
         COUNT(*) FILTER (WHERE f.outcome_bucket = 'not_upheld')::INT AS not_upheld,
-        COUNT(*) FILTER (WHERE f.outcome_bucket = 'partially_upheld')::INT AS partial
+        COUNT(*) FILTER (WHERE f.outcome_bucket = 'partially_upheld')::INT AS partial,
+        (
+          SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('all_d')} = 'upheld') / NULLIF(COUNT(*), 0), 2)
+          FROM fos_decisions all_d
+        ) AS overall_upheld_rate
       FROM filtered f`,
       filtered.params
     ),
@@ -273,6 +279,7 @@ async function gatherSynthesisStats(filters: FOSDashboardFilters): Promise<Synth
     notUpheldRate: pct(notUpheld),
     partialCount: partial,
     partialRate: pct(partial),
+    overallUpheldRate: toNumber(statsRows[0]?.overall_upheld_rate),
     rootCauses: rootCauseRows.map((r) => ({
       label: normalizeTagLabel(String(r.label || '')),
       count: toInt(r.count),

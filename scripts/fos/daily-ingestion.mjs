@@ -8,10 +8,11 @@ import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { canonicalProductSector } from "../lib/fos-taxonomy.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(SCRIPT_DIR, "..", "..");
-const TARGET_URL = "https://www.financial-ombudsman.org.uk/decisions-case-studies/ombudsman-decisions";
+const TARGET_URL = "https://www.financial-ombudsman.org.uk/businesses/resolving-complaint/ombudsman-decisions";
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -594,7 +595,8 @@ async function discoverDecisions(options) {
       decision_date_raw: item.decision_date_raw || meta.decision_date_raw,
       decision_date: toIsoDate(item.decision_date_raw || meta.decision_date_raw),
       business_name: cleanText(item.business_name),
-      product_sector: cleanText(item.product_sector),
+      product_sector: canonicalProductSector(item.product_sector),
+      product_sector_original: cleanText(item.product_sector),
       outcome_raw: cleanText(item.outcome_raw || meta.outcome_raw),
       outcome: normalizeOutcome(item.outcome_raw || meta.outcome_raw),
       source_url: item.source_url,
@@ -674,7 +676,8 @@ function buildParsedRecord(record, fullText, pdfPath, pdfHash) {
     decision_date: toIsoDate(decisionDateRaw),
     decision_date_raw: decisionDateRaw,
     business_name: cleanText(record.business_name),
-    product_sector: cleanText(record.product_sector),
+    product_sector: canonicalProductSector(record.product_sector),
+    product_sector_original: cleanText(record.product_sector_original || record.product_sector),
     outcome: normalizeOutcome(record.outcome_raw || record.outcome),
     outcome_raw: cleanText(record.outcome_raw),
     source_url: record.source_url,

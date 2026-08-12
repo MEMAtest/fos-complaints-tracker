@@ -199,7 +199,27 @@ export interface ComplaintLetterVersion {
   snapshotReason: string | null;
   snapshotBy: string | null;
   snapshotByRole: ComplaintWorkspaceActorRole | null;
+  assistanceProvenance: ComplaintLetterAssistanceProvenance[];
+  evidenceLinks: ComplaintLetterEvidenceLink[];
   createdAt: string;
+}
+
+export interface ComplaintLetterAssistanceProvenance {
+  action: 'approved_template' | 'improve_passage' | 'evidence_review' | 'evidence_example';
+  source: 'approved_template' | 'fos_corpus' | 'complaint_evidence' | 'internal_note';
+  sourceIds: string[];
+  author: string;
+  acceptedAt: string;
+  aiInvolved: boolean;
+}
+
+export interface ComplaintLetterEvidenceLink {
+  paragraphId: string;
+  paragraphLabel: string;
+  evidenceType: 'complaint_evidence' | 'fos_decision' | 'regulatory_reference' | 'internal_note';
+  evidenceId: string;
+  title: string;
+  url: string | null;
 }
 
 export interface ComplaintWorkspaceSettings {
@@ -324,6 +344,13 @@ export interface ComplaintFilters {
   fosReferred: 'all' | 'yes' | 'no';
   page: number;
   pageSize: number;
+}
+
+export interface ComplaintFacets {
+  firms: string[];
+  products: string[];
+  assignedTo: string[];
+  reviewers: string[];
 }
 
 export interface ComplaintStats {

@@ -44,6 +44,11 @@ export async function getBoardPackPreview(input: Partial<BoardPackRequest>): Pro
     templates: BOARD_PACK_TEMPLATES,
     savedDefinitions,
     recentRuns,
+    scopeOptions: {
+      firms: dashboard.filters.firms,
+      products: dashboard.filters.products,
+      outcomes: dashboard.filters.outcomes,
+    },
   };
 }
 
@@ -87,6 +92,9 @@ export async function buildBoardPackData(input: BoardPackRequest): Promise<Board
   return {
     title: effectiveInput.title || 'FOS Complaints Board Pack',
     generatedAt: new Date().toISOString(),
+    dataThrough: dashboard.overview.latestDecisionDate,
+    sourceUrl: 'https://www.financial-ombudsman.org.uk/businesses/resolving-complaint/ombudsman-decisions',
+    regulatoryDisclaimer: 'Decision-support material only. Historical FOS decisions are fact-specific and do not replace legal, compliance, or independent reviewer judgement.',
     periodLabel,
     branding: {
       organizationName: settings.organizationName,

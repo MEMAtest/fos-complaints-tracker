@@ -47,11 +47,24 @@ export function useFosAdvisor() {
     setBrief(null);
 
     try {
+      const hasComplaintText = Boolean(query.freeText?.trim());
       const params = new URLSearchParams({ product: query.product });
       if (query.rootCause) params.set('rootCause', query.rootCause);
-      if (query.freeText) params.set('freeText', query.freeText);
 
-      const response = await fetch(`/api/fos/advisor?${params.toString()}`, { signal: controller.signal });
+      const response = await fetch(`/api/fos/advisor?${params.toString()}`, {
+        method: hasComplaintText ? 'POST' : 'GET',
+        signal: controller.signal,
+        cache: hasComplaintText ? 'no-store' : 'default',
+        credentials: 'same-origin',
+        headers: hasComplaintText ? { 'Content-Type': 'application/json' } : undefined,
+        body: hasComplaintText
+          ? JSON.stringify({
+              product: query.product,
+              rootCause: query.rootCause,
+              complaintText: query.freeText,
+            })
+          : undefined,
+      });
       let payload: FOSAdvisorApiResponse | null = null;
       try {
         payload = (await response.json()) as FOSAdvisorApiResponse;

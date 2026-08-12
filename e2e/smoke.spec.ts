@@ -5,7 +5,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Smoke tests - pages load', () => {
   test('Homepage loads with marketing hero', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('See live complaint intelligence clearly');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Make defensible complaint decisions');
     await expect(page.getByRole('main').getByRole('link', { name: /start analysis/i }).first()).toBeVisible();
   });
 
@@ -53,13 +53,20 @@ test.describe('Smoke tests - sidebar navigation', () => {
     await expect(page).toHaveURL(/\/comparison(\?.*)?$/);
     await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Firm Comparison');
 
-    // Navigate back to Dashboard
-    await nav.getByRole('link', { name: /^Dashboard$/i }).click();
+    // Public comparison uses the marketing shell; return through its Platform link.
+    await page.getByRole('banner').getByRole('link', { name: /^Platform$/i }).click();
     await expect(page).toHaveURL(/\/workspace(\?.*)?$/);
   });
 });
 
 test.describe('Smoke tests - API routes', () => {
+  test.beforeEach(async ({ request }) => {
+    const login = await request.post('/api/auth/login', {
+      data: { email: 'operator@local.test', password: 'OperatorPass123!' },
+    });
+    expect(login.ok()).toBeTruthy();
+  });
+
   test('GET /api/fos/dashboard returns 200 with success', async ({ request }) => {
     const res = await request.get('/api/fos/dashboard');
     expect(res.status()).toBe(200);

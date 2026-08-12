@@ -1,4 +1,4 @@
-import { DatabaseClient } from '@/lib/database';
+import { getIngestionStatus } from '@/lib/fos/repository';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,17 +14,16 @@ export async function GET(request: Request) {
   }
 
   try {
-    await DatabaseClient.query(`
-      SELECT
-        COUNT(*)::INT AS total_cases,
-        MAX(decision_date) AS latest_decision_date
-      FROM fos_decisions
-    `);
+    const ingestion = await getIngestionStatus();
 
     return Response.json({
       success: true,
       warmedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
+      dataThrough: ingestion.dataThrough,
+      lastSuccessfulIngestion: ingestion.lastSuccessfulIngestion,
+      lastSummaryRefresh: ingestion.lastSummaryRefresh,
+      pipelineStatus: ingestion.pipelineStatus,
     });
   } catch (error) {
     return Response.json(

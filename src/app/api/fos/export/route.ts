@@ -1,6 +1,9 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { clientKeyFromRequest, RateLimitError, rateLimitOrThrow } from '@/lib/server/rate-limit';
 import { logRouteMetric } from '@/lib/server/route-metrics';
+import { NextRequest } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth/session';
+import { getDashboardSnapshot, parseFilters } from '@/lib/fos/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -8,12 +11,7 @@ export const runtime = 'nodejs';
 interface ExportRequestBody {
   title: string;
   filters: Record<string, string | string[] | number[] | undefined>;
-  kpis: {
-    totalCases: number;
-    upheldRate: number;
-    notUpheldRate: number;
-  };
-  generatedAt: string;
+  generatedAt?: string;
 }
 
 const PAGE_WIDTH = 595.28; // A4 width in points
@@ -68,9 +66,10 @@ async function readBoundedJson(request: Request): Promise<{ body?: unknown; erro
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   try {
+    await requireAuthenticatedUser(request, 'viewer');
     const contentLength = Number(request.headers.get('content-length') || 0);
     if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
       return exportError(startedAt, 413, 'Request body is too large.', { reason: 'request_too_large' });
@@ -88,23 +87,6 @@ export async function POST(request: Request) {
 
     if (!body || typeof body !== 'object') {
       return exportError(startedAt, 400, 'Invalid request body.', { reason: 'invalid_body' });
-    }
-
-    const { kpis } = body;
-
-    if (
-      !kpis ||
-      !Number.isInteger(kpis.totalCases) ||
-      kpis.totalCases < 0 ||
-      kpis.totalCases > 10_000_000 ||
-      !Number.isFinite(kpis.upheldRate) ||
-      kpis.upheldRate < 0 ||
-      kpis.upheldRate > 1 ||
-      !Number.isFinite(kpis.notUpheldRate) ||
-      kpis.notUpheldRate < 0 ||
-      kpis.notUpheldRate > 1
-    ) {
-      return exportError(startedAt, 400, 'Missing or invalid KPI values.', { reason: 'invalid_kpis' });
     }
 
     if (!body.filters || typeof body.filters !== 'object' || Array.isArray(body.filters)) {
@@ -131,6 +113,18 @@ export async function POST(request: Request) {
         return [safeKey, safeValue];
       })
     );
+
+    const filterParams = new URLSearchParams();
+    for (const [key, value] of rawFilterEntries) {
+      if (Array.isArray(value)) value.forEach((item) => filterParams.append(key, String(item)));
+      else if (value !== undefined) filterParams.set(key, String(value));
+    }
+    const authoritativeSnapshot = await getDashboardSnapshot(parseFilters(filterParams), { includeCases: false });
+    const kpis = {
+      totalCases: authoritativeSnapshot.overview.totalCases,
+      upheldRate: authoritativeSnapshot.overview.upheldRate,
+      notUpheldRate: authoritativeSnapshot.overview.notUpheldRate,
+    };
 
     await rateLimitOrThrow(clientKeyFromRequest(request, 'fos-export'), EXPORT_RATE_LIMIT, EXPORT_RATE_WINDOW_MS);
 
@@ -172,6 +166,14 @@ export async function POST(request: Request) {
     const dateStr = generatedDate.toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' });
 
     page.drawText(`Generated: ${dateStr}`, {
+      x: MARGIN,
+      y,
+      size: 10,
+      font: helvetica,
+      color: medGrey,
+    });
+    y -= 14;
+    page.drawText(`FOS data through: ${authoritativeSnapshot.overview.latestDecisionDate || 'Unavailable'}`, {
       x: MARGIN,
       y,
       size: 10,
@@ -254,8 +256,8 @@ export async function POST(request: Request) {
 
     const kpiItems = [
       { label: 'Total Cases', value: kpis.totalCases.toLocaleString() },
-      { label: 'Upheld Rate', value: `${(kpis.upheldRate * 100).toFixed(1)}%` },
-      { label: 'Not Upheld Rate', value: `${(kpis.notUpheldRate * 100).toFixed(1)}%` },
+      { label: 'Upheld Rate', value: `${kpis.upheldRate.toFixed(1)}%` },
+      { label: 'Not Upheld Rate', value: `${kpis.notUpheldRate.toFixed(1)}%` },
     ];
 
     // Draw KPI boxes side by side
@@ -314,6 +316,13 @@ export async function POST(request: Request) {
       font: helvetica,
       color: medGrey,
     });
+    page.drawText('Source: financial-ombudsman.org.uk · Decision support only; human review required.', {
+      x: MARGIN + 150,
+      y: footerY,
+      size: 7,
+      font: helvetica,
+      color: medGrey,
+    });
 
     const pdfBytes = await pdfDoc.save();
 
@@ -339,7 +348,8 @@ export async function POST(request: Request) {
       );
     }
 
-    return exportError(startedAt, 500, 'Failed to generate PDF.', {
+    const status = 'status' in (error as object) ? Number((error as { status?: number }).status || 500) : 500;
+    return exportError(startedAt, status, status === 500 ? 'Failed to generate PDF.' : error instanceof Error ? error.message : 'Export failed.', {
       reason: 'export_failed',
       internalMessage: error instanceof Error ? error.message : 'Unknown export failure.',
     });

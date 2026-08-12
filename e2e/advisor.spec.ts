@@ -73,6 +73,7 @@ test.describe('Advisor API - /api/fos/advisor', () => {
     // Query echo
     expect(brief.query.product).toBe(product);
     expect(brief.generatedAt).toBeTruthy();
+    expect(brief.dataThrough).toBeTruthy();
 
     // Risk assessment
     expect(brief.riskAssessment).toBeDefined();
@@ -123,15 +124,37 @@ test.describe('Advisor API - /api/fos/advisor', () => {
     expect(res.status()).toBe(400);
   });
 
-  test('returns 400 when freeText exceeds 5000 characters', async ({ request }) => {
+  test('rejects complaint text in cacheable GET requests', async ({ request }) => {
     const optRes = await request.get('/api/fos/advisor/options');
     const opts = await optRes.json();
     const product = opts.data.products[0];
-    const longText = 'Z'.repeat(5001);
+    const longText = `PRIVATE-COMPLAINT-${Date.now()}`;
     const res = await request.get(
       `/api/fos/advisor?product=${encodeURIComponent(product)}&freeText=${encodeURIComponent(longText)}`
     );
     expect(res.status()).toBe(400);
+    expect(res.headers()['cache-control']).toContain('no-store');
+  });
+
+  test('accepts complaint text only via authenticated non-cacheable POST without echoing it', async ({ request }) => {
+    const login = await request.post('/api/auth/login', {
+      data: { email: 'viewer@local.test', password: 'ViewerPass123!' },
+    });
+    expect(login.status()).toBe(200);
+    const cookieMatch = (login.headers()['set-cookie'] || '').match(/fci_session=([^;]+)/);
+    expect(cookieMatch).toBeTruthy();
+
+    const options = await (await request.get('/api/fos/advisor/options')).json();
+    const product = options.data.products[0];
+    const privateText = `PRIVATE-COMPLAINT-${Date.now()}-must-not-echo`;
+    const res = await request.post('/api/fos/advisor', {
+      headers: { Cookie: `fci_session=${cookieMatch![1]}` },
+      data: { product, complaintText: privateText },
+    });
+    expect([200, 404]).toContain(res.status());
+    expect(res.url()).not.toContain(privateText);
+    expect(res.headers()['cache-control']).toContain('no-store');
+    expect(await res.text()).not.toContain(privateText);
   });
 });
 
@@ -343,12 +366,12 @@ test.describe('Advisor UI – Decisions Browser', () => {
   });
 });
 
-test.describe('Advisor UI – What Wins / What Loses', () => {
-  test('what wins and what loses sections are visible', async ({ page }) => {
+test.describe('Advisor UI – outcome explanation', () => {
+  test('firm-success and complainant-success sections are visible', async ({ page }) => {
     await loadFirstBrief(page);
 
-    await expect(page.getByText(/What Wins Cases/i).first()).toBeVisible();
-    await expect(page.getByText(/What Loses Cases/i).first()).toBeVisible();
+    await expect(page.getByText(/Why firms succeeded \(not upheld\)/i).first()).toBeVisible();
+    await expect(page.getByText(/Why complainants succeeded \(upheld\)/i).first()).toBeVisible();
   });
 
   test('AI guidance section appears when available', async ({ page }) => {

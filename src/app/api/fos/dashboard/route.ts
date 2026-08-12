@@ -71,12 +71,15 @@ export async function GET(request: NextRequest) {
 
     return Response.json(payload, { headers });
   } catch (error) {
+    console.error('FOS dashboard query failed', { error: error instanceof Error ? error.message : String(error) });
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch FOS dashboard data.',
+        error: 'Dashboard summaries are temporarily unavailable. Please retry in a moment.',
+        errorCode: 'DASHBOARD_TEMPORARILY_UNAVAILABLE',
+        retryable: true,
       },
-      { status: 500 }
+      { status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'no-store' } }
     );
   }
 }

@@ -24,6 +24,7 @@ import {
   toIsoDate,
   toNumber,
 } from './repo-helpers';
+import { canonicalProductOptions } from './taxonomy';
 
 export async function getAdvisorOptions(): Promise<{ products: string[]; rootCauses: string[] }> {
   ensureDatabaseConfigured();
@@ -39,7 +40,7 @@ export async function getAdvisorOptions(): Promise<{ products: string[]; rootCau
     ]);
 
     return {
-      products: productRows.map((r) => r.product),
+      products: canonicalProductOptions(productRows.map((r) => r.product)),
       rootCauses: rootCauseRows.map((r) => r.root_cause),
     };
   } catch (error) {
@@ -90,8 +91,8 @@ export async function getAdvisorBrief(query: FOSAdvisorQuery): Promise<FOSAdviso
       }
     }
 
-    const overallRow = await DatabaseClient.queryOne<{ rate: string }>(
-      `SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS rate FROM fos_decisions d`
+    const overallRow = await DatabaseClient.queryOne<{ rate: string; data_through: unknown }>(
+      `SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld') / NULLIF(COUNT(*), 0), 2) AS rate, MAX(d.decision_date) AS data_through FROM fos_decisions d`
     );
     const overallUpheldRate = toNumber(overallRow?.rate);
 
@@ -102,9 +103,11 @@ export async function getAdvisorBrief(query: FOSAdvisorQuery): Promise<FOSAdviso
       query: {
         product: String(row.product),
         rootCause: nullableString(row.root_cause),
-        freeText: query.freeText,
+        // Complaint text may influence private matching, but is never returned to callers.
+        freeText: null,
       },
       generatedAt: toIsoDate(row.generated_at) || new Date().toISOString(),
+      dataThrough: toIsoDate(overallRow?.data_through),
       riskAssessment: {
         totalCases,
         sampleSize: totalCases,

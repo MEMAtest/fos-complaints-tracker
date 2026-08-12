@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, FileText, Loader2, LockKeyhole, Mail, Save, Send } from 'lucide-react';
+import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, CheckCircle2, Download, FileText, Link2, Loader2, LockKeyhole, Mail, Save, Send, X } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,10 @@ import {
   COMPLAINT_LETTER_REVIEW_DECISION_CODES,
   COMPLAINT_LETTER_TEMPLATES,
   type ComplaintLetter,
+  type ComplaintEvidence,
+  type ComplaintLetterAssistanceProvenance,
+  type ComplaintLetterEvidenceLink,
+  type ComplaintLetterIntelligence,
   type ComplaintLetterStatus,
   type ComplaintLetterReviewDecisionCode,
   type ComplaintLetterVersion,
@@ -43,12 +47,21 @@ const DEFAULT_SETTINGS: ComplaintWorkspaceSettings = {
   updatedAt: new Date(0).toISOString(),
 };
 
+type AssistanceSuggestion = {
+  target: 'draft' | 'reviewer';
+  targetId: string;
+  targetLabel: string;
+  original: string;
+  proposed: string;
+  provenance: Pick<ComplaintLetterAssistanceProvenance, 'action' | 'source' | 'sourceIds' | 'aiInvolved'>;
+};
+
 export function ComplaintLettersPanel({
   complaint,
   letters,
   onRefresh,
 }: {
-  complaint: ComplaintRecord;
+  complaint: ComplaintRecord & { evidence?: ComplaintEvidence[] };
   letters: ComplaintLetter[];
   onRefresh: () => Promise<void>;
 }) {
@@ -77,10 +90,22 @@ export function ComplaintLettersPanel({
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
   const [settings, setSettings] = useState<ComplaintWorkspaceSettings>(DEFAULT_SETTINGS);
-  const { user, loading: userLoading } = useAuth();
+  const [intelligence, setIntelligence] = useState<ComplaintLetterIntelligence | null>(null);
+  const [assistanceSuggestion, setAssistanceSuggestion] = useState<AssistanceSuggestion | null>(null);
+  const [acceptedAssistance, setAcceptedAssistance] = useState<ComplaintLetterAssistanceProvenance[]>([]);
+  const [evidenceLinks, setEvidenceLinks] = useState<ComplaintLetterEvidenceLink[]>([]);
+  const [activeParagraphId, setActiveParagraphId] = useState('body');
+  const [selectedPassage, setSelectedPassage] = useState('');
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'offline'>('saved');
+  const restoreAttemptedRef = useRef<string | null>(null);
+  const editorResetKeyRef = useRef<string | null>(null);
+  const persistedSaveKeyRef = useRef<string | null>(null);
+  const persistedDraftFingerprintRef = useRef<string | null>(null);
+  const { user, loading: userLoading, can } = useAuth();
   const currentActorName = user?.fullName || 'Signed-out user';
   const currentActorRole = user?.role || 'viewer';
   const isSignedIn = Boolean(user);
+  const canEdit = can('operator');
 
   useEffect(() => {
     if (!selectedLetter && letters[0]) {
@@ -89,6 +114,9 @@ export function ComplaintLettersPanel({
   }, [letters, selectedLetter]);
 
   useEffect(() => {
+    const resetKey = selectedLetter ? `${selectedLetter.id}:${selectedLetter.versionNumber}` : 'none';
+    if (editorResetKeyRef.current === resetKey) return;
+    editorResetKeyRef.current = resetKey;
     const structuredState = selectedLetter
       ? getComplaintLetterStructuredEditorState(
           complaint,
@@ -110,6 +138,24 @@ export function ComplaintLettersPanel({
     setReviewerNotes(selectedLetter?.reviewerNotes || '');
     setApprovalNote(selectedLetter?.reviewDecisionNote || '');
     setReviewDecisionCode(selectedLetter?.reviewDecisionCode || 'ready_to_issue');
+    setAssistanceSuggestion(null);
+    setAcceptedAssistance([]);
+    setEvidenceLinks([]);
+    setActiveParagraphId('body');
+    setSelectedPassage('');
+    setSaveState('saved');
+    persistedDraftFingerprintRef.current = selectedLetter ? draftFingerprint(
+      selectedLetter.subject,
+      selectedLetter.recipientName || '',
+      selectedLetter.recipientEmail || '',
+      selectedLetter.bodyText,
+      selectedLetter.reviewerNotes || ''
+    ) : null;
+    if (persistedSaveKeyRef.current === resetKey) {
+      window.setTimeout(() => {
+        if (persistedSaveKeyRef.current === resetKey) persistedSaveKeyRef.current = null;
+      }, 0);
+    }
   }, [complaint, selectedLetter, settings]);
 
   const loadVersions = useCallback(async (letterId: string | null) => {
@@ -129,7 +175,11 @@ export function ComplaintLettersPanel({
         if (!response.ok || !payload.success) {
           throw new Error(payload.error || 'Failed to load letter history.');
         }
-        if (!cancelled) setVersions(Array.isArray(payload.versions) ? payload.versions : []);
+        if (!cancelled) {
+          const nextVersions = Array.isArray(payload.versions) ? payload.versions as ComplaintLetterVersion[] : [];
+          setVersions(nextVersions);
+          setEvidenceLinks(nextVersions[0]?.evidenceLinks || []);
+        }
       } catch (err) {
         if (!cancelled) setVersionsError(err instanceof Error ? err.message : 'Failed to load letter history.');
       } finally {
@@ -180,6 +230,66 @@ export function ComplaintLettersPanel({
       || reviewerNotes !== (selectedLetter.reviewerNotes || '')
     );
   }, [editorRecipientEmail, editorRecipientName, editorSubject, effectiveEditorBody, reviewerNotes, selectedLetter]);
+
+  const editorFingerprint = useMemo(() => draftFingerprint(
+    editorSubject,
+    editorRecipientName,
+    editorRecipientEmail,
+    effectiveEditorBody,
+    reviewerNotes
+  ), [editorRecipientEmail, editorRecipientName, editorSubject, effectiveEditorBody, reviewerNotes]);
+  const authoritativeSaveState = saveState !== 'saving' && persistedDraftFingerprintRef.current === editorFingerprint
+    ? 'saved'
+    : saveState;
+
+  useEffect(() => {
+    if (!selectedLetter || restoreAttemptedRef.current === selectedLetter.id) return;
+    restoreAttemptedRef.current = selectedLetter.id;
+    try {
+      const raw = window.localStorage.getItem(localDraftKey(selectedLetter.id));
+      if (!raw) return;
+      const restored = JSON.parse(raw) as {
+        versionNumber?: number;
+        subject?: string;
+        recipientName?: string;
+        recipientEmail?: string;
+        body?: string;
+        reviewerNotes?: string;
+        sections?: ComplaintLetterStructuredSection[];
+      };
+      if (restored.versionNumber !== selectedLetter.versionNumber) return;
+      if (typeof restored.subject === 'string') setEditorSubject(restored.subject);
+      if (typeof restored.recipientName === 'string') setEditorRecipientName(restored.recipientName);
+      if (typeof restored.recipientEmail === 'string') setEditorRecipientEmail(restored.recipientEmail);
+      if (typeof restored.body === 'string') setEditorBody(restored.body);
+      if (typeof restored.reviewerNotes === 'string') setReviewerNotes(restored.reviewerNotes);
+      if (Array.isArray(restored.sections)) setStructuredSections(restored.sections);
+      setSaveState('offline');
+      setStatusNotice('Recovered an offline draft from this browser. Save it to submit the changes to the workspace.');
+    } catch {
+      window.localStorage.removeItem(localDraftKey(selectedLetter.id));
+    }
+  }, [selectedLetter]);
+
+  useEffect(() => {
+    if (!selectedLetter || !hasEditorChanges) return;
+    if (persistedSaveKeyRef.current === `${selectedLetter.id}:${selectedLetter.versionNumber}`) return;
+    if (persistedDraftFingerprintRef.current === editorFingerprint) return;
+    setSaveState('offline');
+    const timeout = window.setTimeout(() => {
+      window.localStorage.setItem(localDraftKey(selectedLetter.id), JSON.stringify({
+        versionNumber: selectedLetter.versionNumber,
+        subject: editorSubject,
+        recipientName: editorRecipientName,
+        recipientEmail: editorRecipientEmail,
+        body: editorBody,
+        reviewerNotes,
+        sections: structuredSections,
+        savedLocallyAt: new Date().toISOString(),
+      }));
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [editorBody, editorFingerprint, editorRecipientEmail, editorRecipientName, editorSubject, hasEditorChanges, reviewerNotes, selectedLetter, structuredSections]);
 
   async function generateTemplate(templateKey: string) {
     setCreating(templateKey);
@@ -237,6 +347,7 @@ export function ComplaintLettersPanel({
   async function saveLetter(nextStatus?: 'draft' | 'generated' | 'under_review' | 'approved' | 'rejected_for_rework' | 'sent') {
     if (!selectedLetter) return;
     setSaving(true);
+    setSaveState('saving');
     setError(null);
     setStatusNotice(null);
     try {
@@ -253,17 +364,27 @@ export function ComplaintLettersPanel({
           approvalNote,
           reviewDecisionCode,
           reviewDecisionNote: approvalNote,
+          assistanceProvenance: acceptedAssistance,
+          evidenceLinks,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Failed to update complaint letter.');
+      if (payload.letter?.id && payload.letter?.versionNumber) {
+        persistedSaveKeyRef.current = `${payload.letter.id}:${payload.letter.versionNumber}`;
+      }
+      persistedDraftFingerprintRef.current = draftFingerprint(editorSubject, editorRecipientName, editorRecipientEmail, effectiveEditorBody, reviewerNotes);
       setSelectedLetterId(payload.letter?.id || selectedLetter.id);
       await onRefresh();
       await loadVersions(payload.letter?.id || selectedLetter.id);
       setApprovalNote('');
+      setAcceptedAssistance([]);
+      window.localStorage.removeItem(localDraftKey(selectedLetter.id));
+      setSaveState('saved');
       setStatusNotice(getLetterActionNotice(nextStatus || selectedLetter.status));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update complaint letter.');
+      setSaveState('offline');
     } finally {
       setSaving(false);
     }
@@ -281,24 +402,82 @@ export function ComplaintLettersPanel({
     URL.revokeObjectURL(url);
   }
 
-  function appendDraftingText(text: string) {
+  const currentDraftTarget = useMemo(() => {
     if (structuredTemplateMode) {
-      setStructuredSections((current) => {
-        const fallbackKey = selectedLetter?.templateKey === 'final_response' ? 'decision_reasons' : current[0]?.key;
-        if (!fallbackKey) return current;
-        return current.map((section) => (
-          section.key === fallbackKey
-            ? { ...section, value: section.value.trim().length > 0 ? `${section.value.trimEnd()}\n\n${text}` : text }
-            : section
-        ));
-      });
-      return;
+      const selectedSection = structuredSections.find((section) => section.key === activeParagraphId)
+        || structuredSections.find((section) => section.key === 'decision_reasons')
+        || structuredSections[0];
+      if (selectedSection) return { id: selectedSection.key, label: selectedSection.label, value: selectedSection.value };
     }
-    setEditorBody((current) => (current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text));
+    return { id: 'body', label: 'Letter body', value: editorBody };
+  }, [activeParagraphId, editorBody, structuredSections, structuredTemplateMode]);
+
+  function proposeAssistance(
+    target: 'draft' | 'reviewer',
+    text: string,
+    provenance: Pick<ComplaintLetterAssistanceProvenance, 'action' | 'source' | 'sourceIds' | 'aiInvolved'>
+  ) {
+    const base = target === 'reviewer' ? reviewerNotes : currentDraftTarget.value;
+    setAssistanceSuggestion({
+      target,
+      targetId: target === 'reviewer' ? 'reviewer_notes' : currentDraftTarget.id,
+      targetLabel: target === 'reviewer' ? 'Internal reviewer notes' : currentDraftTarget.label,
+      original: base,
+      proposed: base.trim().length > 0 ? `${base.trimEnd()}\n\n${text}` : text,
+      provenance,
+    });
   }
 
-  function appendReviewerNote(text: string) {
-    setReviewerNotes((current) => (current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text));
+  function proposePassageImprovement() {
+    const original = selectedPassage.trim() || currentDraftTarget.value.trim();
+    if (!original) {
+      setError('Select a passage, or add text to the active paragraph, before requesting an improvement.');
+      return;
+    }
+    const improved = improveDraftPassage(original);
+    const targetValue = currentDraftTarget.value;
+    const proposed = selectedPassage.trim()
+      ? targetValue.replace(selectedPassage, improved)
+      : improved;
+    setAssistanceSuggestion({
+      target: 'draft',
+      targetId: currentDraftTarget.id,
+      targetLabel: currentDraftTarget.label,
+      original: targetValue,
+      proposed,
+      provenance: { action: 'improve_passage', source: 'internal_note', sourceIds: [], aiInvolved: false },
+    });
+  }
+
+  function acceptSuggestion() {
+    if (!assistanceSuggestion) return;
+    if (assistanceSuggestion.target === 'reviewer') {
+      setReviewerNotes(assistanceSuggestion.proposed);
+    } else if (structuredTemplateMode && assistanceSuggestion.targetId !== 'body') {
+      setStructuredSections((current) => current.map((section) => section.key === assistanceSuggestion.targetId ? { ...section, value: assistanceSuggestion.proposed } : section));
+    } else {
+      setEditorBody(assistanceSuggestion.proposed);
+    }
+    setAcceptedAssistance((current) => [...current, {
+      ...assistanceSuggestion.provenance,
+      author: currentActorName,
+      acceptedAt: new Date().toISOString(),
+    }]);
+    setAssistanceSuggestion(null);
+    setSaveState('offline');
+  }
+
+  function addEvidenceLink(link: Omit<ComplaintLetterEvidenceLink, 'paragraphId' | 'paragraphLabel'>) {
+    const paragraph = activeParagraphId === 'reviewer_notes'
+      ? { id: 'reviewer_notes', label: 'Internal reviewer notes' }
+      : structuredSections.find((section) => section.key === activeParagraphId)
+        ? { id: activeParagraphId, label: structuredSections.find((section) => section.key === activeParagraphId)!.label }
+        : { id: 'body', label: 'Letter body' };
+    setEvidenceLinks((current) => {
+      if (current.some((item) => item.paragraphId === paragraph.id && item.evidenceType === link.evidenceType && item.evidenceId === link.evidenceId)) return current;
+      return [...current, { ...link, paragraphId: paragraph.id, paragraphLabel: paragraph.label }];
+    });
+    setSaveState('offline');
   }
 
   const canApprove = useMemo(() => {
@@ -333,7 +512,7 @@ export function ComplaintLettersPanel({
 
   return (
     <div className="space-y-5">
-      <Card>
+      {canEdit ? <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><Mail className="h-4 w-4" />Letter templates</CardTitle>
         </CardHeader>
@@ -354,7 +533,7 @@ export function ComplaintLettersPanel({
             </button>
           ))}
         </CardContent>
-      </Card>
+      </Card> : null}
 
       <ComplaintWorkspaceSettingsPanel title="Correspondence profile" compact onSaved={setSettings} />
 
@@ -362,9 +541,28 @@ export function ComplaintLettersPanel({
         complaint={complaint}
         activeTemplateKey={selectedLetter?.templateKey || null}
         hasActiveLetter={Boolean(selectedLetter)}
-        onInsertDraft={appendDraftingText}
-        onInsertReviewerNote={appendReviewerNote}
+        canEdit={canEdit}
+        onPropose={proposeAssistance}
+        onImprovePassage={proposePassageImprovement}
+        onIntelligenceLoaded={setIntelligence}
       />
+
+      {assistanceSuggestion ? (
+        <Card data-testid="letter-assistance-diff">
+          <CardHeader><CardTitle className="text-base">Drafting suggestion · {assistanceSuggestion.targetLabel}</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-slate-600">Review the proposed change. It will not alter the draft unless you accept it.</p>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3"><p className="text-xs font-semibold uppercase tracking-wider text-rose-700">Current</p><pre className="mt-2 whitespace-pre-wrap text-sm text-rose-900">{assistanceSuggestion.original || 'Empty'}</pre></div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Suggested</p><pre className="mt-2 whitespace-pre-wrap text-sm text-emerald-900">{assistanceSuggestion.proposed}</pre></div>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" onClick={acceptSuggestion} disabled={!canEdit} data-testid="letter-assistance-accept"><CheckCircle2 className="mr-2 h-4 w-4" />Accept</Button>
+              <Button type="button" variant="outline" onClick={() => setAssistanceSuggestion(null)} data-testid="letter-assistance-reject"><X className="mr-2 h-4 w-4" />Reject</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -399,7 +597,7 @@ export function ComplaintLettersPanel({
         </CardContent>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid gap-5 xl:grid-cols-[0.7fr_1.15fr_0.75fr]">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Saved letters</CardTitle>
@@ -443,16 +641,16 @@ export function ComplaintLettersPanel({
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Subject</span>
-                    <input value={editorSubject} onChange={(event) => setEditorSubject(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                    <input value={editorSubject} onChange={(event) => setEditorSubject(event.target.value)} disabled={!canEdit} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
                   </label>
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Recipient name</span>
-                    <input value={editorRecipientName} onChange={(event) => setEditorRecipientName(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                    <input value={editorRecipientName} onChange={(event) => setEditorRecipientName(event.target.value)} disabled={!canEdit} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
                   </label>
                 </div>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Recipient email</span>
-                  <input value={editorRecipientEmail} onChange={(event) => setEditorRecipientEmail(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                  <input value={editorRecipientEmail} onChange={(event) => setEditorRecipientEmail(event.target.value)} disabled={!canEdit} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
                 </label>
                 {structuredTemplateMode ? (
                   <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
@@ -469,7 +667,8 @@ export function ComplaintLettersPanel({
                         <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Decision position</span>
                         <select
                           data-testid="letter-decision-path"
-                          value={structuredDecisionPath || 'other'}
+                            value={structuredDecisionPath || 'other'}
+                            disabled={!canEdit}
                           onChange={(event) => setStructuredDecisionPath(event.target.value as ComplaintLetterDecisionPath)}
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                         >
@@ -488,7 +687,13 @@ export function ComplaintLettersPanel({
                           <textarea
                             data-testid={`letter-section-${section.key}`}
                             value={section.value}
+                            disabled={!canEdit}
                             onChange={(event) => setStructuredSections((current) => current.map((item) => item.key === section.key ? { ...item, value: event.target.value } : item))}
+                            onFocus={() => setActiveParagraphId(section.key)}
+                            onSelect={(event) => {
+                              const target = event.currentTarget;
+                              setSelectedPassage(target.value.slice(target.selectionStart, target.selectionEnd));
+                            }}
                             rows={section.key === 'decision_reasons' ? 7 : 4}
                             placeholder={section.placeholder}
                             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
@@ -505,7 +710,7 @@ export function ComplaintLettersPanel({
                 ) : (
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Body</span>
-                    <textarea data-testid="letter-body" value={editorBody} onChange={(event) => setEditorBody(event.target.value)} rows={14} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                    <textarea data-testid="letter-body" value={editorBody} disabled={!canEdit} onChange={(event) => setEditorBody(event.target.value)} onFocus={() => setActiveParagraphId('body')} onSelect={(event) => { const target = event.currentTarget; setSelectedPassage(target.value.slice(target.selectionStart, target.selectionEnd)); }} rows={14} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
                   </label>
                 )}
                 <label className="block text-sm">
@@ -516,6 +721,7 @@ export function ComplaintLettersPanel({
                   <textarea
                     data-testid="letter-reviewer-notes"
                     value={reviewerNotes}
+                    disabled={!canEdit}
                     onChange={(event) => setReviewerNotes(event.target.value)}
                     rows={6}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
@@ -555,6 +761,9 @@ export function ComplaintLettersPanel({
                     <Badge variant="outline">Role {currentActorRole}</Badge>
                     <Badge variant="outline">Approval role {selectedLetter.approvalRoleRequired}</Badge>
                     {settings.requireIndependentReviewer ? <Badge variant="outline">Independent reviewer on</Badge> : null}
+                  </div>
+                  <div className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 font-semibold ${authoritativeSaveState === 'saved' ? 'bg-emerald-100 text-emerald-700' : authoritativeSaveState === 'saving' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}`} data-testid="letter-save-state">
+                    {authoritativeSaveState === 'saved' ? 'Saved to workspace' : authoritativeSaveState === 'saving' ? 'Saving' : 'Offline draft—not submitted'}
                   </div>
                   {statusNotice ? (
                     <div className="mt-3 flex items-start gap-2 text-emerald-700" data-testid="letter-status-notice">
@@ -602,7 +811,7 @@ export function ComplaintLettersPanel({
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => downloadDraft({ ...selectedLetter, subject: editorSubject, recipientName: editorRecipientName || null, recipientEmail: editorRecipientEmail || null, bodyText: editorBody })}>
                       <Download className="h-3.5 w-3.5" /> TXT
                     </Button>
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => void saveLetter('draft')} disabled={saving || !hasEditorChanges || !isSignedIn} data-testid="letter-save-draft">
+                    {canEdit ? <><Button size="sm" variant="outline" className="gap-2" onClick={() => void saveLetter('draft')} disabled={saving || !hasEditorChanges || !isSignedIn} data-testid="letter-save-draft">
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                       {['approved', 'sent', 'under_review'].includes(selectedLetter.status) ? 'Create new draft' : 'Save draft'}
                     </Button>
@@ -649,6 +858,7 @@ export function ComplaintLettersPanel({
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       Mark sent
                     </Button>
+                    </> : null}
                   </div>
                 </div>
 
@@ -719,6 +929,8 @@ export function ComplaintLettersPanel({
                           {version.snapshotReason ? <p className="mt-1 text-xs text-slate-500">{version.snapshotReason}</p> : null}
                           {version.snapshotBy || version.snapshotByRole ? <p className="mt-1 text-xs text-slate-500">By {version.snapshotBy || 'Unknown'}{version.snapshotByRole ? ` · ${version.snapshotByRole}` : ''}</p> : null}
                           {version.reviewerNotes ? <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white px-2 py-2 text-xs text-slate-600">{version.reviewerNotes}</p> : null}
+                          {version.assistanceProvenance.length > 0 ? <p className="mt-2 text-xs text-slate-500">Assistance accepted: {version.assistanceProvenance.map((item) => `${item.action.replace(/_/g, ' ')} by ${item.author}${item.aiInvolved ? ' (AI involved)' : ''}`).join('; ')}</p> : null}
+                          {version.evidenceLinks.length > 0 ? <p className="mt-1 text-xs text-slate-500">Evidence links: {version.evidenceLinks.length}</p> : null}
                         </div>
                       ))}
                     </div>
@@ -726,6 +938,32 @@ export function ComplaintLettersPanel({
                 </section>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="h-fit xl:sticky xl:top-4" data-testid="letter-evidence-rail">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-4 w-4" />Evidence for this answer</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Attach to
+              <select value={activeParagraphId} disabled={!canEdit} onChange={(event) => setActiveParagraphId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-700 disabled:bg-slate-50">
+                <option value="body">Letter body</option>
+                {structuredSections.map((section) => <option key={section.key} value={section.key}>{section.label}</option>)}
+                <option value="reviewer_notes">Internal reviewer notes</option>
+              </select>
+            </label>
+            <EvidenceRailGroup title="Complaint evidence" empty="No complaint evidence uploaded.">
+              {(complaint.evidence || []).filter((item) => !item.archivedAt).map((item) => <EvidenceLinkButton key={item.id} title={item.fileName} meta={item.category.replace(/_/g, ' ')} disabled={!canEdit} onLink={() => addEvidenceLink({ evidenceType: 'complaint_evidence', evidenceId: item.id, title: item.fileName, url: `/api/complaints/evidence/${item.id}?download=1` })} />)}
+            </EvidenceRailGroup>
+            <EvidenceRailGroup title="Relevant FOS decisions" empty="No comparable decisions available.">
+              {(intelligence?.sampleCases || []).slice(0, 5).map((item) => <EvidenceLinkButton key={item.caseId} title={item.decisionReference} meta={`${item.outcome.replace(/_/g, ' ')}${item.decisionDate ? ` · ${item.decisionDate}` : ''}`} disabled={!canEdit} onLink={() => addEvidenceLink({ evidenceType: 'fos_decision', evidenceId: item.caseId, title: item.decisionReference, url: `/api/fos/cases/${encodeURIComponent(item.caseId)}` })} />)}
+            </EvidenceRailGroup>
+            <EvidenceRailGroup title="Regulatory references" empty="No regulatory references identified.">
+              {(intelligence?.keyPrecedents || []).slice(0, 8).map((item) => <EvidenceLinkButton key={item.label} title={item.label} meta={`${item.count} comparable cases`} disabled={!canEdit} onLink={() => addEvidenceLink({ evidenceType: 'regulatory_reference', evidenceId: item.label, title: item.label, url: handbookUrl(item.label) })} />)}
+            </EvidenceRailGroup>
+            <EvidenceRailGroup title="Internal notes" empty="No internal notes yet.">
+              {reviewerNotes.trim() ? <EvidenceLinkButton title="Current reviewer notes" meta="Internal only" disabled={!canEdit} onLink={() => addEvidenceLink({ evidenceType: 'internal_note', evidenceId: 'reviewer-notes', title: 'Current reviewer notes', url: null })} /> : null}
+            </EvidenceRailGroup>
+            {evidenceLinks.length > 0 ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{evidenceLinks.length} paragraph-to-evidence link{evidenceLinks.length === 1 ? '' : 's'} will be recorded in the next saved version.</div> : null}
           </CardContent>
         </Card>
       </div>
@@ -793,4 +1031,48 @@ function getLetterActionNotice(status: ComplaintLetterStatus): string {
     default:
       return 'Letter updated.';
   }
+}
+
+function localDraftKey(letterId: string): string {
+  return `fos-letter-draft:${letterId}`;
+}
+
+function draftFingerprint(subject: string, recipientName: string, recipientEmail: string, body: string, notes: string): string {
+  return JSON.stringify([subject, recipientName, recipientEmail, body, notes]);
+}
+
+function improveDraftPassage(value: string): string {
+  return value
+    .replace(/\bwe think\b/gi, 'based on the evidence reviewed, we conclude')
+    .replace(/\bwe looked at\b/gi, 'we reviewed')
+    .replace(/\bwe feel\b/gi, 'the evidence indicates')
+    .replace(/\bmaybe\b/gi, 'on balance')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim();
+}
+
+function handbookUrl(label: string): string | null {
+  const handbookCode = label.trim().toUpperCase().match(/^(DISP|PRIN|ICOBS|COBS|MCOB|CONC|SYSC)\b/)?.[1];
+  return handbookCode ? `https://www.handbook.fca.org.uk/handbook/${handbookCode}/` : null;
+}
+
+function EvidenceRailGroup({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
+  return (
+    <section>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{title}</p>
+      <div className="mt-2 space-y-2">
+        {Children.count(children) > 0 ? children : <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">{empty}</p>}
+      </div>
+    </section>
+  );
+}
+
+function EvidenceLinkButton({ title, meta, onLink, disabled = false }: { title: string; meta: string; onLink: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onLink} disabled={disabled} className="flex w-full items-start justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-default disabled:bg-slate-50 disabled:opacity-70">
+      <span><span className="block text-xs font-semibold text-slate-800">{title}</span><span className="mt-1 block text-[11px] text-slate-500">{meta}</span></span>
+      <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+    </button>
+  );
 }

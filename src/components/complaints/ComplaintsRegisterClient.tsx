@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/components/auth/auth-provider';
 import { ComplaintFormDialog } from './ComplaintFormDialog';
-import type { ComplaintFilters, ComplaintListResult, ComplaintRecord } from '@/lib/complaints/types';
+import type { ComplaintFacets, ComplaintFilters, ComplaintListResult, ComplaintRecord } from '@/lib/complaints/types';
 import { formatDate, formatNumber } from '@/lib/utils';
 
 const DEFAULT_FILTERS: ComplaintFilters = {
@@ -34,6 +35,21 @@ export function ComplaintsRegisterClient() {
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ComplaintRecord | null>(null);
+  const [facets, setFacets] = useState<ComplaintFacets>({ firms: [], products: [], assignedTo: [], reviewers: [] });
+  const { can } = useAuth();
+  const canEdit = can('operator');
+  const canExport = can('reviewer');
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/complaints/facets', { cache: 'no-store' })
+      .then(async (response) => ({ response, payload: await response.json().catch(() => ({})) }))
+      .then(({ response, payload }) => {
+        if (!cancelled && response.ok && payload.success) setFacets(payload.facets);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchComplaints = useCallback(async () => {
     setLoading(true);
@@ -77,8 +93,8 @@ export function ComplaintsRegisterClient() {
     void fetchComplaints();
   }, [fetchComplaints]);
 
-  const firms = useMemo(() => Array.from(new Set((data?.records || []).map((record) => record.firmName))).sort((a, b) => a.localeCompare(b)), [data?.records]);
-  const products = useMemo(() => Array.from(new Set((data?.records || []).map((record) => record.product).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [data?.records]);
+  const firms = facets.firms;
+  const products = facets.products;
   const exportHref = useMemo(() => {
     const params = new URLSearchParams();
     if (filters.query) params.set('query', filters.query);
@@ -103,15 +119,15 @@ export function ComplaintsRegisterClient() {
           <p className="mt-1 text-sm text-slate-600">Operational complaints register, timeline tracking, and management actions alongside the FOS analytics product.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/imports/complaints" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300">
+          {canEdit ? <Link href="/imports/complaints" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300">
             <Upload className="h-4 w-4" /> Bulk import
-          </Link>
-          <Link data-testid="complaints-export" href={exportHref} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300">
+          </Link> : null}
+          {canExport ? <Link data-testid="complaints-export" href={exportHref} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300">
             <Download className="h-4 w-4" /> Export CSV
-          </Link>
-          <Button className="gap-2" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+          </Link> : null}
+          {canEdit ? <Button className="gap-2" onClick={() => { setEditing(null); setDialogOpen(true); }}>
             <Plus className="h-4 w-4" /> Add complaint
-          </Button>
+          </Button> : null}
         </div>
       </section>
 
@@ -187,8 +203,14 @@ export function ComplaintsRegisterClient() {
             <option value="">All products</option>
             {products.map((product) => <option key={product} value={product}>{product}</option>)}
           </select>
-          <input value={filters.assignedTo} onChange={(event) => setFilters((current) => ({ ...current, assignedTo: event.target.value, page: 1 }))} placeholder="Filter by owner" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-          <input value={filters.reviewer} onChange={(event) => setFilters((current) => ({ ...current, reviewer: event.target.value, page: 1 }))} placeholder="Filter by reviewer" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+          <select value={filters.assignedTo} onChange={(event) => setFilters((current) => ({ ...current, assignedTo: event.target.value, page: 1 }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <option value="">All owners</option>
+            {facets.assignedTo.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
+          </select>
+          <select data-testid="complaints-reviewer" value={filters.reviewer} onChange={(event) => setFilters((current) => ({ ...current, reviewer: event.target.value, page: 1 }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <option value="">All reviewers</option>
+            {facets.reviewers.map((reviewer) => <option key={reviewer} value={reviewer}>{reviewer}</option>)}
+          </select>
           <div className="md:col-span-6 xl:col-span-8 flex justify-end">
             <Button variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>Reset filters</Button>
           </div>
@@ -261,7 +283,7 @@ export function ComplaintsRegisterClient() {
                     <TableCell>{record.fosReferred ? 'Yes' : 'No'}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => { setEditing(record); setDialogOpen(true); }}>Edit</Button>
+                        {canEdit ? <Button size="sm" variant="outline" onClick={() => { setEditing(record); setDialogOpen(true); }}>Edit</Button> : null}
                         <Link href={`/complaints/${record.id}`} className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">
                           Open <ExternalLink className="h-3.5 w-3.5" />
                         </Link>
@@ -277,7 +299,7 @@ export function ComplaintsRegisterClient() {
                         <p className="text-sm text-slate-500">Try widening the search, clearing one of the workflow filters, or import a new complaints file.</p>
                         <div className="flex justify-center gap-2">
                           <Button variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>Clear filters</Button>
-                          <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>Add complaint</Button>
+                          {canEdit ? <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>Add complaint</Button> : null}
                         </div>
                       </div>
                     </TableCell>

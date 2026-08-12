@@ -18,12 +18,15 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    console.error('FOS case list query failed', { error: error instanceof Error ? error.message : String(error) });
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch case list.',
+        error: 'Case Explorer is temporarily unavailable. Retry in a moment; dashboard summaries remain available.',
+        errorCode: 'CASE_LIST_TEMPORARILY_UNAVAILABLE',
+        retryable: true,
       },
-      { status: 500 }
+      { status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'no-store' } }
     );
   }
 }

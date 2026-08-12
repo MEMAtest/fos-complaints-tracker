@@ -26,21 +26,24 @@ export function ThemeCard({ title, aiNarrative, themes, variant }: ThemeCardProp
         {/* AI narrative block */}
         {aiNarrative && (
           <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-slate-400">AI Analysis</p>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">AI-assisted narrative · human review required</p>
             <div className="text-sm leading-relaxed text-slate-700 whitespace-pre-line">{aiNarrative}</div>
           </div>
         )}
 
         {/* Structured themes list */}
         {themes.length > 0 ? (
-          <ul className="space-y-2">
+          <div>
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-slate-500">Structured themes extracted from the brief</p>
+            <ul className="space-y-2">
             {themes.map((theme, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotColor}`} />
                 <span className="text-sm text-slate-700">{theme.theme}</span>
               </li>
             ))}
-          </ul>
+            </ul>
+          </div>
         ) : !aiNarrative ? (
           <p className="text-center text-sm text-slate-400">No theme data available.</p>
         ) : null}

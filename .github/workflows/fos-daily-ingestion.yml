@@ -58,7 +58,6 @@ jobs:
         run: |
           set -euo pipefail
           ARGS=(--window-days "$WINDOW_DAYS")
-          ARGS+=(--allow-empty)
           if [ -n "$LIMIT" ]; then
             ARGS+=(--limit "$LIMIT")
           fi

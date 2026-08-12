@@ -18,6 +18,7 @@ import { YearTrendChart } from '@/components/advisor/year-trend-chart';
 import { PrecedentBarChart } from '@/components/advisor/precedent-bar-chart';
 import { DecisionsBrowser } from '@/components/advisor/decisions-browser';
 import { formatDate } from '@/lib/utils';
+import { MarketingHeader } from '@/components/marketing/marketing-header';
 
 export default function AdvisorPage() {
   const { brief, loading, error, options, optionsLoading, fetchBrief } = useFosAdvisor();
@@ -28,10 +29,9 @@ export default function AdvisorPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setInitialQuery({
-      product: String(params.get('product') || '').trim(),
-      rootCause: String(params.get('rootCause') || '').trim(),
-    });
+    const product = String(params.get('product') || '').trim();
+    const rootCause = String(params.get('rootCause') || '').trim();
+    if (product || rootCause) setInitialQuery({ product, rootCause });
   }, []);
 
   useEffect(() => {
@@ -53,7 +53,8 @@ export default function AdvisorPage() {
     void fetchBrief({ product, rootCause, freeText });
   };
 
-  return (
+  return (<>
+    <MarketingHeader />
     <main className="relative min-h-screen pb-16">
       {loading && (
         <div className="sticky top-0 z-40 h-1 w-full overflow-hidden bg-blue-100/80">
@@ -124,7 +125,7 @@ export default function AdvisorPage() {
                 )}
               </div>
               <p className="text-xs text-slate-500">
-                Brief generated {brief.generatedAt ? formatDate(brief.generatedAt) : 'recently'}
+                Data through {brief.dataThrough ? formatDate(brief.dataThrough) : 'unavailable'} · Generated {brief.generatedAt ? formatDate(brief.generatedAt) : 'recently'}
               </p>
             </div>
 
@@ -170,13 +171,13 @@ export default function AdvisorPage() {
             {/* 7. What Wins / What Loses (AI narratives with case citations) */}
             <section className="grid gap-4 md:grid-cols-2">
               <ThemeCard
-                title="What Wins Cases (Not Upheld)"
+                title="Why firms succeeded (not upheld)"
                 aiNarrative={brief.aiWhatWins}
                 themes={brief.whatWins}
                 variant="wins"
               />
               <ThemeCard
-                title="What Loses Cases (Upheld)"
+                title="Why complainants succeeded (upheld)"
                 aiNarrative={brief.aiWhatLoses}
                 themes={brief.whatLoses}
                 variant="loses"
@@ -186,7 +187,8 @@ export default function AdvisorPage() {
             {/* AI Guidance (if available) */}
             {brief.aiGuidance && (
               <div className="rounded-xl border-l-4 border-blue-500 bg-white p-5 shadow-sm">
-                <h3 className="mb-3 text-sm font-semibold text-slate-900">Compliance Guidance</h3>
+                <h3 className="mb-1 text-sm font-semibold text-slate-900">Compliance Guidance</h3>
+                <p className="mb-3 text-[10px] font-medium uppercase tracking-wider text-slate-500">AI-assisted narrative · human review required</p>
                 <div className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
                   {brief.aiGuidance}
                 </div>
@@ -202,6 +204,9 @@ export default function AdvisorPage() {
             <ExpandableCard title="Sample Decisions" description="Recent upheld and not-upheld decisions. Click a row to view full case detail.">
               <DecisionsBrowser cases={brief.sampleCases} onSelectCase={setSelectedCaseId} />
             </ExpandableCard>
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+              Source: published Financial Ombudsman Service decisions linked in the case list. Computed metrics and deterministic recommendations are separated from AI-assisted narrative. This is decision support, not legal advice or a substitute for independent regulatory review.
+            </p>
           </>
         )}
 
@@ -225,5 +230,6 @@ export default function AdvisorPage() {
         onSelectCase={setSelectedCaseId}
       />
     </main>
+  </>
   );
 }

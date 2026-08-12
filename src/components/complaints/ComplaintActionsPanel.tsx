@@ -26,6 +26,7 @@ export function ComplaintActionsPanel({
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
   const openActions = useMemo(() => actions.filter((action) => action.status === 'open' || action.status === 'in_progress'), [actions]);
+  const canManageActions = Boolean(user && ['operator', 'reviewer', 'manager', 'admin'].includes(user.role));
 
   async function createAction() {
     if (!title.trim()) return;
@@ -104,7 +105,7 @@ export function ComplaintActionsPanel({
           ) : null}
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+        {canManageActions ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Add management action</p>
           <div className="mt-3 space-y-3">
             <input data-testid="action-title-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Action title" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
@@ -115,7 +116,7 @@ export function ComplaintActionsPanel({
               Add action
             </Button>
           </div>
-        </div>
+        </div> : null}
 
         <div className="space-y-3" data-testid="actions-list">
           {actions.length === 0 ? (
@@ -140,16 +141,16 @@ export function ComplaintActionsPanel({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {action.status !== 'completed' ? (
+                  {canManageActions && action.status !== 'completed' ? (
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => void updateAction(action.id, { status: 'completed' })} disabled={saving === action.id} data-testid={`action-complete-${action.id}`}>
                       {saving === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                       Complete
                     </Button>
-                  ) : (
+                  ) : canManageActions ? (
                     <Button size="sm" variant="outline" onClick={() => void updateAction(action.id, { status: 'open' })} disabled={saving === action.id}>
                       Reopen
                     </Button>
-                  )}
+                  ) : null}
                   {user?.role === 'manager' || user?.role === 'admin' ? (
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => void deleteAction(action.id)} disabled={saving === action.id || action.source === 'system'}>
                       {saving === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}

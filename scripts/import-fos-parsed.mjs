@@ -6,6 +6,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { connectWithRetry, createPoolConfig, loadLocalEnv } from './lib/db-runtime.mjs';
+import { canonicalProductSector } from './lib/fos-taxonomy.mjs';
 
 const { Pool } = pg;
 
@@ -14,6 +15,7 @@ const COLUMN_NAMES = [
   'decision_date',
   'business_name',
   'product_sector',
+  'product_sector_original',
   'outcome',
   'ombudsman_name',
   'source_url',
@@ -99,7 +101,8 @@ function rowFromRecord(record, fileName, includeFullText) {
     decision_reference: baseReference,
     decision_date: safeDate(record.decision_date || record.decisionDate || record.decision_date_raw),
     business_name: cleanText(record.business_name),
-    product_sector: cleanText(record.product_sector),
+    product_sector: canonicalProductSector(record.product_sector),
+    product_sector_original: cleanText(record.product_sector_original || record.product_sector),
     outcome: normalizeOutcome(record.outcome || record.outcome_raw),
     ombudsman_name: cleanText(record.ombudsman_name),
     source_url: cleanText(record.source_url),
@@ -141,6 +144,7 @@ function createBatchInsertSql(rowCount) {
       decision_date = EXCLUDED.decision_date,
       business_name = EXCLUDED.business_name,
       product_sector = EXCLUDED.product_sector,
+      product_sector_original = COALESCE(EXCLUDED.product_sector_original, fos_decisions.product_sector_original),
       outcome = EXCLUDED.outcome,
       ombudsman_name = EXCLUDED.ombudsman_name,
       source_url = EXCLUDED.source_url,
@@ -313,6 +317,7 @@ async function main() {
             row.decision_date,
             row.business_name,
             row.product_sector,
+            row.product_sector_original,
             row.outcome,
             row.ombudsman_name,
             row.source_url,

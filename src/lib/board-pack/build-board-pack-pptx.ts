@@ -38,6 +38,7 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
   addPanel(cover, 0.7, 2.05, 11.9, 1.15, 'Scope and reporting frame', palette.white, palette.border);
   cover.addText(`Period: ${data.periodLabel}`, { x: 0.95, y: 2.33, w: 3.8, h: 0.18, fontSize: 10, color: palette.slate });
   cover.addText(`Generated: ${new Date(data.generatedAt).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' })}`, { x: 0.95, y: 2.55, w: 4.5, h: 0.18, fontSize: 10, color: palette.slate });
+  cover.addText(`FOS data through: ${data.dataThrough || 'Unavailable'}`, { x: 6.2, y: 2.55, w: 3.6, h: 0.18, fontSize: 10, color: palette.slate });
   cover.addText(data.sections.filter((section) => section.status === 'included').map((section) => section.title).join(' • '), {
     x: 0.95,
     y: 2.78,
@@ -52,6 +53,7 @@ export async function buildBoardPackPptx(data: BoardPackData): Promise<Buffer> {
   addMetricCard(cover, 3.83, 3.55, 2.95, 1.05, 'Upheld rate', `${data.summary.upheldRate.toFixed(1)}%`, palette.blue);
   addMetricCard(cover, 6.96, 3.55, 2.95, 1.05, 'Open complaints', formatNumber(data.summary.openComplaints), palette.teal);
   addMetricCard(cover, 10.09, 3.55, 2.23, 1.05, 'Overdue', formatNumber(data.summary.overdueComplaints), palette.red);
+  cover.addText(`Source: ${data.sourceUrl}\n${data.regulatoryDisclaimer}`, { x: 0.7, y: 4.85, w: 11.9, h: 0.55, fontSize: 8, color: palette.muted, valign: 'top' });
   addFooter(cover, 'Cover', data.branding.organizationName);
 
   const summary = pptx.addSlide();

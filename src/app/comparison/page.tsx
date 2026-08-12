@@ -11,6 +11,7 @@ import { OutcomeComparison } from '@/components/comparison/outcome-comparison';
 import { ThemeRadar } from '@/components/comparison/theme-radar';
 import { ComparisonTable } from '@/components/comparison/comparison-table';
 import { FOSComparisonSnapshot } from '@/lib/fos/types';
+import { MarketingHeader } from '@/components/marketing/marketing-header';
 
 const COMPARISON_TIMEOUT_MS = 60_000;
 
@@ -168,8 +169,9 @@ export default function ComparisonPage() {
     return `Comparing ${selectedFirms.length} firms`;
   }, [hasEnoughFirms, selectedFirms]);
 
-  return (
-    <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-5 px-4 py-5 md:px-8">
+  return (<>
+    <MarketingHeader />
+    <main className="mx-auto flex w-full max-w-[1340px] flex-col gap-5 px-4 py-5 md:px-8">
       {loading && (
         <div className="sticky top-0 z-40 -mx-4 -mt-5 mb-0 h-1 w-[calc(100%+2rem)] overflow-hidden bg-blue-100/80 md:-mx-8 md:w-[calc(100%+4rem)]">
           <div className="h-full w-1/3 animate-pulse bg-gradient-to-r from-teal-600 to-blue-600" />
@@ -258,6 +260,7 @@ export default function ComparisonPage() {
           </section>
         </>
       )}
-    </div>
+    </main>
+  </>
   );
 }

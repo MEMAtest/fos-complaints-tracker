@@ -2,7 +2,6 @@ import { DatabaseClient } from '@/lib/database';
 import {
   FOSComparisonSnapshot,
   FOSDashboardFilters,
-  FOSFirmComparisonData,
   FOSIngestionStatus,
   FOSRootCauseSnapshot,
   FOSTagCount,
@@ -253,93 +252,99 @@ export async function getComparisonSnapshot(
   ensureDatabaseConfigured();
   await ensureFosDecisionsTableExists();
 
-  const firms = await Promise.all(
-    firmNames.map((name) => queryFirmComparisonData(name, filters))
-  );
-
-  return { firms };
-}
-
-async function queryFirmComparisonData(
-  firmName: string,
-  filters: FOSDashboardFilters
-): Promise<FOSFirmComparisonData> {
-  const where = buildWhereClause(filters, 'd', 1);
-  const firmIndex = where.nextIndex;
-  const firmCondition = `COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') = $${firmIndex}`;
+  const scopedFilters = { ...filters, firms: [] };
+  const where = buildWhereClause(scopedFilters, 'd', 1);
+  const firmsIndex = where.nextIndex;
+  const firmCondition = `COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') = ANY($${firmsIndex}::TEXT[])`;
   const fullWhere = where.whereSql
     ? `${where.whereSql} AND ${firmCondition}`
     : `WHERE ${firmCondition}`;
 
   const rows = await DatabaseClient.query<Record<string, unknown>>(
     `
+      WITH requested(name, ord) AS (
+        SELECT selected.name, selected.ordinality
+        FROM UNNEST($${firmsIndex}::TEXT[]) WITH ORDINALITY AS selected(name, ordinality)
+      ),
+      scoped AS MATERIALIZED (
+        SELECT
+          COALESCE(NULLIF(BTRIM(d.business_name), ''), 'Unknown firm') AS firm_name,
+          COALESCE(NULLIF(BTRIM(d.product_sector), ''), 'Unspecified') AS product,
+          EXTRACT(YEAR FROM d.decision_date)::INT AS year,
+          ${outcomeExpression('d')} AS outcome_bucket
+        FROM fos_decisions d
+        ${fullWhere}
+      ),
+      totals AS (
+        SELECT
+          firm_name,
+          COUNT(*)::INT AS total_cases,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE outcome_bucket = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE outcome_bucket = 'not_upheld') / NULLIF(COUNT(*), 0), 2) AS not_upheld_rate
+        FROM scoped
+        GROUP BY firm_name
+      ),
+      product_counts AS (
+        SELECT
+          firm_name,
+          product,
+          COUNT(*)::INT AS total,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE outcome_bucket = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate
+        FROM scoped
+        GROUP BY firm_name, product
+      ),
+      ranked_products AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY firm_name ORDER BY total DESC, product ASC) AS rank
+        FROM product_counts
+      ),
+      product_json AS (
+        SELECT
+          firm_name,
+          jsonb_agg(
+            jsonb_build_object('product', product, 'total', total, 'upheld_rate', upheld_rate)
+            ORDER BY total DESC, product ASC
+          ) FILTER (WHERE rank <= 10) AS top_products
+        FROM ranked_products
+        GROUP BY firm_name
+      ),
+      year_counts AS (
+        SELECT
+          firm_name,
+          year,
+          COUNT(*)::INT AS total,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE outcome_bucket = 'upheld') / NULLIF(COUNT(*), 0), 2) AS upheld_rate
+        FROM scoped
+        WHERE year IS NOT NULL
+        GROUP BY firm_name, year
+      ),
+      year_json AS (
+        SELECT
+          firm_name,
+          jsonb_agg(
+            jsonb_build_object('year', year, 'total', total, 'upheld_rate', upheld_rate)
+            ORDER BY year ASC
+          ) AS year_breakdown
+        FROM year_counts
+        GROUP BY firm_name
+      )
       SELECT
-        COUNT(*)::INT AS total_cases,
-        ROUND(
-          COALESCE(
-            COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'upheld')::NUMERIC
-            / NULLIF(COUNT(*), 0) * 100, 0
-          ), 2
-        ) AS upheld_rate,
-        ROUND(
-          COALESCE(
-            COUNT(*) FILTER (WHERE ${outcomeExpression('d')} = 'not_upheld')::NUMERIC
-            / NULLIF(COUNT(*), 0) * 100, 0
-          ), 2
-        ) AS not_upheld_rate,
-        COALESCE(
-          (
-            SELECT jsonb_agg(row_to_json(tp) ORDER BY tp.total DESC)
-            FROM (
-              SELECT
-                COALESCE(NULLIF(BTRIM(d2.product_sector), ''), 'Unspecified') AS product,
-                COUNT(*)::INT AS total,
-                ROUND(
-                  COALESCE(
-                    COUNT(*) FILTER (WHERE ${outcomeExpression('d2')} = 'upheld')::NUMERIC
-                    / NULLIF(COUNT(*), 0) * 100, 0
-                  ), 2
-                ) AS upheld_rate
-              FROM fos_decisions d2
-              WHERE COALESCE(NULLIF(BTRIM(d2.business_name), ''), 'Unknown firm') = $${firmIndex}
-              GROUP BY COALESCE(NULLIF(BTRIM(d2.product_sector), ''), 'Unspecified')
-              ORDER BY total DESC
-              LIMIT 10
-            ) tp
-          ),
-          '[]'::jsonb
-        ) AS top_products,
-        COALESCE(
-          (
-            SELECT jsonb_agg(row_to_json(yb) ORDER BY yb.year ASC)
-            FROM (
-              SELECT
-                EXTRACT(YEAR FROM d3.decision_date)::INT AS year,
-                COUNT(*)::INT AS total,
-                ROUND(
-                  COALESCE(
-                    COUNT(*) FILTER (WHERE ${outcomeExpression('d3')} = 'upheld')::NUMERIC
-                    / NULLIF(COUNT(*), 0) * 100, 0
-                  ), 2
-                ) AS upheld_rate
-              FROM fos_decisions d3
-              WHERE COALESCE(NULLIF(BTRIM(d3.business_name), ''), 'Unknown firm') = $${firmIndex}
-                AND d3.decision_date IS NOT NULL
-              GROUP BY EXTRACT(YEAR FROM d3.decision_date)::INT
-              ORDER BY year ASC
-            ) yb
-          ),
-          '[]'::jsonb
-        ) AS year_breakdown
-      FROM fos_decisions d
-      ${fullWhere}
+        requested.name,
+        COALESCE(totals.total_cases, 0) AS total_cases,
+        COALESCE(totals.upheld_rate, 0) AS upheld_rate,
+        COALESCE(totals.not_upheld_rate, 0) AS not_upheld_rate,
+        COALESCE(product_json.top_products, '[]'::jsonb) AS top_products,
+        COALESCE(year_json.year_breakdown, '[]'::jsonb) AS year_breakdown
+      FROM requested
+      LEFT JOIN totals ON totals.firm_name = requested.name
+      LEFT JOIN product_json ON product_json.firm_name = requested.name
+      LEFT JOIN year_json ON year_json.firm_name = requested.name
+      ORDER BY requested.ord
     `,
-    [...where.params, firmName]
+    [...where.params, firmNames]
   );
 
-  const row = rows[0] || {};
-  return {
-    name: firmName,
+  const firms = rows.map((row) => ({
+    name: normalizeLabel(row.name, 'Unknown firm'),
     totalCases: toInt(row.total_cases),
     upheldRate: toNumber(row.upheld_rate),
     notUpheldRate: toNumber(row.not_upheld_rate),
@@ -353,5 +358,7 @@ async function queryFirmComparisonData(
       total: toInt(y.total),
       upheldRate: toNumber(y.upheld_rate),
     })),
-  };
+  }));
+
+  return { firms };
 }

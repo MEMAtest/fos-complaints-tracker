@@ -70,11 +70,19 @@ export interface BoardPackPreview {
     fileName: string | null;
     createdAt: string;
   }>;
+  scopeOptions: {
+    firms: string[];
+    products: string[];
+    outcomes: string[];
+  };
 }
 
 export interface BoardPackData {
   title: string;
   generatedAt: string;
+  dataThrough: string | null;
+  sourceUrl: string;
+  regulatoryDisclaimer: string;
   periodLabel: string;
   branding: {
     organizationName: string;

@@ -233,7 +233,7 @@ ALTER TABLE complaint_letters
 ALTER TABLE complaint_activities DROP CONSTRAINT IF EXISTS complaint_activities_activity_type_check;
 ALTER TABLE complaint_activities
   ADD CONSTRAINT complaint_activities_activity_type_check CHECK (
-    activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
+    activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'action_created', 'action_updated', 'action_completed', 'action_deleted', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
   );
 
 CREATE TABLE IF NOT EXISTS complaint_letter_versions (
@@ -257,6 +257,8 @@ CREATE TABLE IF NOT EXISTS complaint_letter_versions (
   snapshot_reason TEXT,
   snapshot_by TEXT,
   snapshot_by_role TEXT,
+  assistance_provenance JSONB NOT NULL DEFAULT '[]'::jsonb,
+  evidence_links JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT complaint_letter_versions_status_check CHECK (status IN ('draft', 'generated', 'under_review', 'approved', 'rejected_for_rework', 'sent', 'superseded')),
   CONSTRAINT complaint_letter_versions_unique UNIQUE (letter_id, version_number),
@@ -364,6 +366,8 @@ ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS review_decision_c
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS review_decision_note TEXT;
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS approved_role TEXT;
 ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS snapshot_by_role TEXT;
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS assistance_provenance JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE complaint_letter_versions ADD COLUMN IF NOT EXISTS evidence_links JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 ALTER TABLE complaint_letter_versions DROP CONSTRAINT IF EXISTS complaint_letter_versions_status_check;
 ALTER TABLE complaint_letter_versions
@@ -389,7 +393,7 @@ ALTER TABLE complaints_workspace_settings ADD COLUMN IF NOT EXISTS require_indep
 ALTER TABLE complaint_activities DROP CONSTRAINT IF EXISTS complaint_activities_activity_type_check;
 ALTER TABLE complaint_activities
   ADD CONSTRAINT complaint_activities_activity_type_check CHECK (
-    activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
+    activity_type IN ('complaint_created', 'status_change', 'evidence_added', 'evidence_updated', 'evidence_archived', 'evidence_deleted', 'letter_generated', 'letter_submitted_for_review', 'letter_approved', 'letter_rejected', 'letter_sent', 'letter_superseded', 'note_added', 'action_created', 'action_updated', 'action_completed', 'action_deleted', 'assigned', 'priority_change', 'fos_referred', 'resolved', 'closed')
   );
 
 ALTER TABLE complaints_workspace_settings DROP CONSTRAINT IF EXISTS complaints_workspace_settings_current_actor_role_check;
@@ -549,6 +553,8 @@ const LETTER_VERSION_REVIEW_COLUMNS = [
   'review_decision_note',
   'approved_role',
   'snapshot_by_role',
+  'assistance_provenance',
+  'evidence_links',
 ];
 
 const SETTINGS_REVIEW_COLUMNS = [

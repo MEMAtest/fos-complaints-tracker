@@ -13,10 +13,10 @@ export function FooterCta({ workspaceHref }: FooterCtaProps) {
         <div className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-white/6 p-8 shadow-[0_32px_90px_rgba(0,0,0,0.24)] backdrop-blur-md md:p-10">
           <p className="text-xs uppercase tracking-[0.24em] text-white/55">Ready to build defensible complaint intelligence?</p>
           <h2 className="mt-4 max-w-4xl text-3xl font-semibold tracking-tight md:text-4xl">
-            Start with live complaint intelligence, then move into the workspace when handling depth actually matters.
+            Start with source-backed complaint intelligence, then move into the workspace when handling depth actually matters.
           </h2>
           <p className="mt-4 max-w-3xl text-base leading-8 text-white/72">
-            Public analysis, complaint handling workflow, and leadership reporting all sit on the same product layer. That is the difference between a live platform and another disconnected complaints stack.
+            Public analysis, complaint handling workflow, and leadership reporting all sit on the same product layer, with evidence and decisions kept traceable.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <PublicTrackedLink
@@ -38,7 +38,7 @@ export function FooterCta({ workspaceHref }: FooterCtaProps) {
             </PublicTrackedLink>
           </div>
           <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/55">
-            <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'live_data' }} className="transition hover:text-white">Live Data</PublicTrackedLink>
+            <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'evidence_data' }} className="transition hover:text-white">Evidence Explorer</PublicTrackedLink>
             <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'platform' }} className="transition hover:text-white">Platform</PublicTrackedLink>
             <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'workspace' }} className="transition hover:text-white">Workspace</PublicTrackedLink>
             <PublicTrackedLink href="/insights/years" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'public_insights' }} className="transition hover:text-white">Public Insights</PublicTrackedLink>

@@ -126,12 +126,15 @@ export async function GET(request: NextRequest) {
 
     return Response.json(payload, { headers: RESPONSE_HEADERS });
   } catch (error) {
+    console.error('FOS comparison query failed', { error: error instanceof Error ? error.message : String(error) });
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch comparison data.',
+        error: 'Firm comparison is temporarily unavailable. Please retry in a moment.',
+        errorCode: 'COMPARISON_TEMPORARILY_UNAVAILABLE',
+        retryable: true,
       },
-      { status: 500 }
+      { status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'no-store' } }
     );
   }
 }
