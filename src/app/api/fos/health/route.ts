@@ -14,6 +14,12 @@ export async function GET() {
         lastSuccessfulIngestion: ingestion.lastSuccessfulIngestion,
         lastSummaryRefresh: ingestion.lastSummaryRefresh,
         pipelineStatus: ingestion.pipelineStatus,
+        sourceCheckedAt: ingestion.sourceCheckedAt,
+        sourceLatestDecisionDate: ingestion.sourceLatestDecisionDate,
+        sourceSyncStatus: ingestion.sourceSyncStatus,
+        decisionDateLagDays: ingestion.decisionDateLagDays,
+        recordsDiscovered: ingestion.recordsDiscovered,
+        recordsImported: ingestion.recordsImported,
       },
       { headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' } }
     );
@@ -26,6 +32,12 @@ export async function GET() {
         lastSuccessfulIngestion: null,
         lastSummaryRefresh: null,
         pipelineStatus: 'error',
+        sourceCheckedAt: null,
+        sourceLatestDecisionDate: null,
+        sourceSyncStatus: 'source_unavailable',
+        decisionDateLagDays: null,
+        recordsDiscovered: null,
+        recordsImported: null,
         error: 'Platform health is temporarily unavailable.',
       },
       { status: 503, headers: { 'Cache-Control': 'no-store' } }

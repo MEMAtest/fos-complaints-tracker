@@ -8,7 +8,11 @@ import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import pg from "pg";
+import { connectWithRetry, createPoolConfig } from "../lib/db-runtime.mjs";
 import { canonicalProductSector } from "../lib/fos-taxonomy.mjs";
+
+const { Pool } = pg;
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(SCRIPT_DIR, "..", "..");
@@ -701,6 +705,11 @@ function buildParsedRecord(record, fullText, pdfPath, pdfHash) {
 async function scrapeAndParse(options) {
   const discoveries = await discoverDecisions(options);
   const limitedDiscoveries = options.limit ? discoveries.slice(0, options.limit) : discoveries;
+  const sourceLatestDecisionDate = limitedDiscoveries
+    .map((record) => toIsoDate(record.decision_date_raw || record.decision_date))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
 
   await ensureDir(options.outputRoot);
   await ensureDir(options.pdfDir);
@@ -718,6 +727,7 @@ async function scrapeAndParse(options) {
       parsed: 0,
       failed: 0,
       failures: [],
+      sourceLatestDecisionDate,
     };
   }
 
@@ -770,7 +780,80 @@ async function scrapeAndParse(options) {
     parsed,
     failed: failures.length,
     failures,
+    sourceLatestDecisionDate,
   };
+}
+
+async function recordSourceObservation(summary) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return;
+
+  const pool = new Pool(createPoolConfig({ connectionString: databaseUrl, connectionTimeoutMillis: 8_000 }));
+  const client = await connectWithRetry(pool, { label: "fos:record-source-status connect" });
+  try {
+    const localResult = await client.query(`SELECT MAX(decision_date)::TEXT AS data_through FROM fos_decisions`);
+    const localDataThrough = toIsoDate(localResult.rows[0]?.data_through);
+    const sourceLatestDecisionDate = [localDataThrough, summary.sourceLatestDecisionDate].filter(Boolean).sort().at(-1) || null;
+    const recordsImported = summary.imported ? summary.parsed : 0;
+    const sourceSyncStatus = summary.failed > 0
+      ? "partial"
+      : summary.discovered > recordsImported && !summary.imported
+        ? "behind"
+        : "in_sync";
+
+    let runId = null;
+    if (summary.imported) {
+      const updated = await client.query(
+        `
+          UPDATE fos_ingestion_runs
+          SET source_checked_at = $1,
+              source_window_start = $2,
+              source_window_end = $3,
+              source_latest_decision_date = $4,
+              records_discovered = $5,
+              records_imported = $6,
+              source_sync_status = $7,
+              updated_at = NOW()
+          WHERE id = (
+            SELECT id
+            FROM fos_ingestion_runs
+            WHERE LOWER(status) IN ('idle', 'success', 'succeeded', 'complete', 'completed')
+            ORDER BY COALESCE(last_success_at, finished_at, updated_at, started_at) DESC NULLS LAST
+            LIMIT 1
+          )
+          RETURNING id
+        `,
+        [summary.generatedAt, summary.startDate, summary.endDate, sourceLatestDecisionDate, summary.discovered, recordsImported, sourceSyncStatus],
+      );
+      runId = updated.rows[0]?.id || null;
+    }
+
+    if (!runId) {
+      const inserted = await client.query(
+        `
+          INSERT INTO fos_ingestion_runs (
+            status, windows_done, windows_total, failed_windows, records_ingested,
+            started_at, finished_at, last_success_at, source_checked_at,
+            source_window_start, source_window_end, source_latest_decision_date,
+            records_discovered, records_imported, source_sync_status, updated_at
+          ) VALUES (
+            'idle', 1, 1, $1, $2,
+            $3, $3, $3, $3,
+            $4, $5, $6,
+            $7, $8, $9, NOW()
+          )
+          RETURNING id
+        `,
+        [summary.failed, recordsImported, summary.generatedAt, summary.startDate, summary.endDate, sourceLatestDecisionDate, summary.discovered, recordsImported, sourceSyncStatus],
+      );
+      runId = inserted.rows[0]?.id || null;
+    }
+
+    log(`Recorded official-source status. run=${runId || "unknown"} status=${sourceSyncStatus} sourceLatest=${sourceLatestDecisionDate || "unknown"}`);
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }
 
 function runNodeScript(scriptPath, args = []) {
@@ -875,8 +958,12 @@ async function main() {
     imported,
     outputRoot,
     failures: scrapeSummary.failures,
+    sourceLatestDecisionDate: scrapeSummary.sourceLatestDecisionDate,
   };
 
+  if (!skipImport) {
+    await recordSourceObservation(summary);
+  }
   await writeFile(path.join(outputRoot, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   await writeGithubSummary(summary);
 

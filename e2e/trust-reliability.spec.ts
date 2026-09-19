@@ -10,7 +10,14 @@ test('platform health separates source date, ingestion, refresh and pipeline sta
   expect(payload).toHaveProperty('dataThrough');
   expect(payload).toHaveProperty('lastSuccessfulIngestion');
   expect(payload).toHaveProperty('lastSummaryRefresh');
+  expect(payload).toHaveProperty('sourceCheckedAt');
+  expect(payload).toHaveProperty('sourceLatestDecisionDate');
+  expect(payload).toHaveProperty('sourceSyncStatus');
+  expect(payload).toHaveProperty('decisionDateLagDays');
+  expect(payload).toHaveProperty('recordsDiscovered');
+  expect(payload).toHaveProperty('recordsImported');
   expect(payload.pipelineStatus).toMatch(/^(healthy|delayed|stale|running|error)$/);
+  expect(payload.sourceSyncStatus).toMatch(/^(in_sync|behind|partial|source_unavailable|unknown)$/);
 });
 
 test('two-firm comparison is deterministic and completes within five seconds', async ({ request }) => {

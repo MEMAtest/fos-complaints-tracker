@@ -46,6 +46,12 @@ export const DEFAULT_INGESTION_STATUS: FOSIngestionStatus = {
   lastSuccessfulIngestion: null,
   lastSummaryRefresh: null,
   pipelineStatus: 'stale',
+  sourceCheckedAt: null,
+  sourceLatestDecisionDate: null,
+  sourceSyncStatus: 'unknown',
+  decisionDateLagDays: null,
+  recordsDiscovered: null,
+  recordsImported: null,
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -501,6 +507,11 @@ export async function queryIngestionStatus(): Promise<FOSIngestionStatus> {
   if (columns.has('failed_windows')) selectable.push('failed_windows');
   if (columns.has('records_ingested')) selectable.push('records_ingested');
   if (columns.has('last_success_at')) selectable.push('last_success_at');
+  if (columns.has('source_checked_at')) selectable.push('source_checked_at');
+  if (columns.has('source_latest_decision_date')) selectable.push('source_latest_decision_date');
+  if (columns.has('records_discovered')) selectable.push('records_discovered');
+  if (columns.has('records_imported')) selectable.push('records_imported');
+  if (columns.has('source_sync_status')) selectable.push('source_sync_status');
 
   if (!selectable.length) return deriveIngestionStatus();
 
@@ -529,6 +540,8 @@ export async function queryIngestionStatus(): Promise<FOSIngestionStatus> {
   const status = normalizeRunStatus(nullableString(row.status));
   const lastRunAt = toIsoTimestamp(row.updated_at || row.finished_at || row.started_at);
   const freshness = await queryPipelineFreshness();
+  const sourceLatestDecisionDate = toIsoDate(row.source_latest_decision_date);
+  const sourceSyncStatus = normalizeSourceSyncStatus(row.source_sync_status);
 
   return {
     status,
@@ -540,9 +553,31 @@ export async function queryIngestionStatus(): Promise<FOSIngestionStatus> {
     windowsTotal: row.windows_total == null ? null : toInt(row.windows_total),
     failedWindows: row.failed_windows == null ? null : toInt(row.failed_windows),
     recordsIngested: row.records_ingested == null ? null : toInt(row.records_ingested),
+    sourceCheckedAt: toIsoTimestamp(row.source_checked_at),
+    sourceLatestDecisionDate,
+    sourceSyncStatus,
+    decisionDateLagDays: dateLagDays(freshness.dataThrough, sourceLatestDecisionDate),
+    recordsDiscovered: row.records_discovered == null ? null : toInt(row.records_discovered),
+    recordsImported: row.records_imported == null ? null : toInt(row.records_imported),
     ...freshness,
     pipelineStatus: status === 'running' ? 'running' : status === 'error' ? 'error' : freshness.pipelineStatus,
   };
+}
+
+function normalizeSourceSyncStatus(value: unknown): FOSIngestionStatus['sourceSyncStatus'] {
+  const normalized = nullableString(value)?.toLowerCase();
+  if (normalized === 'in_sync' || normalized === 'behind' || normalized === 'partial' || normalized === 'source_unavailable') {
+    return normalized;
+  }
+  return 'unknown';
+}
+
+function dateLagDays(dataThrough: string | null, sourceLatest: string | null): number | null {
+  if (!dataThrough || !sourceLatest) return null;
+  const dataTime = new Date(`${dataThrough}T00:00:00.000Z`).getTime();
+  const sourceTime = new Date(`${sourceLatest}T00:00:00.000Z`).getTime();
+  if (!Number.isFinite(dataTime) || !Number.isFinite(sourceTime)) return null;
+  return Math.max(0, Math.round((sourceTime - dataTime) / 86_400_000));
 }
 
 export async function deriveIngestionStatus(): Promise<FOSIngestionStatus> {

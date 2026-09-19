@@ -42,6 +42,24 @@ export function IngestionPanel({ ingestion, dataQuality, loading }: IngestionPan
               />
               <QualityRow label="Pipeline status" value={ingestion.pipelineStatus} />
               <QualityRow label="Data through" value={ingestion.dataThrough || 'n/a'} />
+              <QualityRow label="Official source status" value={ingestion.sourceSyncStatus.replace(/_/g, ' ')} />
+              <QualityRow label="Official source through" value={ingestion.sourceLatestDecisionDate || 'n/a'} />
+              <QualityRow
+                label="Source checked"
+                value={ingestion.sourceCheckedAt ? formatDateTime(ingestion.sourceCheckedAt) : 'n/a'}
+              />
+              <QualityRow
+                label="Decision-date lag"
+                value={ingestion.decisionDateLagDays == null ? 'n/a' : `${ingestion.decisionDateLagDays} days`}
+              />
+              <QualityRow
+                label="Discovered / imported"
+                value={
+                  ingestion.recordsDiscovered == null || ingestion.recordsImported == null
+                    ? 'n/a'
+                    : `${ingestion.recordsDiscovered} / ${ingestion.recordsImported}`
+                }
+              />
               <QualityRow label="Summary refreshed" value={ingestion.lastSummaryRefresh ? formatDateTime(ingestion.lastSummaryRefresh) : 'n/a'} />
               <QualityRow
                 label="Windows progress"

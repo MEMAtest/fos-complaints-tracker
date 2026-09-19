@@ -64,6 +64,7 @@ function isTransientDbError(error: unknown): boolean {
   return (
     message.includes('connection terminated unexpectedly') ||
     message.includes('connection timeout') ||
+    message.includes('timeout exceeded when trying to connect') ||
     message.includes('server closed the connection') ||
     message.includes('could not connect')
   );

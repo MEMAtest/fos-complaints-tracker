@@ -477,15 +477,19 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
   if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, years: [year] };
-  const [dashboard, analysis, cases, firms, products, types, yearProducts] = await Promise.all([
+  const [dashboard, analysis] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getAnalysisSnapshot(filters),
+  ]);
+  const [cases, firms] = await Promise.all([
     getCaseList(filters),
     getFirmArchive(),
+  ]);
+  const [products, types] = await Promise.all([
     getProductArchive(),
     getTypeArchive(),
-    getYearProductArchive(),
   ]);
+  const yearProducts = await getYearProductArchive();
 
   const previous = years.find((item) => item.entityKey === String(year - 1));
   const total = dashboard.overview.totalCases;
@@ -612,7 +616,9 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
 }, ['insights-year-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [firms, products, types, years, firmProducts] = await Promise.all([getFirmArchive(), getProductArchive(), getTypeArchive(), getYearArchive(), getFirmProductArchive()]);
+  const [firms, products] = await Promise.all([getFirmArchive(), getProductArchive()]);
+  const [types, years] = await Promise.all([getTypeArchive(), getYearArchive()]);
+  const firmProducts = await getFirmProductArchive();
   const current = firms.find((item) => item.slug === slug);
   if (!current) return null;
   const overrides = await getPublicationOverrides();
@@ -620,11 +626,11 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
   if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, firms: [current.title] };
-  const [dashboard, comparison, cases] = await Promise.all([
+  const [dashboard, comparison] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getComparisonSnapshot([current.title], EMPTY_FILTERS),
-    getCaseList(filters),
   ]);
+  const cases = await getCaseList(filters);
 
   const firm = comparison.firms[0];
   const topProduct = firm?.topProducts[0];
@@ -746,11 +752,15 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
 }, ['insights-firm-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getProductInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [products, firms, types, years, yearProducts, firmProducts] = await Promise.all([
+  const [products, firms] = await Promise.all([
     getProductArchive(),
     getFirmArchive(),
+  ]);
+  const [types, years] = await Promise.all([
     getTypeArchive(),
     getYearArchive(),
+  ]);
+  const [yearProducts, firmProducts] = await Promise.all([
     getYearProductArchive(),
     getFirmProductArchive(),
   ]);
@@ -761,9 +771,11 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
   if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, products: [current.title] };
-  const [dashboard, analysis, advisor, cases] = await Promise.all([
+  const [dashboard, analysis] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getAnalysisSnapshot(filters),
+  ]);
+  const [advisor, cases] = await Promise.all([
     getAdvisorBrief({ product: current.title, rootCause: null, freeText: '' }),
     getCaseList(filters),
   ]);
@@ -893,7 +905,8 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
 }, ['insights-product-page'], { revalidate: REVALIDATE_SECONDS });
 
 export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [types, firms, products, years] = await Promise.all([getTypeArchive(), getFirmArchive(), getProductArchive(), getYearArchive()]);
+  const [types, firms] = await Promise.all([getTypeArchive(), getFirmArchive()]);
+  const [products, years] = await Promise.all([getProductArchive(), getYearArchive()]);
   const current = types.find((item) => item.slug === slug);
   if (!current) return null;
   const overrides = await getPublicationOverrides();
@@ -1022,11 +1035,15 @@ export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<I
 
 export const getYearProductInsightPage = unstable_cache(async (year: number, productSlug: string): Promise<InsightPageData | null> => {
   const path = `/insights/year/${year}/product/${productSlug}`;
-  const [yearProducts, years, products, firms, types, firmProducts] = await Promise.all([
+  const [yearProducts, years] = await Promise.all([
     getYearProductArchive(),
     getYearArchive(),
+  ]);
+  const [products, firms] = await Promise.all([
     getProductArchive(),
     getFirmArchive(),
+  ]);
+  const [types, firmProducts] = await Promise.all([
     getTypeArchive(),
     getFirmProductArchive(),
   ]);
@@ -1041,9 +1058,11 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
   if (!Number.isFinite(parsedYear)) return null;
 
   const filters = { ...EMPTY_FILTERS, years: [parsedYear], products: [product] };
-  const [dashboard, analysis, advisor, cases] = await Promise.all([
+  const [dashboard, analysis] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getAnalysisSnapshot(filters),
+  ]);
+  const [advisor, cases] = await Promise.all([
     getAdvisorBrief({ product, rootCause: null, freeText: '' }),
     getCaseList(filters),
   ]);
@@ -1173,13 +1192,15 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
 
 export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string, productSlug: string): Promise<InsightPageData | null> => {
   const path = `/insights/firm/${firmSlug}/product/${productSlug}`;
-  const [firmProducts, firms, products, types, yearProducts] = await Promise.all([
+  const [firmProducts, firms] = await Promise.all([
     getFirmProductArchive(),
     getFirmArchive(),
+  ]);
+  const [products, types] = await Promise.all([
     getProductArchive(),
     getTypeArchive(),
-    getYearProductArchive(),
   ]);
+  const yearProducts = await getYearProductArchive();
   const current = firmProducts.find((item) => item.href === path);
   if (!current) return null;
   const overrides = await getPublicationOverrides();
@@ -1188,9 +1209,11 @@ export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string,
 
   const { left: firm, right: product } = splitCompositeKey(current.entityKey);
   const filters = { ...EMPTY_FILTERS, firms: [firm], products: [product] };
-  const [dashboard, comparison, advisor, cases] = await Promise.all([
+  const [dashboard, comparison] = await Promise.all([
     getDashboardSnapshot(filters, { includeCases: false }),
     getComparisonSnapshot([firm], { ...EMPTY_FILTERS, products: [product] }),
+  ]);
+  const [advisor, cases] = await Promise.all([
     getAdvisorBrief({ product, rootCause: null, freeText: '' }),
     getCaseList(filters),
   ]);

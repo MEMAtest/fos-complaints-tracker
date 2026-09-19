@@ -68,9 +68,14 @@ INSERT INTO fos_ingestion_runs (
   records_ingested,
   started_at,
   finished_at,
-  last_success_at
+  last_success_at,
+  source_checked_at,
+  source_latest_decision_date,
+  records_discovered,
+  records_imported,
+  source_sync_status
 )
-SELECT 'completed', 2200, NOW() - INTERVAL '2 minutes', NOW(), NOW()
+SELECT 'completed', 2200, NOW() - INTERVAL '2 minutes', NOW(), NOW(), NOW(), DATE '2025-02-14', 2, 2, 'in_sync'
 WHERE NOT EXISTS (SELECT 1 FROM fos_ingestion_runs);
 
 DELETE FROM fos_advisor_briefs

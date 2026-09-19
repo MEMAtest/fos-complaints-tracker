@@ -7,13 +7,31 @@ import { logRouteMetric } from '@/lib/server/route-metrics';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const EXPORT_RATE_LIMIT = parsePositiveInt(process.env.COMPLAINT_EXPORT_RATE_LIMIT, 20, 1, 1_000);
+const EXPORT_RATE_WINDOW_MS = parsePositiveInt(
+  process.env.COMPLAINT_EXPORT_RATE_WINDOW_MS,
+  10 * 60_000,
+  10_000,
+  24 * 60 * 60_000
+);
+
+function parsePositiveInt(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export async function GET(request: NextRequest) {
   const startedAt = Date.now();
   let actor: string | null = null;
   try {
     const user = await requireAuthenticatedUser(request, 'viewer');
     actor = user.email;
-    await rateLimitOrThrow(clientKeyFromRequest(request, `complaints-export:${user.email}`), 20, 60_000);
+    await rateLimitOrThrow(
+      clientKeyFromRequest(request, `complaints-export:${user.email}`),
+      EXPORT_RATE_LIMIT,
+      EXPORT_RATE_WINDOW_MS
+    );
     const filters = parseComplaintFilters(request.nextUrl.searchParams);
     const csv = await exportComplaints(filters);
     const stamp = new Date().toISOString().slice(0, 10);

@@ -31,6 +31,7 @@ export default defineConfig({
       NODE_ENV: 'test',
       DB_SSL_MODE: process.env.PLAYWRIGHT_DB_SSL_MODE || process.env.DB_SSL_MODE || 'require',
       FOS_EXPORT_RATE_WINDOW_MS: process.env.FOS_EXPORT_RATE_WINDOW_MS || '600000',
+      COMPLAINT_EXPORT_RATE_WINDOW_MS: process.env.COMPLAINT_EXPORT_RATE_WINDOW_MS || '600000',
     },
   },
 });

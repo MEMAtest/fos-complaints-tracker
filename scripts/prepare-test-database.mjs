@@ -19,6 +19,7 @@ const migrationFiles = [
   'db/migrations/20260812_complaints_workspace_hardening.sql',
   'db/migrations/20260812_fos_product_taxonomy.sql',
   'db/migrations/20260812_complaint_letter_assistance.sql',
+  'db/migrations/20260920_fos_source_observability.sql',
   'db/test-fixtures/fos-decisions.sql',
 ];
 

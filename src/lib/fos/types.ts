@@ -142,6 +142,12 @@ export interface FOSIngestionStatus {
   lastSuccessfulIngestion: string | null;
   lastSummaryRefresh: string | null;
   pipelineStatus: 'healthy' | 'delayed' | 'stale' | 'running' | 'error';
+  sourceCheckedAt: string | null;
+  sourceLatestDecisionDate: string | null;
+  sourceSyncStatus: 'in_sync' | 'behind' | 'partial' | 'source_unavailable' | 'unknown';
+  decisionDateLagDays: number | null;
+  recordsDiscovered: number | null;
+  recordsImported: number | null;
 }
 
 export interface FOSDataQuality {
