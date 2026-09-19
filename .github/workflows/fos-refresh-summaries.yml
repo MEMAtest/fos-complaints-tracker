@@ -39,7 +39,7 @@ jobs:
 
       - name: Open or update failure issue
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = "FOS summary refresh failed";
@@ -78,7 +78,7 @@ jobs:
 
       - name: Close failure issue on recovery
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = "FOS summary refresh failed";
