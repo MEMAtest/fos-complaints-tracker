@@ -13,7 +13,7 @@ export function HomepageHero({ snapshot }: HomepageHeroProps) {
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 pb-8 pt-6 md:px-8 md:pb-10 md:pt-8 xl:grid-cols-[0.88fr_1.12fr] xl:items-center">
         <div className="relative z-10">
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-700">{snapshot.hero.eyebrow}</p>
-          <h1 className="mt-3 max-w-xl text-3xl font-semibold leading-[1.05] tracking-[-0.04em] text-slate-950 md:text-4xl xl:text-[2.95rem]">
+          <h1 className="mt-3 max-w-xl text-3xl font-semibold leading-[1.08] tracking-[-0.02em] text-slate-950 md:text-4xl xl:text-[2.95rem]">
             {snapshot.hero.title}
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600 md:text-base md:leading-7">

@@ -1,20 +1,22 @@
 import type { Metadata } from 'next';
-import { Manrope, Sora } from 'next/font/google';
+import { IBM_Plex_Sans, Playfair_Display } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { AuthProvider } from '@/components/auth/auth-provider';
 import { SidebarLayout } from '@/components/layout/sidebar-layout';
 import './globals.css';
 
-const headingFont = Sora({
+const headingFont = Playfair_Display({
   subsets: ['latin'],
   variable: '--font-heading',
   weight: ['500', '600', '700'],
+  display: 'swap',
 });
 
-const bodyFont = Manrope({
+const bodyFont = IBM_Plex_Sans({
   subsets: ['latin'],
   variable: '--font-body',
   weight: ['400', '500', '600', '700'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {

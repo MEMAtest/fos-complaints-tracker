@@ -89,7 +89,7 @@ export function RegComplaintsWordmark({
         <span
           className="text-lg font-bold tracking-[-0.02em] md:text-xl"
           style={{
-            fontFamily: 'Georgia, "Times New Roman", var(--font-heading), serif',
+            fontFamily: 'var(--font-heading), Georgia, serif',
             color: isDark ? BRAND.onNavy : BRAND.navy,
           }}
         >
