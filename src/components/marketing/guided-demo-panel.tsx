@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BarChart3, ClipboardList, Files, GitCompare, Search } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { DemoStepNibBadge } from '@/components/brand/determination-quill-motion';
 import { trackPublicEvent } from '@/lib/analytics/public-events';
 import { cn } from '@/lib/utils';
 import type { HomepageDemoStep } from '@/lib/marketing/types';
@@ -156,9 +157,12 @@ export function GuidedDemoPanel({ steps }: GuidedDemoPanelProps) {
                   <h2 className="text-lg font-semibold tracking-tight text-slate-950 md:text-xl">{activeStep.title}</h2>
                   <p className="mt-1 max-w-lg text-xs leading-5 text-slate-600">{activeStep.caption}</p>
                 </div>
-                <span className={cn('rounded-full bg-gradient-to-r px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white', accentClasses[activeStep.key])}>
-                  {activeStep.label}
-                </span>
+                <div className="flex items-center gap-2">
+                  <DemoStepNibBadge stepKey={activeStep.key} />
+                  <span className={cn('rounded-full bg-gradient-to-r px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white', accentClasses[activeStep.key])}>
+                    {activeStep.label}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -180,7 +184,7 @@ export function GuidedDemoPanel({ steps }: GuidedDemoPanelProps) {
                     <p className="text-xs font-semibold text-slate-900">{chartLabelsByStep[activeStep.key]}</p>
                     <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">7-point view</p>
                   </div>
-                  <svg viewBox="0 0 420 110" className="mt-2 h-24 w-full">
+                  <svg key={`chart-${activeStep.key}`} viewBox="0 0 420 110" className="mt-2 h-24 w-full">
                     <defs>
                       <linearGradient id={`chart-gradient-${activeStep.key}`} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={activeStep.key === 'compare' ? '#f59e0b' : activeStep.key === 'work' ? '#10b981' : '#0ea5e9'} stopOpacity="0.32" />
@@ -190,8 +194,8 @@ export function GuidedDemoPanel({ steps }: GuidedDemoPanelProps) {
                     <path d="M 0 102 H 420" stroke="#dbe6f4" strokeWidth="1" />
                     <path d="M 0 68 H 420" stroke="#e4edf8" strokeWidth="1" />
                     <path d="M 0 34 H 420" stroke="#e4edf8" strokeWidth="1" />
-                    <path d={`${chartPath} L 420 110 L 0 110 Z`} fill={`url(#chart-gradient-${activeStep.key})`} stroke="none" />
-                    <path d={chartPath} fill="none" stroke={activeStep.key === 'compare' ? '#d97706' : activeStep.key === 'work' ? '#059669' : '#0284c7'} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={`${chartPath} L 420 110 L 0 110 Z`} fill={`url(#chart-gradient-${activeStep.key})`} stroke="none" className="rc-chart-area-fade" />
+                    <path d={chartPath} fill="none" stroke={activeStep.key === 'compare' ? '#d97706' : activeStep.key === 'work' ? '#059669' : '#0284c7'} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="rc-chart-ink-line" />
                     {bars.map((value, index) => {
                       const x = (420 / Math.max(bars.length - 1, 1)) * index;
                       const y = 100 - value * 0.85;
@@ -204,6 +208,8 @@ export function GuidedDemoPanel({ steps }: GuidedDemoPanelProps) {
                           fill="#ffffff"
                           stroke={activeStep.key === 'compare' ? '#d97706' : activeStep.key === 'work' ? '#059669' : '#0284c7'}
                           strokeWidth="2.5"
+                          className="rc-chart-dot-pop"
+                          style={{ animationDelay: `${120 + index * 75}ms` }}
                         />
                       );
                     })}

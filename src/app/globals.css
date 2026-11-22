@@ -92,115 +92,235 @@ button:focus {
 }
 
 
-/* RegComplaints signature Determination Quill animations */
-@keyframes rcInkDraw {
+/* RegComplaints signature Determination Quill & scroll-choreographed animations */
+@keyframes rcInkDrawOnce {
   0% {
-    stroke-dashoffset: 220;
-    opacity: 0.45;
-  }
-  58% {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
-  84% {
-    stroke-dashoffset: 0;
-    opacity: 1;
+    stroke-dashoffset: 245;
+    opacity: 0.35;
   }
   100% {
-    stroke-dashoffset: 220;
-    opacity: 0.45;
+    stroke-dashoffset: 0;
+    opacity: 1;
   }
 }
 
-@keyframes rcQuillGlide {
+@keyframes rcQuillWriteOnce {
   0% {
-    transform: translate(4px, 0px);
+    transform: translate(4px, 1px);
   }
-  28% {
-    transform: translate(108px, -2px);
+  42% {
+    transform: translate(116px, -1px);
   }
-  58% {
-    transform: translate(212px, -1px);
-  }
-  72% {
-    transform: translate(214px, -3px);
-  }
-  84% {
-    transform: translate(212px, -1px);
+  88% {
+    transform: translate(232px, 0px);
   }
   100% {
-    transform: translate(4px, 0px);
+    transform: translate(234px, -2px);
   }
 }
 
-@keyframes rcLedgerLine {
-  0%, 10% {
-    stroke-dashoffset: 120;
-    opacity: 0.25;
-  }
-  45%, 80% {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
-  100% {
-    stroke-dashoffset: 120;
-    opacity: 0.25;
-  }
-}
-
-@keyframes rcLedgerNib {
+@keyframes rcQuillPoise {
   0%, 100% {
+    transform: translate(0px, 19px) rotate(40deg);
+  }
+  50% {
+    transform: translate(0px, 17.5px) rotate(37deg);
+  }
+}
+
+@keyframes rcTerminusFade {
+  0%, 82% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rcLedgerDraw {
+  0% {
+    stroke-dashoffset: 120;
+    opacity: 0.2;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes rcLedgerNibSettle {
+  0% {
+    transform: translate(-34px, -12px) rotate(-10deg);
+  }
+  45% {
+    transform: translate(-12px, -4px) rotate(4deg);
+  }
+  100% {
     transform: translate(0px, 0px) rotate(0deg);
   }
-  30% {
-    transform: translate(-10px, -6px) rotate(-6deg);
+}
+
+@keyframes rcRailDraw {
+  0% {
+    stroke-dashoffset: 1200;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes rcNodePop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rcChartInkDraw {
+  0% {
+    stroke-dashoffset: 520;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes rcChartAreaFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes rcNibPop {
+  0% {
+    transform: scale(0.84) rotate(-10deg);
+    opacity: 0.6;
   }
   60% {
-    transform: translate(-3px, -2px) rotate(3deg);
+    transform: scale(1.06) rotate(3deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
   }
 }
 
-.rc-ink-stroke {
-  stroke-dasharray: 220;
+.rc-ink-stroke-once {
+  stroke-dasharray: 245;
   stroke-dashoffset: 0;
-  animation: rcInkDraw 6.4s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+  animation: rcInkDrawOnce 1.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.rc-quill-glide {
-  animation: rcQuillGlide 6.4s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+.rc-quill-write-once {
+  animation: rcQuillWriteOnce 1.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.rc-ledger-line-1 {
+.rc-quill-poise {
+  animation: rcQuillPoise 4.2s ease-in-out 1.5s infinite;
+}
+
+.rc-ink-terminus {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rcTerminusFade 1.5s ease-out forwards;
+}
+
+.rc-ledger-draw-1 {
   stroke-dasharray: 120;
-  animation: rcLedgerLine 5.6s ease-in-out infinite;
+  stroke-dashoffset: 120;
+  animation: rcLedgerDraw 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
 }
 
-.rc-ledger-line-2 {
+.rc-ledger-draw-2 {
   stroke-dasharray: 120;
-  animation: rcLedgerLine 5.6s ease-in-out 0.45s infinite;
+  stroke-dashoffset: 120;
+  animation: rcLedgerDraw 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.32s forwards;
 }
 
-.rc-ledger-line-3 {
+.rc-ledger-draw-3 {
   stroke-dasharray: 120;
-  animation: rcLedgerLine 5.6s ease-in-out 0.9s infinite;
+  stroke-dashoffset: 120;
+  animation: rcLedgerDraw 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.62s forwards;
 }
 
 .rc-ledger-nib {
-  transform-origin: 124px 24px;
-  animation: rcLedgerNib 5.6s ease-in-out infinite;
+  transform-origin: 128px 24px;
+}
+
+.rc-ledger-nib-active {
+  animation: rcLedgerNibSettle 1.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.rc-rail-hidden {
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+}
+
+.rc-rail-draw {
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+  animation: rcRailDraw 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.rc-rail-node {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: rcNodePop 0.35s ease-out forwards;
+}
+
+.rc-chart-ink-line {
+  stroke-dasharray: 520;
+  stroke-dashoffset: 520;
+  animation: rcChartInkDraw 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.rc-chart-area-fade {
+  opacity: 0;
+  animation: rcChartAreaFade 0.65s ease-out 0.2s forwards;
+}
+
+.rc-chart-dot-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: rcNodePop 0.28s ease-out forwards;
+}
+
+.rc-nib-pop {
+  animation: rcNibPop 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rc-ink-stroke,
-  .rc-quill-glide,
-  .rc-ledger-line-1,
-  .rc-ledger-line-2,
-  .rc-ledger-line-3,
-  .rc-ledger-nib {
-    animation: none;
-    stroke-dashoffset: 0;
+  .rc-ink-stroke-once,
+  .rc-quill-write-once,
+  .rc-quill-poise,
+  .rc-ink-terminus,
+  .rc-ledger-draw-1,
+  .rc-ledger-draw-2,
+  .rc-ledger-draw-3,
+  .rc-ledger-nib-active,
+  .rc-rail-draw,
+  .rc-rail-node,
+  .rc-chart-ink-line,
+  .rc-chart-area-fade,
+  .rc-chart-dot-pop,
+  .rc-nib-pop {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
   }
-  .rc-quill-glide {
-    transform: translate(212px, -1px);
+  .rc-quill-write-once {
+    transform: translate(234px, -2px);
   }
 }
