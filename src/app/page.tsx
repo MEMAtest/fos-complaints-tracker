@@ -9,6 +9,9 @@ import { LiveProofStrip } from '@/components/marketing/live-proof-strip';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { PhaseGrid } from '@/components/marketing/phase-grid';
 
+// Avoid baking a build-time database fallback into the homepage; runtime data is cached via getHomepageSnapshot.
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'RegComplaints | FOS Complaints Intelligence, Evidence & Board Reporting',
   description:
