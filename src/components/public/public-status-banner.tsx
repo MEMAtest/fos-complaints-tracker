@@ -7,7 +7,9 @@ type PublicStatusBannerProps = {
 };
 
 export function PublicStatusBanner({ status, className }: PublicStatusBannerProps) {
+  // Never surface internal ingestion-freshness or pipeline-staleness warnings on public pages.
   if (status.mode !== 'degraded') return null;
+  if (status.message && /ingestion pipeline|stale/i.test(status.message)) return null;
 
   return (
     <section

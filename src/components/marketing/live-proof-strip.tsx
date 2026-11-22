@@ -1,5 +1,4 @@
 import { formatDate } from '@/lib/utils';
-import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import type { HomepageMetric } from '@/lib/marketing/types';
 
 type LiveProofStripProps = {
@@ -8,79 +7,38 @@ type LiveProofStripProps = {
 };
 
 export function LiveProofStrip({ metrics, updatedAt }: LiveProofStripProps) {
-  const [primary, ...secondary] = metrics;
-
   return (
-    <section className="mx-auto -mt-10 w-full max-w-7xl px-4 pb-10 md:-mt-14 md:px-8 md:pb-14">
-      <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white/96 shadow-[0_32px_90px_rgba(15,23,42,0.12)]">
-        <div className="absolute right-0 top-0 h-28 w-56 rounded-full bg-sky-100 blur-3xl" />
-        <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="border-b border-slate-200/80 p-6 md:p-8 lg:border-b-0 lg:border-r">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Evidence and data pulse</p>
-            <h2 className="mt-4 max-w-xl text-3xl font-semibold tracking-tight text-slate-950 md:text-[2.25rem]">
-              Defensible decisions start with visible sources, scope and freshness.
-            </h2>
-            <p className="mt-4 max-w-xl text-base leading-8 text-slate-600">
-              Published corpus coverage, public insight depth, and complaint context are visible immediately, alongside the date of the underlying evidence.
-            </p>
-            {primary ? (
-              <div className="mt-6 rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-5 shadow-sm">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{primary.label}</p>
-                <p className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{primary.value}</p>
-                <p className="mt-3 text-sm leading-6 text-slate-600">{primary.helper}</p>
-              </div>
-            ) : null}
-            <div className="mt-5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-              {updatedAt ? `Data through ${formatDate(updatedAt)}` : 'Data date unavailable'}
-            </div>
-          </div>
-
-          <div className="p-6 md:p-8">
-            <div className="rounded-[1.7rem] border border-slate-200 bg-[#0f1f4f] p-4 text-white shadow-[0_26px_80px_rgba(15,31,79,0.20)] md:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/55">Platform health dashboard</p>
-                  <p className="mt-2 text-xl font-semibold tracking-tight">Published evidence at a glance.</p>
-                </div>
-                <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-white/70">
-                  Source-backed
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-3 md:grid-cols-3">
-                {secondary.map((metric) => (
-                  <article key={metric.label} className="rounded-[1.3rem] border border-white/10 bg-white/7 p-4 backdrop-blur-sm">
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">{metric.label}</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight">{metric.value}</p>
-                    <p className="mt-2 text-xs leading-5 text-white/65">{metric.helper}</p>
-                  </article>
-                ))}
-              </div>
-
-              <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="rounded-[1.35rem] border border-white/10 bg-white/6 p-4">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">Connected platform access</p>
-                  <p className="mt-2 text-sm font-semibold leading-6">Public insights, comparison views, workspace complaint handling, and board-ready outputs all sit on the same intelligence stack.</p>
-                  <div className="mt-4 grid gap-2 text-xs text-white/65 md:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Public insights</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Firm comparison</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Complaints workspace</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Board reporting</div>
-                  </div>
-                </div>
-                <div className="rounded-[1.35rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">Platform surface</p>
-                  <div className="mt-3 overflow-hidden rounded-[1.15rem] border border-white/10 bg-white/6 p-2">
-                    <PublicIllustration variant="firm" className="aspect-[16/10] rounded-[1rem] border-white/10 bg-[linear-gradient(180deg,#fffef9_0%,#edf4ff_100%)] shadow-none" />
-                  </div>
-                  <div className="mt-3 grid gap-2 text-xs text-white/75">
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Illustrated public data flow</div>
-                    <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2">Illustrative analysis and workspace handoff</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <section className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm md:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            Published Financial Ombudsman corpus
+          </p>
+          {updatedAt ? (
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+              Evidence through {formatDate(updatedAt)}
+            </span>
+          ) : null}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {metrics.map((metric, idx) => (
+            <article
+              key={metric.label}
+              className={
+                idx === 0
+                  ? 'rounded-xl border border-[#0f1f4f]/15 bg-[#0f1f4f] px-4 py-3 text-white'
+                  : 'rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3 text-slate-950'
+              }
+            >
+              <p className={idx === 0 ? 'text-[10px] uppercase tracking-[0.16em] text-white/65' : 'text-[10px] uppercase tracking-[0.16em] text-slate-500'}>
+                {metric.label}
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight">{metric.value}</p>
+              <p className={idx === 0 ? 'mt-1 line-clamp-1 text-xs text-white/75' : 'mt-1 line-clamp-1 text-xs text-slate-600'}>
+                {metric.helper}
+              </p>
+            </article>
+          ))}
         </div>
       </div>
     </section>

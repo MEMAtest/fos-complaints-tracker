@@ -8,23 +8,21 @@ type FooterCtaProps = {
 
 export function FooterCta({ workspaceHref }: FooterCtaProps) {
   return (
-    <section className="relative overflow-hidden border-t border-slate-200 bg-[#08162f] py-16 text-white md:py-20">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.24),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_28%),radial-gradient(circle_at_center,rgba(255,255,255,0.06),transparent_40%)]" />
-      <div className="relative mx-auto w-full max-w-7xl px-4 md:px-8">
-        <div className="overflow-hidden rounded-[2.2rem] border border-white/10 bg-white/6 p-8 shadow-[0_32px_90px_rgba(0,0,0,0.24)] backdrop-blur-md md:p-10">
-          <p className="text-xs uppercase tracking-[0.24em] text-white/55">Ready to build defensible complaint intelligence?</p>
-          <h2 className="mt-4 max-w-4xl text-3xl font-semibold tracking-tight md:text-4xl">
-            Start with source-backed complaint intelligence, then move into the workspace when handling depth actually matters.
-          </h2>
-          <p className="mt-4 max-w-3xl text-base leading-8 text-white/72">
-            Public analysis, complaint handling workflow, and leadership reporting all sit on the same product layer, with evidence and decisions kept traceable.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+    <footer className="relative overflow-hidden border-t border-slate-200 bg-[#08162f] py-8 text-white md:py-10">
+      <div className="mx-auto w-full max-w-7xl px-4 md:px-8">
+        <div className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-white/10 bg-white/6 px-6 py-5 backdrop-blur-md lg:flex-row lg:items-center">
+          <div className="max-w-2xl">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[#f5daa3]/80">Ready to build defensible complaint intelligence?</p>
+            <h2 className="mt-1.5 text-xl font-semibold tracking-tight md:text-2xl">
+              Start with published Ombudsman intelligence, then step into the workspace for full case handling and board packs.
+            </h2>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2.5">
             <PublicTrackedLink
               href="/insights"
               eventName="public_cta_clicked"
               eventProps={{ source: 'homepage_footer', cta: 'start_analysis' }}
-              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-slate-100 md:text-sm"
             >
               Start analysis
               <ArrowRight className="h-4 w-4" />
@@ -33,27 +31,24 @@ export function FooterCta({ workspaceHref }: FooterCtaProps) {
               href={workspaceHref}
               eventName="public_cta_clicked"
               eventProps={{ source: 'homepage_footer', cta: 'workspace_demo' }}
-              className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/8 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/12"
+              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-white/15 md:text-sm"
             >
               Request workspace demo
             </PublicTrackedLink>
           </div>
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/55">
-            <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'evidence_data' }} className="transition hover:text-white">Evidence Explorer</PublicTrackedLink>
-            <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'platform' }} className="transition hover:text-white">Platform</PublicTrackedLink>
-            <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'workspace' }} className="transition hover:text-white">Workspace</PublicTrackedLink>
-            <PublicTrackedLink href="/insights/years" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'public_insights' }} className="transition hover:text-white">Public Insights</PublicTrackedLink>
-          </div>
         </div>
 
-        <div className="mt-12 flex flex-col items-start justify-between gap-6 border-t border-white/10 pt-8 md:flex-row md:items-center">
-          <div className="space-y-2">
-            <RegComplaintsLockup width={250} tone="on-dark" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f5daa3]/80">
+        <div className="mt-6 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-5 md:flex-row md:items-center">
+          <div className="flex flex-wrap items-center gap-4">
+            <RegComplaintsLockup width={210} tone="on-dark" />
+            <span className="hidden h-4 w-px bg-white/15 md:inline-block" />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f5daa3]/75">
               {BRAND_TAGLINE}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-white/60">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-white/65">
+            <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'evidence_data' }} className="transition hover:text-white">Evidence Explorer</PublicTrackedLink>
+            <PublicTrackedLink href="/check" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'outcome_estimator' }} className="transition hover:text-white">Outcome Estimator</PublicTrackedLink>
             <a href="https://regcanary.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">RegCanary</a>
             <a href="https://regactions.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">RegActions</a>
             <a href="https://regduty.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">RegDuty</a>
@@ -61,6 +56,6 @@ export function FooterCta({ workspaceHref }: FooterCtaProps) {
           </div>
         </div>
       </div>
-    </section>
+    </footer>
   );
 }
