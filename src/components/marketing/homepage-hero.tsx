@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { WritingQuillUnderline } from '@/components/brand/determination-quill-motion';
 import type { HomepageSnapshot } from '@/lib/marketing/types';
 import { GuidedDemoPanel } from './guided-demo-panel';
 
@@ -16,7 +17,8 @@ export function HomepageHero({ snapshot }: HomepageHeroProps) {
           <h1 className="mt-3 max-w-xl text-3xl font-semibold leading-[1.08] tracking-[-0.02em] text-slate-950 md:text-4xl xl:text-[2.95rem]">
             {snapshot.hero.title}
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600 md:text-base md:leading-7">
+          <WritingQuillUnderline className="mt-2" />
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600 md:text-base md:leading-7">
             {snapshot.hero.dek}
           </p>
 

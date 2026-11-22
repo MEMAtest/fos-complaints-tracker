@@ -1,5 +1,6 @@
 import { ArrowRight, ClipboardList, Files, Search, Workflow } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { QuillLedgerSketch } from '@/components/brand/determination-quill-motion';
 import { cn } from '@/lib/utils';
 import type { HomepageStoryStep } from '@/lib/marketing/types';
 
@@ -19,6 +20,7 @@ export function PhaseGrid({ steps }: PhaseGridProps) {
             Move from public complaint signal to operational workflow and reporting without losing the thread.
           </h2>
         </div>
+        <QuillLedgerSketch />
       </div>
 
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
