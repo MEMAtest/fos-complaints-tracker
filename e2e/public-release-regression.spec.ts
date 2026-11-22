@@ -116,7 +116,7 @@ test('check estimator carries its selected context into the full advisor brief',
 
 test('published year-product insight exposes exact fixture metrics and canonical schema', async ({ page }) => {
   const path = '/insights/year/2025/product/banking-and-payments';
-  const canonicalUrl = `https://foscomplaints.memaconsultants.com${path}`;
+  const canonicalUrl = `https://regcomplaints.com${path}`;
 
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status()).toBe(200);

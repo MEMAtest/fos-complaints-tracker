@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { RegComplaintsLockup } from '@/components/brand/regcomplaints-brand';
 
 export function LoginForm({ nextPath }: { nextPath: string }) {
   const [email, setEmail] = useState('');
@@ -36,13 +37,13 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#dbeafe,_#f8fafc_55%)] px-4 py-10">
       <Card className="w-full max-w-md border-slate-200 shadow-xl shadow-slate-200/60">
-        <CardHeader className="space-y-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0f1f4f] text-white">
-            <ShieldCheck className="h-6 w-6" />
+        <CardHeader className="space-y-4">
+          <div className="rounded-2xl border border-slate-200/80 bg-[#faf8f2] px-4 py-3">
+            <RegComplaintsLockup width={280} tone="light" className="mx-auto" />
           </div>
           <div>
             <CardTitle className="text-2xl font-semibold text-slate-900">Workspace sign in</CardTitle>
-            <p className="mt-1 text-sm text-slate-500">Sign in to complaints operations, imports, and board-pack workflows.</p>
+            <p className="mt-1 text-sm text-slate-500">Sign in to RegComplaints operations, imports, and board-pack workflows.</p>
           </div>
         </CardHeader>
         <CardContent>

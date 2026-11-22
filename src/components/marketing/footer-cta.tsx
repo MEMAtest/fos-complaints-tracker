@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { BRAND_TAGLINE, RegComplaintsLockup } from '@/components/brand/regcomplaints-brand';
 
 type FooterCtaProps = {
   workspaceHref: string;
@@ -42,6 +43,21 @@ export function FooterCta({ workspaceHref }: FooterCtaProps) {
             <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'platform' }} className="transition hover:text-white">Platform</PublicTrackedLink>
             <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'workspace' }} className="transition hover:text-white">Workspace</PublicTrackedLink>
             <PublicTrackedLink href="/insights/years" eventName="public_nav_clicked" eventProps={{ source: 'homepage_footer', cta: 'public_insights' }} className="transition hover:text-white">Public Insights</PublicTrackedLink>
+          </div>
+        </div>
+
+        <div className="mt-12 flex flex-col items-start justify-between gap-6 border-t border-white/10 pt-8 md:flex-row md:items-center">
+          <div className="space-y-2">
+            <RegComplaintsLockup width={250} tone="on-dark" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f5daa3]/80">
+              {BRAND_TAGLINE}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-white/60">
+            <a href="https://regcanary.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">RegCanary</a>
+            <a href="https://regactions.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">RegActions</a>
+            <a href="https://regduty.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">RegDuty</a>
+            <a href="https://memaconsultants.com" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">MEMA Consultants</a>
           </div>
         </div>
       </div>

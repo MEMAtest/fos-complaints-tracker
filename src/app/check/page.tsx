@@ -5,22 +5,32 @@ import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { CheckEstimatorPage } from './check-estimator-page';
 
 export const metadata: Metadata = {
-  title: 'Complaint Outcome Estimator | FOS Complaints Intelligence',
+  title: 'Complaint Outcome Estimator | RegComplaints',
   description:
-    'Instantly check FOS complaint upheld rates by product, root cause, and firm. Backed by live public Financial Ombudsman decisions.',
+    'Instantly check FOS complaint upheld rates by product, root cause, and firm. Backed by live public Financial Ombudsman decisions on RegComplaints.',
   alternates: { canonical: absoluteUrl('/check') },
   openGraph: {
-    title: 'Complaint Outcome Estimator | FOS Complaints Intelligence',
+    title: 'Complaint Outcome Estimator | RegComplaints',
     description:
-      'Instantly check FOS complaint upheld rates by product, root cause, and firm. Backed by live public Financial Ombudsman decisions.',
+      'Instantly check FOS complaint upheld rates by product, root cause, and firm. Backed by live public Financial Ombudsman decisions on RegComplaints.',
     url: absoluteUrl('/check'),
+    siteName: 'RegComplaints',
     type: 'website',
+    images: [
+      {
+        url: absoluteUrl('/images/brand/regcomplaints-og.png'),
+        width: 1200,
+        height: 630,
+        alt: 'RegComplaints - ombudsman insight. Decisive resolution.',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Complaint Outcome Estimator',
+    title: 'Complaint Outcome Estimator | RegComplaints',
     description:
       'Instantly check FOS complaint upheld rates by product, root cause, and firm.',
+    images: [absoluteUrl('/images/brand/regcomplaints-og.png')],
   },
 };
 

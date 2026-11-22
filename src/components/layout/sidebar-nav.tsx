@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/layout/settings-dialog';
 import { HelpSheet } from '@/components/layout/help-sheet';
+import { RegComplaintsMark } from '@/components/brand/regcomplaints-brand';
 
 type NavItem = {
   href: string;
@@ -46,9 +47,13 @@ export function SidebarNav() {
   return (
     <>
       <nav className="flex h-full w-16 flex-col items-center bg-[#0f1f4f] py-4">
-        <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
-          <span className="text-sm font-bold text-white">FI</span>
-        </div>
+        <Link
+          href="/"
+          aria-label="RegComplaints Home"
+          className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/15"
+        >
+          <RegComplaintsMark width={28} height={25} tone="on-dark" />
+        </Link>
 
         <div className="flex flex-1 flex-col items-center gap-1">
           {visibleItems.map((item) => {

@@ -4,5 +4,51 @@
       "path": "/api/fos/keepalive",
       "schedule": "*/5 * * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "foscomplaints.memaconsultants.com"
+        }
+      ],
+      "destination": "https://regcomplaints.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "foscomplaints.memaconsultants.com"
+        }
+      ],
+      "destination": "https://regcomplaints.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.regcomplaints.com"
+        }
+      ],
+      "destination": "https://regcomplaints.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.regcomplaints.com"
+        }
+      ],
+      "destination": "https://regcomplaints.com/:path*",
+      "permanent": true
+    }
   ]
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { InsightFaqItem, InsightPageData } from './types';
 
-const SITE_URL = 'https://foscomplaints.memaconsultants.com';
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://regcomplaints.com').trim().replace(/\/+$/, '');
 
 export function absoluteUrl(pathname: string): string {
   return `${SITE_URL}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
@@ -31,13 +31,22 @@ export function buildInsightMetadata(page: InsightPageData): Metadata {
       title: page.seo.title,
       description: page.seo.description,
       url: absoluteUrl(page.canonicalPath),
-      siteName: 'FOS Complaints Intelligence',
+      siteName: 'RegComplaints',
       type: 'article',
+      images: [
+        {
+          url: absoluteUrl('/images/brand/regcomplaints-og.png'),
+          width: 1200,
+          height: 630,
+          alt: 'RegComplaints - ombudsman insight. Decisive resolution.',
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
       title: page.seo.title,
       description: page.seo.description,
+      images: [absoluteUrl('/images/brand/regcomplaints-og.png')],
     },
   };
 }

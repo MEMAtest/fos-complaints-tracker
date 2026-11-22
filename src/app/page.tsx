@@ -11,22 +11,32 @@ import { PhaseGrid } from '@/components/marketing/phase-grid';
 import { PublicStatusBanner } from '@/components/public/public-status-banner';
 
 export const metadata: Metadata = {
-  title: 'FOS Complaints Intelligence | Evidence, Workflow, and Board Reporting',
+  title: 'RegComplaints | FOS Complaints Intelligence, Evidence & Board Reporting',
   description:
-    'Explore source-backed Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
+    'Ombudsman insight. Decisive resolution. Explore source-backed Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
   alternates: { canonical: absoluteUrl('/') },
   openGraph: {
-    title: 'FOS Complaints Intelligence | Evidence, Workflow, and Board Reporting',
+    title: 'RegComplaints | FOS Complaints Intelligence, Evidence & Board Reporting',
     description:
-      'Explore source-backed Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
+      'Ombudsman insight. Decisive resolution. Explore source-backed Financial Ombudsman complaint intelligence by year, firm, product, and theme, then move into the complaints workspace for evidence, letters, approvals, and board-ready reporting.',
     url: absoluteUrl('/'),
+    siteName: 'RegComplaints',
     type: 'website',
+    images: [
+      {
+        url: absoluteUrl('/images/brand/regcomplaints-og.png'),
+        width: 1200,
+        height: 630,
+        alt: 'RegComplaints - ombudsman insight. Decisive resolution.',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'FOS Complaints Intelligence',
+    title: 'RegComplaints | FOS Complaints Intelligence',
     description:
-      'Source-backed complaint data, comparison, complaint handling workflow, and board-ready reporting in one platform.',
+      'Ombudsman insight. Decisive resolution. Source-backed complaint data, comparison, complaint handling workflow, and board-ready reporting in one platform.',
+    images: [absoluteUrl('/images/brand/regcomplaints-og.png')],
   },
 };
 
@@ -37,14 +47,22 @@ export default async function MarketingHomepage() {
     '@context': 'https://schema.org',
     '@graph': [
       {
+        '@type': 'Organization',
+        name: 'RegComplaints',
+        url: absoluteUrl('/'),
+        logo: absoluteUrl('/regcomplaints-mark.png'),
+      },
+      {
         '@type': 'WebSite',
-        name: 'FOS Complaints Intelligence',
+        name: 'RegComplaints',
+        alternateName: 'FOS Complaints Intelligence',
         url: absoluteUrl('/'),
         description: metadata.description,
       },
       {
         '@type': 'SoftwareApplication',
-        name: 'FOS Complaints Intelligence',
+        name: 'RegComplaints',
+        alternateName: 'FOS Complaints Intelligence',
         applicationCategory: 'BusinessApplication',
         operatingSystem: 'Web',
         url: absoluteUrl('/'),

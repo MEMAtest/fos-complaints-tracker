@@ -5,6 +5,7 @@ import { Loader2, LogIn, LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportButton } from '@/components/shared/export-button';
 import { useAuth } from '@/components/auth/auth-provider';
+import { RegComplaintsMark } from '@/components/brand/regcomplaints-brand';
 
 interface AppHeaderProps {
   onToggleSidebar?: () => void;
@@ -33,7 +34,15 @@ export function AppHeader({ onToggleSidebar }: AppHeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h1 className="text-sm font-semibold text-slate-900">FOS Complaints Intelligence</h1>
+        <div className="flex items-center gap-2.5">
+          <RegComplaintsMark width={26} height={23} tone="light" />
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-bold text-[#08162f]" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+              RegComplaints
+            </span>
+            <h1 className="text-xs font-semibold text-slate-600 md:text-sm">FOS Complaints Intelligence</h1>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

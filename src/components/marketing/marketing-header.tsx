@@ -1,5 +1,6 @@
-import { ArrowRight, BarChart3, Menu } from 'lucide-react';
+import { ArrowRight, Menu } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { RegComplaintsWordmark } from '@/components/brand/regcomplaints-brand';
 import { getWorkspaceEntryHref } from '@/lib/marketing/config';
 
 export function MarketingHeader() {
@@ -9,13 +10,7 @@ export function MarketingHeader() {
     <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-[rgba(250,251,255,0.84)] backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 md:px-8">
         <PublicTrackedLink href="/" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'brand_home' }} className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0f1f4f] text-white shadow-lg shadow-blue-950/20">
-            <BarChart3 className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">MEMA Consultants</p>
-            <p className="text-sm font-semibold text-slate-950 md:text-base">FOS Complaints Intelligence</p>
-          </div>
+          <RegComplaintsWordmark tone="light" markWidth={40} subtitle="FOS Complaints Intelligence" />
         </PublicTrackedLink>
 
         <nav className="hidden items-center gap-6 lg:flex">

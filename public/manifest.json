@@ -1,0 +1,27 @@
+{
+  "name": "RegComplaints — UK Financial Ombudsman Complaints Intelligence",
+  "short_name": "RegComplaints",
+  "description": "Ombudsman insight. Decisive resolution. Search-first precedent analytics, outcome estimation, and board reporting for Financial Ombudsman Service decisions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08162f",
+  "theme_color": "#08162f",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
