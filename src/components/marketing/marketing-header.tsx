@@ -7,26 +7,26 @@ export function MarketingHeader() {
   const workspaceHref = getWorkspaceEntryHref();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-[rgba(250,251,255,0.84)] backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 md:px-8">
-        <PublicTrackedLink href="/" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'brand_home' }} className="flex items-center gap-3">
-          <RegComplaintsWordmark tone="light" markWidth={40} subtitle="FOS Complaints Intelligence" />
+    <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-[rgba(250,251,255,0.88)] backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-6 xl:px-8">
+        <PublicTrackedLink href="/" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'brand_home' }} className="flex shrink-0 items-center gap-2.5">
+          <RegComplaintsWordmark tone="light" markWidth={36} subtitle="FOS Complaints Intelligence" />
         </PublicTrackedLink>
 
-        <nav className="hidden items-center gap-6 lg:flex">
-          <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'evidence_explorer' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Evidence Explorer</PublicTrackedLink>
-          <PublicTrackedLink href="/check" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'outcome_estimator' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Outcome Estimator</PublicTrackedLink>
-          <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'comparison' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Compare Firms</PublicTrackedLink>
-          <PublicTrackedLink href="/advisor" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'advisor' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Advisor</PublicTrackedLink>
-          <PublicTrackedLink href="/#how-it-works" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'how_it_works' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">How it works</PublicTrackedLink>
-          <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'platform' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Platform</PublicTrackedLink>
-          <PublicTrackedLink href="/#roles" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'who_it_helps' }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">Who it helps</PublicTrackedLink>
+        <nav className="hidden items-center gap-4 lg:flex xl:gap-5">
+          <PublicTrackedLink href="/insights" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'evidence_explorer' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Evidence Explorer</PublicTrackedLink>
+          <PublicTrackedLink href="/check" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'outcome_estimator' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Outcome Estimator</PublicTrackedLink>
+          <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'comparison' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Compare Firms</PublicTrackedLink>
+          <PublicTrackedLink href="/advisor" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'advisor' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Advisor</PublicTrackedLink>
+          <PublicTrackedLink href="/#how-it-works" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'how_it_works' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">How it works</PublicTrackedLink>
+          <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'platform' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Platform</PublicTrackedLink>
+          <PublicTrackedLink href="/#roles" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'who_it_helps' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Who it helps</PublicTrackedLink>
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <details className="relative lg:hidden">
-            <summary role="button" className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-slate-300 bg-white text-slate-800" aria-label="Open navigation">
-              <Menu className="h-5 w-5" />
+            <summary role="button" className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-slate-300 bg-white text-slate-800" aria-label="Open navigation">
+              <Menu className="h-4.5 w-4.5" />
             </summary>
             <nav className="absolute right-0 mt-3 grid w-64 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
               {[
@@ -34,7 +34,7 @@ export function MarketingHeader() {
                 ['/check', 'Outcome Estimator'],
                 ['/comparison', 'Compare Firms'],
                 ['/advisor', 'Advisor'],
-                [workspaceHref, 'Workspace'],
+                [workspaceHref, 'Request workspace demo'],
               ].map(([href, label]) => (
                 <PublicTrackedLink key={href} href={href} eventName="public_nav_clicked" eventProps={{ source: 'mobile_marketing_header', cta: label }} className="rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
                   {label}
@@ -46,7 +46,7 @@ export function MarketingHeader() {
             href="/insights"
             eventName="public_cta_clicked"
             eventProps={{ source: 'marketing_header', cta: 'start_analysis' }}
-            className="hidden rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:border-sky-300 hover:text-sky-900 md:inline-flex"
+            className="hidden whitespace-nowrap rounded-full border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-900 transition hover:border-sky-300 hover:text-sky-900 xl:inline-flex"
           >
             Start analysis
           </PublicTrackedLink>
@@ -54,10 +54,10 @@ export function MarketingHeader() {
             href={workspaceHref}
             eventName="public_cta_clicked"
             eventProps={{ source: 'marketing_header', cta: 'workspace_demo' }}
-            className="inline-flex items-center gap-2 rounded-full bg-[#0f1f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0c1940]"
+            className="hidden items-center gap-1.5 whitespace-nowrap rounded-full bg-[#0f1f4f] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#0c1940] sm:inline-flex"
           >
             Request workspace demo
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-3.5 w-3.5" />
           </PublicTrackedLink>
         </div>
       </div>
