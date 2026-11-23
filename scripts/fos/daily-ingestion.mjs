@@ -11,6 +11,7 @@ import { chromium } from "playwright";
 import pg from "pg";
 import { connectWithRetry, createPoolConfig } from "../lib/db-runtime.mjs";
 import { canonicalProductSector } from "../lib/fos-taxonomy.mjs";
+import { applyReviewedOutcome } from "../lib/fos-outcome-corrections.mjs";
 
 const { Pool } = pg;
 
@@ -682,7 +683,7 @@ function buildParsedRecord(record, fullText, pdfPath, pdfHash) {
     business_name: cleanText(record.business_name),
     product_sector: canonicalProductSector(record.product_sector),
     product_sector_original: cleanText(record.product_sector_original || record.product_sector),
-    outcome: normalizeOutcome(record.outcome_raw || record.outcome),
+    outcome: applyReviewedOutcome(reference, normalizeOutcome(record.outcome_raw || record.outcome)),
     outcome_raw: cleanText(record.outcome_raw),
     source_url: record.source_url,
     pdf_url: record.pdf_url,

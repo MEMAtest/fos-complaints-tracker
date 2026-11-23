@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { connectWithRetry, createPoolConfig, loadLocalEnv } from './lib/db-runtime.mjs';
 import { canonicalProductSector } from './lib/fos-taxonomy.mjs';
+import { applyReviewedOutcome } from './lib/fos-outcome-corrections.mjs';
 
 const { Pool } = pg;
 
@@ -103,7 +104,7 @@ function rowFromRecord(record, fileName, includeFullText) {
     business_name: cleanText(record.business_name),
     product_sector: canonicalProductSector(record.product_sector),
     product_sector_original: cleanText(record.product_sector_original || record.product_sector),
-    outcome: normalizeOutcome(record.outcome || record.outcome_raw),
+    outcome: applyReviewedOutcome(baseReference, normalizeOutcome(record.outcome || record.outcome_raw)),
     ombudsman_name: cleanText(record.ombudsman_name),
     source_url: cleanText(record.source_url),
     pdf_url: cleanText(record.pdf_url),

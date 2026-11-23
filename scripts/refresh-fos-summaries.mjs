@@ -35,6 +35,7 @@ function parseArgs(argv) {
   }
 
   return {
+    existingSchema: argv.includes('--existing-schema'),
     includeDashboard: selected.has('dashboard'),
     includeAnalysis: selected.has('analysis'),
     includeRootCauses: selected.has('root-causes') || selected.has('root_causes') || selected.has('rootcauses'),
@@ -768,7 +769,9 @@ async function main() {
   const startedAt = Date.now();
 
   try {
-    await applySchema(client);
+    // A provisioned database can grant snapshot writes to the refresh role
+    // without granting table ownership for schema migrations.
+    if (!args.existingSchema) await applySchema(client);
 
     const enabledKeys = [];
     if (args.includeDashboard) enabledKeys.push(SNAPSHOT_KEYS.dashboard);
