@@ -21,11 +21,20 @@ import { formatDate } from '@/lib/utils';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 
 export default function AdvisorPage() {
-  const { brief, loading, error, options, optionsLoading, fetchBrief } = useFosAdvisor();
+  const { brief, loading, error, options, optionsLoading, fetchBrief, fetchOptions } = useFosAdvisor();
   const { selectedCaseId, setSelectedCaseId, selectedCase, caseLoading, caseError } = useCaseDetail();
   const [hasQueried, setHasQueried] = useState(false);
   const [initialQuery, setInitialQuery] = useState({ product: '', rootCause: '' });
   const loadedDeepLinkRef = useRef('');
+  const briefHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusResultsRef = useRef(false);
+
+  useEffect(() => {
+    if (brief && !loading && focusResultsRef.current) {
+      focusResultsRef.current = false;
+      briefHeadingRef.current?.focus();
+    }
+  }, [brief, loading]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -49,27 +58,25 @@ export default function AdvisorPage() {
   }, [fetchBrief, initialQuery, options, optionsLoading]);
 
   const handleSubmit = (product: string, rootCause: string | null, freeText: string | null) => {
+    focusResultsRef.current = true;
     setHasQueried(true);
     void fetchBrief({ product, rootCause, freeText });
   };
 
   return (<>
     <MarketingHeader />
-    <main className="relative min-h-screen pb-16">
+    <main className="relative pb-8">
       {loading && (
         <div className="sticky top-0 z-40 h-1 w-full overflow-hidden bg-blue-100/80">
           <div className="h-full w-1/3 animate-pulse bg-gradient-to-r from-amber-500 to-orange-500" />
         </div>
       )}
 
-      <div className="mx-auto flex w-full max-w-[1340px] flex-col gap-5 px-4 py-5 md:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 md:px-6 md:py-7">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Complaint Advisor</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Pre-analysed intelligence briefs for FOS complaint products and root causes. Select a product to view risk
-            assessments, key precedents, what wins and loses cases, and recommended actions.
-          </p>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Complaint Advisor</h1>
+          <p className="mt-1 text-sm text-slate-600">Choose a product or try the example to see outcomes, precedents and relevant FOS decisions.</p>
         </div>
 
         {/* Input form */}
@@ -80,12 +87,13 @@ export default function AdvisorPage() {
           optionsLoading={optionsLoading}
           initialProduct={initialQuery.product}
           initialRootCause={initialQuery.rootCause}
+          onRetryOptions={fetchOptions}
           onSubmit={handleSubmit}
         />
 
         {/* Error */}
         {error && (
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
             <span>{error}</span>
           </section>
         )}
@@ -116,7 +124,7 @@ export default function AdvisorPage() {
             {/* 1. Report header */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-5 py-4">
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-lg font-semibold text-slate-900">{brief.query.product}</span>
+                <h2 ref={briefHeadingRef} tabIndex={-1} className="scroll-mt-24 text-lg font-semibold text-slate-900">{brief.query.product}</h2>
                 {brief.query.rootCause && (
                   <>
                     <span className="text-slate-300">/</span>
@@ -210,14 +218,7 @@ export default function AdvisorPage() {
           </>
         )}
 
-        {/* Initial state */}
-        {!hasQueried && !loading && (
-          <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
-            <p className="text-sm text-slate-500">
-              Select a product above to load its pre-analysed intelligence brief.
-            </p>
-          </section>
-        )}
+        {!hasQueried && !loading && <p className="text-xs text-slate-600">Briefs use published Financial Ombudsman Service decisions.</p>}
       </div>
 
       {/* Case detail sheet */}

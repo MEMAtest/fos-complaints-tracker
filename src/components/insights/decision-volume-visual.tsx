@@ -66,28 +66,42 @@ export function DecisionVolumeChart({ items, latestDecisionDate }: { items: Insi
   );
 }
 
-export function DecisionVolumeTable({ items, limit }: { items: InsightArchiveItem[]; limit?: number }) {
+export function DecisionVolumeTable({ items, limit, pageSize, collection = 'themes' }: {
+  items: InsightArchiveItem[];
+  limit?: number;
+  pageSize?: number;
+  collection?: string;
+}) {
   const [sort, setSort] = useState<'volume' | 'upheld'>('volume');
-  const sorted = sortItems(items, sort).slice(0, limit);
+  const [visibleCount, setVisibleCount] = useState(pageSize);
+  const sorted = sortItems(items, sort).slice(0, limit ?? visibleCount);
+  const sortLabel = sort === 'volume' ? 'decision volume' : 'upheld rate';
   const maxCases = Math.max(1, ...items.map((item) => item.totalCases));
-  return <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
-      <p className="text-xs text-slate-600">{limit ? `Top ${sorted.length} published themes by ${sort === 'volume' ? 'decision volume' : 'upheld rate'}` : 'Decision volume and upheld share by published theme'}</p>
-      <div role="group" className="flex items-center gap-1" aria-label="Sort complaint themes">
+  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:px-4">
+      <p className="text-xs font-medium text-slate-600">{limit ? `Preview · ${sorted.length} ${collection} sorted by ${sortLabel}` : `Showing ${sorted.length} of ${items.length}`}</p>
+      <div role="group" className="flex flex-wrap items-center gap-1" aria-label={`Sort ${collection}`}>
         <button type="button" onClick={() => setSort('volume')} aria-pressed={sort === 'volume'} className={`rounded-full px-3 py-1.5 text-xs font-medium ${sort === 'volume' ? 'bg-[#0f1f4f] text-white' : 'text-slate-600 hover:bg-white'}`}>Most decisions</button>
         <button type="button" onClick={() => setSort('upheld')} aria-pressed={sort === 'upheld'} className={`rounded-full px-3 py-1.5 text-xs font-medium ${sort === 'upheld' ? 'bg-[#0f1f4f] text-white' : 'text-slate-600 hover:bg-white'}`}>Highest upheld</button>
       </div>
     </div>
-    {sorted.length ? <div className="divide-y divide-slate-100">
-      {sorted.map((item) => <div key={item.href} className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_8rem_7rem] sm:items-center sm:gap-4">
-        <div className="min-w-0">
-          <Link href={item.href} className="font-semibold text-slate-950 underline decoration-slate-300 underline-offset-4 hover:text-sky-800">{item.title}</Link>
-          <p className="mt-1 truncate text-xs text-slate-500">{item.latestDecisionDate ? `Latest published decision ${formatDate(item.latestDecisionDate)}` : item.summary}</p>
-          <div className="mt-2 h-1.5 max-w-xl overflow-hidden rounded-full bg-slate-100" aria-hidden="true"><div className="h-full rounded-full bg-sky-600" style={{ width: `${Math.max(2, (item.totalCases / maxCases) * 100)}%` }} /></div>
+    {sorted.length ? <div className="divide-y divide-slate-200">
+      {sorted.map((item) => <Link key={item.href} href={item.href} className="group grid grid-cols-2 items-center gap-x-3 gap-y-1 px-3 py-2.5 outline-offset-[-2px] transition hover:bg-violet-50 focus-visible:bg-violet-50 sm:grid-cols-[minmax(0,1fr)_7rem_6rem_auto] sm:gap-x-4 sm:px-4">
+        <div className="col-span-2 min-w-0 sm:col-span-1">
+          <span className="break-words text-sm font-semibold text-slate-950 group-hover:text-violet-900 group-hover:underline">{item.title}</span>
+          <div className="mt-1 h-1 max-w-80 overflow-hidden rounded-full bg-violet-100" aria-hidden="true"><div className="h-full rounded-full bg-violet-600" style={{ width: `${(item.totalCases / maxCases) * 100}%` }} /></div>
         </div>
-        <p className="text-sm sm:text-right"><span className="text-xs text-slate-500 sm:block">Decisions</span><strong className="text-slate-950">{formatNumber(item.totalCases)}</strong></p>
-        <p className="text-sm sm:text-right"><span className="text-xs text-slate-500 sm:block">Upheld</span><strong className="text-slate-950">{item.upheldRate == null ? 'n/a' : formatPercent(item.upheldRate)}</strong></p>
-      </div>)}
-    </div> : <p className="p-5 text-sm text-slate-600">No published themes match this search.</p>}
+        <span className="text-xs text-slate-600 sm:text-right"><strong className="mr-1 text-sm tabular-nums text-slate-950 sm:mr-0 sm:block">{formatNumber(item.totalCases)}</strong> decisions</span>
+        <span className="text-right text-xs text-slate-600"><strong className="mr-1 text-sm tabular-nums text-slate-950 sm:mr-0 sm:block">{item.upheldRate == null ? 'n/a' : formatPercent(item.upheldRate)}</strong> upheld</span>
+        <span className="hidden text-violet-700 sm:inline" aria-hidden="true">→</span>
+      </Link>)}
+    </div> : <p className="p-4 text-sm text-slate-600">No matching results.</p>}
+    {pageSize && sorted.length < items.length ? (
+      <div className="border-t border-slate-200 px-3 py-2">
+        <button type="button" className="rounded-md px-2 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-50" onClick={() => setVisibleCount(sorted.length + pageSize)}>
+          Show {Math.min(pageSize, items.length - sorted.length)} more
+        </button>
+      </div>
+    ) : null}
   </div>;
 }
