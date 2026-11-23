@@ -28,6 +28,14 @@ import {
 } from './repo-helpers';
 import { queryCases } from './cases-repository';
 
+type CurrentSummaryOverlay = Pick<DashboardSummaryPayload, 'overview' | 'trends' | 'outcomes' | 'dataQuality'>;
+
+let currentSummaryOverlayCache: {
+  key: string;
+  expiresAt: number;
+  value: Promise<CurrentSummaryOverlay>;
+} | null = null;
+
 export async function getDashboardSnapshot(
   filters: FOSDashboardFilters,
   options: { includeCases?: boolean } = {}
@@ -43,8 +51,23 @@ export async function getDashboardSnapshot(
       queryIngestionStatus(),
     ]);
 
+    const summaryDataThrough = summary?.overview.latestDecisionDate?.slice(0, 10) || null;
+    const ingestionDataThrough = ingestion.dataThrough?.slice(0, 10) || null;
+    const summaryMatchesCurrentCorpus = !ingestionDataThrough || summaryDataThrough === ingestionDataThrough;
+
     if (summary) {
-      const totalCases = summary.overview.totalCases;
+      let currentSummary = summary;
+
+      if (!summaryMatchesCurrentCorpus && ingestionDataThrough) {
+        const overlay = await queryCurrentSummaryOverlay(ingestionDataThrough, summary);
+        currentSummary = {
+          ...summary,
+          ...overlay,
+          insights: await queryYearInsights(overlay.trends),
+        };
+      }
+
+      const totalCases = currentSummary.overview.totalCases;
       const caseBundle = includeCases
         ? await queryCases(filters, totalCases)
         : {
@@ -58,7 +81,7 @@ export async function getDashboardSnapshot(
           };
 
       return {
-        ...summary,
+        ...currentSummary,
         cases: caseBundle.items,
         pagination: caseBundle.pagination,
         ingestion,
@@ -171,6 +194,119 @@ export async function getDashboardSnapshot(
 }
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
+
+async function queryCurrentSummaryOverlay(
+  corpusKey: string,
+  summary: DashboardSummaryPayload
+): Promise<CurrentSummaryOverlay> {
+  const now = Date.now();
+  if (currentSummaryOverlayCache?.key === corpusKey && currentSummaryOverlayCache.expiresAt > now) {
+    return currentSummaryOverlayCache.value;
+  }
+
+  const value = (async () => {
+    const rows = await DatabaseClient.query<Record<string, unknown>>(
+      `
+        WITH base AS (
+          SELECT
+            d.decision_date,
+            ${outcomeExpression('d')} AS outcome_bucket
+          FROM fos_decisions d
+        )
+        SELECT
+          EXTRACT(YEAR FROM decision_date)::INT AS year,
+          outcome_bucket AS outcome,
+          COUNT(*)::INT AS total,
+          MIN(decision_date) AS earliest_decision_date,
+          MAX(decision_date) AS latest_decision_date
+        FROM base
+        GROUP BY EXTRACT(YEAR FROM decision_date)::INT, outcome_bucket
+        ORDER BY year ASC NULLS LAST, outcome ASC
+      `
+    );
+
+    const trendByYear = new Map<number, CurrentSummaryOverlay['trends'][number]>();
+    const outcomeCounts = new Map<ReturnType<typeof normalizeOutcome>, number>();
+    let totalCases = 0;
+    let upheldCases = 0;
+    let notUpheldCases = 0;
+    let partiallyUpheldCases = 0;
+    let missingDecisionDate = 0;
+    let earliestDecisionDate: string | null = null;
+    let latestDecisionDate: string | null = null;
+
+    for (const row of rows) {
+      const outcome = normalizeOutcome(String(row.outcome || 'unknown'));
+      const count = toInt(row.total);
+      const year = toInt(row.year);
+      const earliest = toIsoDate(row.earliest_decision_date);
+      const latest = toIsoDate(row.latest_decision_date);
+
+      totalCases += count;
+      outcomeCounts.set(outcome, (outcomeCounts.get(outcome) || 0) + count);
+      if (outcome === 'upheld') upheldCases += count;
+      if (outcome === 'not_upheld') notUpheldCases += count;
+      if (outcome === 'partially_upheld') partiallyUpheldCases += count;
+      if (!year) missingDecisionDate += count;
+      if (earliest && (!earliestDecisionDate || earliest < earliestDecisionDate)) earliestDecisionDate = earliest;
+      if (latest && (!latestDecisionDate || latest > latestDecisionDate)) latestDecisionDate = latest;
+
+      if (!year) continue;
+      const trend = trendByYear.get(year) || {
+        year,
+        total: 0,
+        upheld: 0,
+        notUpheld: 0,
+        partiallyUpheld: 0,
+        unknown: 0,
+      };
+      trend.total += count;
+      if (outcome === 'upheld') trend.upheld += count;
+      if (outcome === 'not_upheld') trend.notUpheld += count;
+      if (outcome === 'partially_upheld') trend.partiallyUpheld += count;
+      if (outcome === 'unknown') trend.unknown += count;
+      trendByYear.set(year, trend);
+    }
+
+    const outcomes = Array.from(outcomeCounts.entries())
+      .map(([outcome, count]) => ({ outcome, count }))
+      .sort((a, b) => b.count - a.count || a.outcome.localeCompare(b.outcome));
+
+    return {
+      overview: {
+        ...summary.overview,
+        totalCases,
+        upheldCases,
+        notUpheldCases,
+        partiallyUpheldCases,
+        upheldRate: percentage(upheldCases, totalCases),
+        notUpheldRate: percentage(notUpheldCases, totalCases),
+        earliestDecisionDate,
+        latestDecisionDate,
+      },
+      trends: Array.from(trendByYear.values()).sort((a, b) => a.year - b.year),
+      outcomes,
+      dataQuality: {
+        ...summary.dataQuality,
+        missingDecisionDate,
+        missingOutcome: outcomeCounts.get('unknown') || 0,
+      },
+    };
+  })();
+
+  currentSummaryOverlayCache = {
+    key: corpusKey,
+    expiresAt: now + 5 * 60_000,
+    value,
+  };
+
+  try {
+    return await value;
+  } catch (error) {
+    if (currentSummaryOverlayCache?.value === value) currentSummaryOverlayCache = null;
+    throw error;
+  }
+}
 
 async function queryDashboardAggregateBundle(filters: FOSDashboardFilters): Promise<Record<string, unknown> | null> {
   if (!hasActiveScopeFilters(filters)) {

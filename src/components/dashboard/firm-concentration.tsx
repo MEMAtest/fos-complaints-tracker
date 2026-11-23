@@ -27,7 +27,7 @@ export function FirmConcentration({ firms, overview, activeFirms, onToggleFirm }
   }));
 
   return (
-    <div className="h-[300px]">
+    <div className="h-[240px]">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
           <XAxis

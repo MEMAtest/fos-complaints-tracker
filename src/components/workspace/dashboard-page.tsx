@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, BarChart3, ClipboardList, GitCompare, Search as SearchIcon } from 'lucide-react';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters } from '@/hooks/use-fos-filters';
 import { useFosDashboard, useCaseDetail } from '@/hooks/use-fos-dashboard';
@@ -88,6 +88,7 @@ export default function FOSComplaintsDashboardPage() {
         {/* Header */}
         <section className="flex flex-wrap items-center justify-between gap-4">
           <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-teal-700">Management platform</p>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
               FOS Complaints Intelligence
             </h1>
@@ -107,8 +108,31 @@ export default function FOSComplaintsDashboardPage() {
           </div>
         </section>
 
+        <nav aria-label="Choose a task" className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { href: '#decision-search', label: 'Find a decision', helper: 'Search cases and firms', icon: SearchIcon },
+            { href: '#trends', label: 'Understand trends', helper: 'Filter years and outcomes', icon: BarChart3 },
+            { href: '/comparison', label: 'Compare firms', helper: 'Benchmark published outcomes', icon: GitCompare },
+            { href: '/complaints', label: 'Manage a complaint', helper: 'Evidence, actions and letters', icon: ClipboardList },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.label} href={item.href} className="group flex items-center gap-3 border-b border-slate-200 px-4 py-3 transition hover:bg-teal-50/70 sm:odd:border-r xl:border-b-0 xl:border-r xl:last:border-r-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#102a4e] text-white transition group-hover:bg-teal-700">
+                  <Icon className="h-4.5 w-4.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">{item.helper}</p>
+                </div>
+                <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-teal-700" />
+              </Link>
+            );
+          })}
+        </nav>
+
         {/* Search bar (full width) */}
-        <section>
+        <section id="decision-search" className="scroll-mt-20">
           <SearchBar
             queryDraft={queryDraft}
             onQueryDraftChange={setQueryDraft}
@@ -156,10 +180,10 @@ export default function FOSComplaintsDashboardPage() {
           </section>
         )}
 
-        {/* KPI cards (3) + Firm Concentration */}
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {/* KPI cards */}
+        <section className="grid gap-4 md:grid-cols-3">
           {loading && !snapshot ? (
-            Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+            Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
           ) : (
             <>
               <KpiCard
@@ -187,27 +211,12 @@ export default function FOSComplaintsDashboardPage() {
                 borderColor="#f97316"
                 loading={loading && !snapshot}
               />
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" style={{ borderTopColor: '#3b82f6', borderTopWidth: '3px' }}>
-                <h3 className="text-xs uppercase tracking-[0.16em] text-slate-500">Firm concentration</h3>
-                <div className="mt-2">
-                  {snapshot ? (
-                    <FirmConcentration
-                      firms={snapshot.firms}
-                      overview={snapshot.overview}
-                      activeFirms={filters.firms}
-                      onToggleFirm={toggleFirm}
-                    />
-                  ) : (
-                    <div className="h-[120px] animate-pulse rounded-xl bg-slate-100" />
-                  )}
-                </div>
-              </article>
             </>
           )}
         </section>
 
         {/* Trend chart (~65%) + Outcome donut (~35%) */}
-        <section className="grid gap-4 xl:grid-cols-[1.85fr_1fr] xl:items-start">
+        <section id="trends" className="grid scroll-mt-20 gap-4 xl:grid-cols-[1.85fr_1fr] xl:items-start">
           <ExpandableCard title="Year trend and drill-down" description="Click a year to filter. Multi-select enabled." interactionHint="Click a dot or year pill to filter all panels by that year.">
             {snapshot ? (
               <TrendChart trends={snapshot.trends} activeYears={filters.years} onToggleYear={toggleYear} />
@@ -225,8 +234,31 @@ export default function FOSComplaintsDashboardPage() {
           </ExpandableCard>
         </section>
 
+        {/* Firm and product distributions */}
+        <section className="grid items-start gap-4 xl:grid-cols-2">
+          <ExpandableCard title="Firm concentration" description="See which firms dominate the active result set." interactionHint="Click a firm bar to filter every panel.">
+            {snapshot ? (
+              <FirmConcentration
+                firms={snapshot.firms}
+                overview={snapshot.overview}
+                activeFirms={filters.firms}
+                onToggleFirm={toggleFirm}
+              />
+            ) : (
+              <div className="h-[240px] animate-pulse rounded-xl bg-slate-100" />
+            )}
+          </ExpandableCard>
+          <ExpandableCard title="Product mix" description="See the products driving the active result set." interactionHint="Click a bar to filter by product.">
+            <ProductBarChart
+              products={snapshot?.products || []}
+              activeProduct={activeProduct}
+              onToggleProduct={toggleProduct}
+            />
+          </ExpandableCard>
+        </section>
+
         {/* Case explorer (full width) */}
-        <section>
+        <section id="case-explorer" className="scroll-mt-20">
           <ExpandableCard title="Case Explorer" description="Browse individual case decisions." interactionHint="Click a row to view full case details.">
             <div className="mb-2 flex justify-end">
               <Link
@@ -249,16 +281,6 @@ export default function FOSComplaintsDashboardPage() {
           </ExpandableCard>
         </section>
 
-        {/* Product mix (compact) */}
-        <section>
-          <ExpandableCard title="Product mix" description="Click a bar to filter by product." interactionHint="Click a bar to filter by that product category.">
-            <ProductBarChart
-              products={snapshot?.products || []}
-              activeProduct={activeProduct}
-              onToggleProduct={toggleProduct}
-            />
-          </ExpandableCard>
-        </section>
       </div>
 
       {/* Case detail sheet */}

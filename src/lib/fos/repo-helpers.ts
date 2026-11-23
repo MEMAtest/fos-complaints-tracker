@@ -660,7 +660,21 @@ export function toNumber(value: unknown, fallback = 0): number {
 
 export function toIsoDate(value: unknown): string | null {
   if (value == null || value === '') return null;
-  const date = new Date(String(value));
+
+  // PostgreSQL DATE values arrive from `pg` as local-midnight Date objects.
+  // Converting those straight to UTC shifts British Summer Time dates back by
+  // one day, so preserve their local calendar components before serialising.
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
 }

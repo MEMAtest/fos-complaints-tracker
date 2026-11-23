@@ -1,7 +1,8 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { ArrowRight, AlertCircle, BookOpen, Loader2, Search, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowRight, AlertCircle, BookOpen, Loader2, Search, Sparkles } from 'lucide-react';
 import { useCheckEstimator } from '@/hooks/use-check-estimator';
 import { trackPublicEvent } from '@/lib/analytics/public-events';
 import { getWorkspaceEntryHref } from '@/lib/marketing/config';
@@ -13,6 +14,7 @@ import { CheckResultsSummary } from '@/components/check/check-results-summary';
 import { ConfidenceBadge } from '@/components/check/confidence-badge';
 import { FirmComparisonBar } from '@/components/check/firm-comparison-bar';
 import { OutcomeBreakdown } from '@/components/check/outcome-breakdown';
+import { PatternExplorer } from '@/components/check/pattern-explorer';
 import { RiskGauge } from '@/components/check/risk-gauge';
 import { PublicStatusBanner } from '@/components/public/public-status-banner';
 import type { PublicDataStatus } from '@/lib/insights/types';
@@ -141,10 +143,10 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
     <div className="pb-20">
       <section className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(180deg,#fcfbf7_0%,#f4f8ff_54%,#eef4ff_100%)]">
         <div className="absolute inset-x-0 top-0 h-48 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_30%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.14),transparent_24%)]" />
-        <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 md:px-8 md:py-16 xl:grid-cols-[0.92fr_1.08fr] xl:items-center">
+        <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-10 md:px-8 md:py-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
           <div className="relative z-10">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-700">Public estimator</p>
-            <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-tight text-slate-950 md:text-6xl md:leading-[0.98]">
+            <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-tight text-slate-950 md:text-5xl md:leading-[0.98]">
               Complaint Outcome Estimator
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
@@ -176,18 +178,35 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
             </div>
           </div>
 
-          <div className="relative">
-            <PublicIllustration variant="estimator" className="rounded-[2.3rem] bg-[linear-gradient(180deg,#fffdf8_0%,#f3f7ff_100%)]" />
-            <div className="absolute -bottom-4 left-4 right-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-[1.5rem] border border-slate-200 bg-white/95 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.14)] backdrop-blur">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Public insight pages</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{liveStats.publicPages}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-600">The estimator sits on the same live public analysis layer as years, firms, products, and themes.</p>
+          <div className="relative rounded-[2.3rem] border border-slate-200/80 bg-white/55 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-[2rem] border border-violet-100 bg-white">
+              <Image
+                src="/images/illustrations/estimator-journey.webp"
+                alt=""
+                fill
+                priority
+                sizes="(min-width: 1024px) 52vw, 100vw"
+                className="object-cover"
+              />
+              <div className="absolute bottom-[21%] left-[16%] w-[31%] rounded-[1.15rem] border-2 border-[#16245b] bg-white/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(44,36,111,0.16)] backdrop-blur">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-violet-700">Current upheld rate</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-[#13214d] md:text-2xl">{liveStats.upheldRate}</p>
               </div>
-              <div className="rounded-[1.5rem] border border-[#102a4e] bg-[#102a4e] p-4 text-white shadow-[0_24px_60px_rgba(16,42,78,0.24)]">
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Public insight pages</p>
+                <div className="mt-2 flex items-end justify-between gap-3">
+                  <p className="text-xl font-semibold tracking-tight text-slate-950">{liveStats.publicPages}</p>
+                  <span className="text-xs font-medium text-sky-700">Explore evidence</span>
+                </div>
+              </div>
+              <div className="rounded-[1.25rem] border border-[#102a4e] bg-[#102a4e] p-4 text-white">
                 <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">Latest year in focus</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight">{liveStats.latestYear}</p>
-                <p className="mt-2 text-xs leading-5 text-white/72">Use the estimator for fast exposure checks, then step into the deeper public analysis if you need context.</p>
+                <div className="mt-2 flex items-end justify-between gap-3">
+                  <p className="text-xl font-semibold tracking-tight">{liveStats.latestYear}</p>
+                  <span className="text-xs font-medium text-white/70">Live focus</span>
+                </div>
               </div>
             </div>
           </div>
@@ -196,8 +215,8 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
 
       <div className="mx-auto -mt-6 w-full max-w-7xl px-4 md:px-8">
         <PublicStatusBanner status={status} className="mb-6" />
-        <section className="relative z-10 grid gap-6 rounded-[2.3rem] border border-slate-200 bg-white/96 p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] md:p-8 xl:grid-cols-[0.95fr_1.05fr]">
-          <div>
+        <section className="relative z-10 grid items-start gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-[2.3rem] border border-slate-200 bg-white/96 p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] md:p-8">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <Sparkles className="h-4 w-4 text-amber-500" />
               Guided estimate
@@ -331,8 +350,8 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
             overlayScope={firmOverlay?.sourceScope}
           />
 
-          <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="grid gap-6">
+          <section className="grid items-start gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="grid content-start gap-6">
               <RiskGauge upheldRate={risk.upheldRate} upholdRiskLevel={risk.upholdRiskLevel} />
               {brief.outcomeDistribution && brief.outcomeDistribution.length > 0 ? (
                 <div className="rounded-[1.9rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -340,7 +359,7 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
                 </div>
               ) : null}
             </div>
-            <div className="grid gap-6">
+            <div className="grid content-start gap-6">
               <ConfidenceBadge sampleSize={risk.sampleSize} />
               <section className="rounded-[1.9rem] border border-[#102a4e] bg-[#102a4e] p-6 text-white shadow-[0_24px_70px_rgba(16,42,78,0.22)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">How to read this</p>
@@ -415,45 +434,14 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
             </div>
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-2">
-            {(brief.whatWins.length > 0 || brief.aiWhatWins) ? (
-              <div className="rounded-[1.9rem] border border-emerald-200 bg-[linear-gradient(180deg,#effcf6_0%,#ffffff_100%)] p-6 shadow-sm">
-                <div className="mb-3 flex items-center gap-2">
-                  <ThumbsUp className="h-4 w-4 text-emerald-600" />
-                  <p className="text-sm font-semibold text-emerald-900">What tends to win cases</p>
-                </div>
-                {brief.aiWhatWins ? <p className="mb-4 text-sm leading-7 text-emerald-950">{brief.aiWhatWins}</p> : null}
-                {brief.whatWins.length > 0 ? (
-                  <ul className="grid gap-3">
-                    {brief.whatWins.slice(0, 5).map((theme) => (
-                      <li key={theme.theme} className="rounded-[1.2rem] border border-emerald-200/70 bg-white/90 px-4 py-3 text-sm leading-6 text-emerald-900">
-                        {theme.theme}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-
-            {(brief.whatLoses.length > 0 || brief.aiWhatLoses) ? (
-              <div className="rounded-[1.9rem] border border-rose-200 bg-[linear-gradient(180deg,#fff0f3_0%,#ffffff_100%)] p-6 shadow-sm">
-                <div className="mb-3 flex items-center gap-2">
-                  <ThumbsDown className="h-4 w-4 text-rose-600" />
-                  <p className="text-sm font-semibold text-rose-900">What tends to lose cases</p>
-                </div>
-                {brief.aiWhatLoses ? <p className="mb-4 text-sm leading-7 text-rose-950">{brief.aiWhatLoses}</p> : null}
-                {brief.whatLoses.length > 0 ? (
-                  <ul className="grid gap-3">
-                    {brief.whatLoses.slice(0, 5).map((theme) => (
-                      <li key={theme.theme} className="rounded-[1.2rem] border border-rose-200/70 bg-white/90 px-4 py-3 text-sm leading-6 text-rose-900">
-                        {theme.theme}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-          </section>
+          {(brief.whatWins.length > 0 || brief.aiWhatWins || brief.whatLoses.length > 0 || brief.aiWhatLoses) ? (
+            <PatternExplorer
+              wins={brief.whatWins}
+              loses={brief.whatLoses}
+              winsSynthesis={brief.aiWhatWins}
+              losesSynthesis={brief.aiWhatLoses}
+            />
+          ) : null}
 
           <section className="overflow-hidden rounded-[2rem] border border-[#102a4e] bg-[#08162f] text-white shadow-[0_32px_90px_rgba(0,0,0,0.22)]">
             <div className="grid gap-6 p-6 md:grid-cols-[1fr_0.9fr] md:p-8">

@@ -1,4 +1,4 @@
-import { ArrowRight, Menu } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, Menu } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
 import { RegComplaintsWordmark } from '@/components/brand/regcomplaints-brand';
 import { getWorkspaceEntryHref } from '@/lib/marketing/config';
@@ -19,8 +19,17 @@ export function MarketingHeader() {
           <PublicTrackedLink href="/comparison" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'comparison' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Compare Firms</PublicTrackedLink>
           <PublicTrackedLink href="/advisor" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'advisor' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Advisor</PublicTrackedLink>
           <PublicTrackedLink href="/#how-it-works" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'how_it_works' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">How it works</PublicTrackedLink>
-          <PublicTrackedLink href={workspaceHref} eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'platform' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Platform</PublicTrackedLink>
           <PublicTrackedLink href="/#roles" eventName="public_nav_clicked" eventProps={{ source: 'marketing_header', cta: 'who_it_helps' }} className="whitespace-nowrap text-[13px] font-medium text-slate-600 transition hover:text-slate-950">Who it helps</PublicTrackedLink>
+          <span className="h-5 w-px bg-slate-300" aria-hidden="true" />
+          <PublicTrackedLink
+            href={workspaceHref}
+            eventName="public_nav_clicked"
+            eventProps={{ source: 'marketing_header', cta: 'management_platform' }}
+            className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-[12px] font-semibold text-teal-900 transition hover:border-teal-300 hover:bg-teal-100"
+          >
+            <BriefcaseBusiness className="h-3.5 w-3.5" />
+            Management platform
+          </PublicTrackedLink>
         </nav>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -34,7 +43,7 @@ export function MarketingHeader() {
                 ['/check', 'Outcome Estimator'],
                 ['/comparison', 'Compare Firms'],
                 ['/advisor', 'Advisor'],
-                [workspaceHref, 'Request workspace demo'],
+                [workspaceHref, 'Open management platform'],
               ].map(([href, label]) => (
                 <PublicTrackedLink key={href} href={href} eventName="public_nav_clicked" eventProps={{ source: 'mobile_marketing_header', cta: label }} className="rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
                   {label}
@@ -56,7 +65,7 @@ export function MarketingHeader() {
             eventProps={{ source: 'marketing_header', cta: 'workspace_demo' }}
             className="hidden items-center gap-1.5 whitespace-nowrap rounded-full bg-[#0f1f4f] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#0c1940] sm:inline-flex"
           >
-            Request workspace demo
+            Open platform
             <ArrowRight className="h-3.5 w-3.5" />
           </PublicTrackedLink>
         </div>

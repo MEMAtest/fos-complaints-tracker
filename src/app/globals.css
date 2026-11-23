@@ -215,6 +215,17 @@ button:focus {
   }
 }
 
+@keyframes rcCarouselSlide {
+  0% {
+    opacity: 0;
+    transform: translateX(12px) scale(0.992);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
 .rc-ink-stroke-once {
   stroke-dasharray: 245;
   stroke-dashoffset: 0;
@@ -301,6 +312,10 @@ button:focus {
   animation: rcNibPop 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.rc-carousel-slide {
+  animation: rcCarouselSlide 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rc-ink-stroke-once,
   .rc-quill-write-once,
@@ -315,7 +330,8 @@ button:focus {
   .rc-chart-ink-line,
   .rc-chart-area-fade,
   .rc-chart-dot-pop,
-  .rc-nib-pop {
+  .rc-nib-pop,
+  .rc-carousel-slide {
     animation: none !important;
     stroke-dashoffset: 0 !important;
     opacity: 1 !important;

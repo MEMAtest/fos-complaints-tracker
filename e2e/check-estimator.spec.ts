@@ -266,15 +266,14 @@ test.describe('Check Estimator - Results sections', () => {
 
   test('what wins and what loses sections are visible', async ({ page }) => {
     await loadEstimate(page);
-    const wins = page.getByText(/what tends to win cases/i).first();
-    const loses = page.getByText(/what tends to lose cases/i).first();
+    const explorer = page.getByRole('heading', { name: /What strengthens or weakens a complaint/i });
+    const hasPatterns = await explorer.isVisible().catch(() => false);
 
-    const hasWins = await wins.isVisible().catch(() => false);
-    const hasLoses = await loses.isVisible().catch(() => false);
-
-    // At least one of them should be visible if brief has data
-    if (hasWins) await expect(wins).toBeVisible();
-    if (hasLoses) await expect(loses).toBeVisible();
+    if (hasPatterns) {
+      await expect(page.getByRole('tab', { name: /Strengthens/i })).toBeVisible();
+      await page.getByRole('tab', { name: /Weakens/i }).click();
+      await expect(page.getByRole('tab', { name: /Weakens/i })).toHaveAttribute('aria-selected', 'true');
+    }
   });
 
   test('CTA link navigates to advisor page with product pre-selected', async ({ page }) => {

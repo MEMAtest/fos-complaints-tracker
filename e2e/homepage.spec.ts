@@ -1,20 +1,24 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Marketing homepage', () => {
-  test('guided demo panel switches between product states', async ({ page }) => {
+  test('capability carousel switches between firm tasks', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Make defensible complaint decisions');
-    await expect(page.getByRole('link', { name: /start analysis/i }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Public FOS intelligence');
+    await expect(page.getByRole('link', { name: /explore the data/i }).first()).toBeVisible();
+    await expect(page.getByRole('region', { name: /What firms can do/i })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Compare' }).click();
+    await page.getByRole('tab', { name: 'Compare firms' }).click();
     await expect(page.getByText('See the complaint pattern in context.')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Work' }).click();
+    await page.getByRole('tab', { name: 'Manage complaints' }).click();
     await expect(page.getByText('Transition into the workspace when the complaint needs handling depth.')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Report' }).click();
+    await page.getByRole('tab', { name: 'Create reports' }).click();
     await expect(page.getByRole('heading', { level: 2, name: 'Finish with outputs leadership can actually use.' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Previous capability' }).click();
+    await expect(page.getByRole('tab', { name: 'Manage complaints' })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('phase grid and role split sections render', async ({ page }) => {
@@ -31,7 +35,7 @@ test.describe('Marketing homepage', () => {
 
     await expect(header.getByRole('link', { name: 'Evidence Explorer' })).toHaveAttribute('href', '/insights');
     await expect(header.getByRole('link', { name: 'How it works' })).toHaveAttribute('href', '/#how-it-works');
-    await expect(header.getByRole('link', { name: 'Platform' })).toHaveAttribute('href', '/workspace');
+    await expect(header.getByRole('link', { name: 'Management platform' })).toHaveAttribute('href', '/workspace');
     await expect(header.getByRole('link', { name: 'Who it helps' })).toHaveAttribute('href', '/#roles');
 
     await expect(page.getByRole('link', { name: 'Open complaints flow' })).toHaveAttribute('href', '/workspace');

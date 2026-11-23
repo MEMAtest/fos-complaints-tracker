@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb, Newspaper, SlidersHorizontal } from 'lucide-react';
+import { Home, BarChart3, Network, GitCompare, Settings, HelpCircle, ClipboardList, Upload, Briefcase, Lightbulb, Newspaper, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import type { AppUserRole } from '@/lib/auth/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/layout/settings-dialog';
 import { HelpSheet } from '@/components/layout/help-sheet';
-import { RegComplaintsMark } from '@/components/brand/regcomplaints-brand';
+import { RegComplaintsWordmark } from '@/components/brand/regcomplaints-brand';
 
 type NavItem = {
   href: string;
@@ -33,6 +33,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/settings/insights', label: 'Insight Controls', icon: SlidersHorizontal, requiresAuth: true, minimumRole: 'admin' },
 ];
 
+const INTELLIGENCE_HREFS = new Set(['/workspace', '/analysis', '/root-causes', '/comparison', '/insights', '/advisor']);
+
 export function SidebarNav() {
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -46,17 +48,24 @@ export function SidebarNav() {
 
   return (
     <>
-      <nav className="flex h-full w-16 flex-col items-center bg-[#0f1f4f] py-4">
+      <nav className="flex h-full w-full flex-col bg-[linear-gradient(180deg,#081d36_0%,#102a4e_58%,#0a2944_100%)] px-3 py-4 text-white">
         <Link
           href="/"
-          aria-label="RegComplaints Home"
-          className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/15"
+          aria-label="RegComplaints public home"
+          className="mb-5 flex min-h-14 items-center rounded-xl px-2 transition hover:bg-white/8"
         >
-          <RegComplaintsMark width={28} height={25} tone="on-dark" />
+          <RegComplaintsWordmark tone="on-dark" markWidth={34} subtitle="Management platform" />
         </Link>
 
-        <div className="flex flex-1 flex-col items-center gap-1">
-          {visibleItems.map((item) => {
+        <Link href="/" className="mb-5 flex items-center justify-between rounded-xl border border-white/10 bg-white/6 px-3 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          Public research site
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </Link>
+
+        <div className="flex-1 overflow-y-auto">
+          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Intelligence</p>
+          <div className="grid gap-1">
+          {visibleItems.filter((item) => INTELLIGENCE_HREFS.has(item.href)).map((item) => {
             const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
             const Icon = item.icon;
 
@@ -67,13 +76,14 @@ export function SidebarNav() {
                     href={item.href}
                     aria-label={item.label}
                     className={cn(
-                      'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+                      'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
                       isActive
-                        ? 'bg-white/15 text-white'
-                        : 'text-white/60 hover:bg-white/10 hover:text-white'
+                        ? 'bg-gradient-to-r from-teal-500/35 to-cyan-400/18 text-white shadow-[inset_3px_0_0_#2dd4bf]'
+                        : 'text-white/62 hover:bg-white/8 hover:text-white'
                     )}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-4.5 w-4.5 shrink-0" />
+                    <span>{item.label}</span>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">
@@ -82,17 +92,47 @@ export function SidebarNav() {
               </Tooltip>
             );
           })}
+          </div>
+
+          {visibleItems.some((item) => !INTELLIGENCE_HREFS.has(item.href)) ? (
+            <>
+              <p className="mt-6 px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Complaint operations</p>
+              <div className="grid gap-1">
+                {visibleItems.filter((item) => !INTELLIGENCE_HREFS.has(item.href)).map((item) => {
+                  const isActive = pathname === item.href || pathname.startsWith(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-label={item.label}
+                      className={cn(
+                        'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-gradient-to-r from-teal-500/35 to-cyan-400/18 text-white shadow-[inset_3px_0_0_#2dd4bf]'
+                          : 'text-white/62 hover:bg-white/8 hover:text-white'
+                      )}
+                    >
+                      <Icon className="h-4.5 w-4.5 shrink-0" />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
         </div>
 
-        <div className="mt-auto flex flex-col items-center gap-1">
+        <div className="mt-4 grid gap-1 border-t border-white/10 pt-3">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 aria-label="Settings"
                 onClick={() => setSettingsOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/62 transition-colors hover:bg-white/8 hover:text-white"
               >
-                <Settings className="h-5 w-5" />
+                <Settings className="h-4.5 w-4.5" />
+                Settings
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -105,9 +145,10 @@ export function SidebarNav() {
               <button
                 aria-label="Help"
                 onClick={() => setHelpOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/62 transition-colors hover:bg-white/8 hover:text-white"
               >
-                <HelpCircle className="h-5 w-5" />
+                <HelpCircle className="h-4.5 w-4.5" />
+                Help
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">

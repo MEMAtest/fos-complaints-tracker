@@ -305,7 +305,7 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
     collections: buildLandingCollections({ years, firms, products, types, yearProducts, firmProducts }),
     lastUpdated: dashboard?.latestDecisionDate || null,
   };
-}, ['insights-landing'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-landing-v2'], { revalidate: REVALIDATE_SECONDS });
 
 export async function getPublishedYearInsights(): Promise<InsightArchiveItem[]> {
   return getPublishedArchiveWithFallback('year', getYearArchive);

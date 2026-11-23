@@ -29,16 +29,16 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         }
       : landing.status,
     hero: {
-      eyebrow: 'Evidence-led FOS complaints intelligence',
-      title: 'Make defensible complaint decisions, then carry the evidence into action.',
+      eyebrow: 'Complaints · Firms · Trends · Outcomes',
+      title: 'Public FOS intelligence and complaint operations, in one place.',
       dek:
-        'Explore the public complaint signal first. Then move into the workspace to investigate complaints, manage evidence and letters, and produce reporting that leadership can actually use.',
+        'Explore complaint volumes, outcomes and themes across firms and products, estimate likely exposure, then carry the evidence into investigation, correspondence and board reporting.',
       primaryCta: {
-        label: 'Start analysis',
+        label: 'Explore the data',
         href: '/insights',
       },
       secondaryCta: {
-        label: 'Request workspace demo',
+        label: 'Open management platform',
         href: workspaceHref,
       },
       trustPoints: [
@@ -72,7 +72,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
     demoSteps: [
       {
         key: 'search',
-        label: 'Search',
+        label: 'Explore data',
         title: 'Explore the public signal first.',
         caption:
           'Start with public year, firm, product, and theme pages so users can understand the complaint landscape before they ever enter the secure workspace.',
@@ -97,7 +97,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       },
       {
         key: 'compare',
-        label: 'Compare',
+        label: 'Compare firms',
         title: 'See the complaint pattern in context.',
         caption:
           'Comparison views show where firm footprint, product concentration, and upheld patterns diverge, so users do not jump from a single page straight to a conclusion.',
@@ -122,12 +122,12 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       },
       {
         key: 'work',
-        label: 'Work',
+        label: 'Manage complaints',
         title: 'Transition into the workspace when the complaint needs handling depth.',
         caption:
           'The workspace holds complaint detail, evidence, correspondence, approvals, and actions together so the operating trail stays connected from start to finish.',
         href: workspaceHref,
-        actionLabel: 'Request workspace demo',
+        actionLabel: 'Open management platform',
         eyebrow: 'Operational complaint handling',
         metrics: [
           { label: 'Workspace focus', value: 'Evidence + letters', helper: 'Operational complaint handling' },
@@ -147,7 +147,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
       },
       {
         key: 'report',
-        label: 'Report',
+        label: 'Create reports',
         title: 'Finish with outputs leadership can actually use.',
         caption:
           'Board packs and appendix material are built from the same complaint and insight layer, so the reporting story stays consistent instead of fragmenting across decks and spreadsheets.',
@@ -273,4 +273,4 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
     })),
     updatedAt: ingestion?.dataThrough || landing.lastUpdated,
   };
-}, ['marketing-homepage-snapshot'], { revalidate: REVALIDATE_SECONDS });
+}, ['marketing-homepage-snapshot-v3'], { revalidate: REVALIDATE_SECONDS });

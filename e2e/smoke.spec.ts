@@ -53,8 +53,8 @@ test.describe('Smoke tests - sidebar navigation', () => {
     await expect(page).toHaveURL(/\/comparison(\?.*)?$/);
     await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Firm Comparison');
 
-    // Public comparison uses the marketing shell; return through its Platform link.
-    await page.getByRole('banner').getByRole('link', { name: /^Platform$/i }).click();
+    // Public comparison uses the marketing shell; return through its distinct management-platform link.
+    await page.getByRole('banner').getByRole('link', { name: /Management platform/i }).click();
     await expect(page).toHaveURL(/\/workspace(\?.*)?$/);
   });
 });

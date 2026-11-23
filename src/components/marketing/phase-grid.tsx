@@ -42,7 +42,6 @@ export function PhaseGrid({ steps }: PhaseGridProps) {
                 }}
                 className={cn(
                   'flex flex-col justify-between rounded-2xl border p-5 shadow-sm transition-all duration-500 ease-out hover:-translate-y-0.5 hover:shadow-md',
-                  visible ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
                   dark
                     ? 'border-[#102a4e] bg-[#0f1f4f] text-white'
                     : 'border-slate-200 bg-white text-slate-950'
