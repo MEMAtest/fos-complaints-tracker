@@ -7,6 +7,7 @@ import type { FOSAdvisorApiResponse } from '@/types/fos-dashboard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const preferredRegion = 'fra1';
 
 const CACHE_TTL_MS = 5 * 60_000;
 const MAX_CACHE_ENTRIES = 30;

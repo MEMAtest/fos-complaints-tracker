@@ -2,6 +2,7 @@ import { getAdvisorOptions } from '@/lib/fos/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const preferredRegion = 'fra1';
 
 let optionsCache: { expiresAt: number; payload: unknown } | null = null;
 const CACHE_TTL_MS = 10 * 60_000;

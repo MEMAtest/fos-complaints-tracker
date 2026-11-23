@@ -2,6 +2,7 @@ import { getIngestionStatus } from '@/lib/fos/repository';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const preferredRegion = 'fra1';
 
 export async function GET() {
   try {
