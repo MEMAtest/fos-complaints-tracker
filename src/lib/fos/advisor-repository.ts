@@ -30,14 +30,15 @@ export async function getAdvisorOptions(): Promise<{ products: string[]; rootCau
   ensureDatabaseConfigured();
 
   try {
-    const [productRows, rootCauseRows] = await Promise.all([
-      DatabaseClient.query<{ product: string }>(
-        `SELECT DISTINCT product FROM fos_advisor_briefs WHERE total_cases > 0 ORDER BY product`
-      ),
-      DatabaseClient.query<{ root_cause: string }>(
-        `SELECT DISTINCT root_cause FROM fos_advisor_briefs WHERE root_cause IS NOT NULL AND total_cases > 0 ORDER BY root_cause`
-      ),
-    ]);
+    // The production serverless pool is intentionally small. Run these compact
+    // taxonomy reads sequentially so a cold request can reuse one connection
+    // instead of making the second query wait for a pool slot.
+    const productRows = await DatabaseClient.query<{ product: string }>(
+      `SELECT DISTINCT product FROM fos_advisor_briefs WHERE total_cases > 0 ORDER BY product`
+    );
+    const rootCauseRows = await DatabaseClient.query<{ root_cause: string }>(
+      `SELECT DISTINCT root_cause FROM fos_advisor_briefs WHERE root_cause IS NOT NULL AND total_cases > 0 ORDER BY root_cause`
+    );
 
     return {
       products: canonicalProductOptions(productRows.map((r) => r.product)),
