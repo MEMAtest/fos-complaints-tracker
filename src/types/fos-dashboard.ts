@@ -53,6 +53,13 @@ export interface FOSAnalysisApiResponse {
 export interface FOSAdvisorApiResponse {
   success: boolean;
   data?: FOSAdvisorBriefApi;
+  firmOverlay?: {
+    firmName: string;
+    totalCases: number;
+    upheldRate: number;
+    notUpheldRate: number;
+    sourceScope: 'product_root_cause' | 'product_only';
+  } | null;
   error?: string;
 }
 

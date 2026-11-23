@@ -7,12 +7,6 @@ import type { EstimatorFirmOverlay } from '@/lib/fos/advisor-repository';
 
 const ESTIMATOR_TIMEOUT_MS = 30_000;
 
-interface FirmOverlayApiResponse {
-  success: boolean;
-  data?: EstimatorFirmOverlay | null;
-  error?: string;
-}
-
 export function useCheckEstimator() {
   const [brief, setBrief] = useState<FOSAdvisorBrief | null>(null);
   const [firmOverlay, setFirmOverlay] = useState<EstimatorFirmOverlay | null>(null);
@@ -58,24 +52,11 @@ export function useCheckEstimator() {
     try {
       const advisorParams = new URLSearchParams({ product });
       if (rootCause) advisorParams.set('rootCause', rootCause);
+      if (firm) advisorParams.set('firm', firm);
 
-      const advisorPromise = fetch(`/api/fos/advisor?${advisorParams.toString()}`, {
+      const advisorRes = await fetch(`/api/fos/advisor?${advisorParams.toString()}`, {
         signal: controller.signal,
       });
-
-      let firmPromise: Promise<Response> | null = null;
-      if (firm) {
-        const firmParams = new URLSearchParams({ product, firm });
-        if (rootCause) firmParams.set('rootCause', rootCause);
-        firmPromise = fetch(`/api/fos/check/firm-overlay?${firmParams.toString()}`, {
-          signal: controller.signal,
-        });
-      }
-
-      const [advisorRes, firmRes] = await Promise.all([
-        advisorPromise,
-        firmPromise ?? Promise.resolve(null),
-      ]);
 
       // Parse advisor brief
       let advisorPayload: FOSAdvisorApiResponse | null = null;
@@ -98,20 +79,7 @@ export function useCheckEstimator() {
       }
 
       setBrief(advisorPayload.data);
-
-      // Parse firm overlay if requested
-      if (firmRes) {
-        let firmPayload: FirmOverlayApiResponse | null = null;
-        try {
-          firmPayload = (await firmRes.json()) as FirmOverlayApiResponse;
-        } catch {
-          firmPayload = null;
-        }
-
-        if (firmRes.ok && firmPayload?.success && firmPayload.data) {
-          setFirmOverlay(firmPayload.data);
-        }
-      }
+      setFirmOverlay((advisorPayload.firmOverlay as EstimatorFirmOverlay | null | undefined) ?? null);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         if (timedOut) setError(`Request timed out after ${Math.round(ESTIMATOR_TIMEOUT_MS / 1000)}s.`);

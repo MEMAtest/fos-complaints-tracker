@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth/session';
+import { getEstimatorFirmOverlay } from '@/lib/fos/advisor-repository';
 import { getAdvisorBrief } from '@/lib/fos/repository';
 import type { FOSAdvisorBrief } from '@/lib/fos/types';
 import type { FOSAdvisorApiResponse } from '@/types/fos-dashboard';
@@ -10,6 +11,7 @@ export const runtime = 'nodejs';
 const CACHE_TTL_MS = 5 * 60_000;
 const MAX_CACHE_ENTRIES = 30;
 const cache = new Map<string, { expiresAt: number; payload: unknown }>();
+const UNSAFE_CHARS_RE = /[<>{}[\]\\;]/;
 
 function pruneCache() {
   const now = Date.now();
@@ -48,7 +50,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const cacheKey = `${product}::${rootCause || ''}`;
+    const firm = params.get('firm')?.trim() || null;
+    if (firm && (firm.length > 200 || UNSAFE_CHARS_RE.test(firm))) {
+      return Response.json({ success: false, error: 'Invalid firm parameter' }, { status: 400 });
+    }
+
+    const cacheKey = `${product}::${rootCause || ''}::${firm || ''}`;
     const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return Response.json(cached.payload, {
@@ -65,7 +72,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const payload: FOSAdvisorApiResponse = { success: true, data: serializeAdvisorBrief(brief) };
+    // Keep the public estimate and optional firm overlay in one serverless
+    // request. This reuses the same database pool instead of racing two cold
+    // functions for connections on every estimator submission.
+    const firmOverlay = firm
+      ? await getEstimatorFirmOverlay(product, rootCause, firm)
+      : null;
+
+    const payload: FOSAdvisorApiResponse = {
+      success: true,
+      data: serializeAdvisorBrief(brief),
+      firmOverlay,
+    };
 
     cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, payload });
 
