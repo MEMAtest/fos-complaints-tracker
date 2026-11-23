@@ -14,7 +14,13 @@ export function formatPercent(value: number): string {
 }
 
 export function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: 'short', day: '2-digit' }).format(new Date(value));
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    timeZone: dateOnly ? 'UTC' : undefined,
+  }).format(new Date(value));
 }
 
 export function formatDateTime(value: string): string {

@@ -3372,6 +3372,15 @@ function toNullableNumber(value: unknown): number | null {
 
 function toDateOnly(value: unknown): string | null {
   if (!value) return null;
+  // node-postgres represents PostgreSQL DATE as midnight in the process time
+  // zone. Converting that instant to UTC shifts British summer dates back a day.
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const year = String(value.getFullYear()).padStart(4, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   const dt = new Date(String(value));
   if (Number.isNaN(dt.getTime())) return null;
   return dt.toISOString().slice(0, 10);
