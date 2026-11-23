@@ -272,8 +272,8 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
   return {
     hero: {
       eyebrow: 'Public FOS Insights',
-      title: 'Search-friendly ombudsman complaint analysis by year, firm, product, theme, and curated cross-section.',
-      dek: 'A public editorial layer over the Financial Ombudsman decision corpus, generated from the same intelligence model that powers the workspace and extended with stronger year-product and firm-product pages.',
+      title: 'Explore Financial Ombudsman decisions.',
+      dek: 'Compare published decision volumes and upheld rates by year, firm, product, and complaint theme. Open each analysis for the detail behind the figures.',
     },
     status: mergePublicDataStatuses([
       dashboard ? livePublicDataStatus() : degradedPublicDataStatus(),
@@ -297,6 +297,8 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
           metric('Current upheld rate', 'Live signal', 'Upheld-rate metrics are temporarily unavailable during this render.'),
           metric('Latest year in focus', latestYear?.title || 'Current analysis', latestYear ? latestYear.summary : 'Use the archive routes while live metrics recover.'),
         ],
+    yearTrend: years,
+    themeRanking: types,
     featured: (featured.length > 0 ? featured : buildFallbackFeaturedInsights()).map((item) => ({
       title: item.title,
       href: item.href,
@@ -305,7 +307,7 @@ export const getInsightsLandingData = unstable_cache(async (): Promise<InsightLa
     collections: buildLandingCollections({ years, firms, products, types, yearProducts, firmProducts }),
     lastUpdated: dashboard?.latestDecisionDate || null,
   };
-}, ['insights-landing-v2'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-landing-v3'], { revalidate: REVALIDATE_SECONDS });
 
 export async function getPublishedYearInsights(): Promise<InsightArchiveItem[]> {
   return getPublishedArchiveWithFallback('year', getYearArchive);

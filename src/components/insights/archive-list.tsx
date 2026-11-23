@@ -3,19 +3,10 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import { PublicStatusBanner } from '@/components/public/public-status-banner';
+import { DecisionVolumeTable } from '@/components/insights/decision-volume-visual';
 import type { InsightArchiveItem, PublicDataStatus } from '@/lib/insights/types';
 import { formatDate, formatNumber, formatPercent } from '@/lib/utils';
-
-const ILLUSTRATION_BY_VARIANT = {
-  years: 'insight',
-  firms: 'firm',
-  products: 'archive',
-  types: 'workflow',
-  'year-products': 'reporting',
-  'firm-products': 'firm',
-} as const;
 
 export function InsightArchiveList({
   title,
@@ -30,7 +21,7 @@ export function InsightArchiveList({
   items: InsightArchiveItem[];
   status?: PublicDataStatus;
   placeholder: string;
-  variant: keyof typeof ILLUSTRATION_BY_VARIANT;
+  variant: 'years' | 'firms' | 'products' | 'types' | 'year-products' | 'firm-products';
 }) {
   const [query, setQuery] = useState('');
 
@@ -42,6 +33,10 @@ export function InsightArchiveList({
       return haystack.includes(normalized);
     });
   }, [items, query]);
+  const latestThemeDecisionDate = items.reduce<string | null>((latest, item) => {
+    const date = item.latestDecisionDate;
+    return date && (!latest || date > latest) ? date : latest;
+  }, null);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-10 md:px-8 md:py-14">
@@ -52,9 +47,7 @@ export function InsightArchiveList({
             <p className="text-xs uppercase tracking-[0.24em] text-sky-700">Public archive</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">{title}</h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">{description}</p>
-            <div className="mt-6 max-w-sm">
-              <PublicIllustration variant={ILLUSTRATION_BY_VARIANT[variant]} className="border-0 shadow-none" />
-            </div>
+            {variant === 'types' ? <p className="mt-5 max-w-2xl rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-3 text-xs leading-5 text-slate-600">Source: indexed published Financial Ombudsman decisions. Theme counts include decisions carrying each root-cause tag; one decision may appear under multiple themes. Pages require at least 100 tagged decisions. {latestThemeDecisionDate ? `Latest decision date in this archive: ${formatDate(latestThemeDecisionDate)}.` : 'Decision date coverage is unavailable.'}</p> : null}
           </div>
           <div className="grid gap-4 content-start">
             <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
@@ -79,7 +72,10 @@ export function InsightArchiveList({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {variant === 'types' ? <section aria-label="Complaint themes ranked by decision volume">
+        <p className="mb-3 text-xs text-slate-500">Showing {formatNumber(filtered.length)} of {formatNumber(items.length)} published theme pages{query.trim() ? ' matching your search' : ''}.</p>
+        <DecisionVolumeTable items={filtered} />
+      </section> : <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((item, index) => (
           <Link
             key={item.href}
@@ -110,7 +106,7 @@ export function InsightArchiveList({
             </p>
           </Link>
         ))}
-      </section>
+      </section>}
     </div>
   );
 }

@@ -1,75 +1,53 @@
-import type { ReactNode } from 'react';
-import { ArrowRight } from 'lucide-react';
-import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
-import { BRAND_TAGLINE, RegComplaintsLockup, RegComplaintsWordmark } from '@/components/brand/regcomplaints-brand';
-import { PublicIllustration } from '@/components/illustrations/public-illustration';
-import { getWorkspaceEntryHref } from '@/lib/marketing/config';
+'use client';
 
-const NAV_ITEMS = [
-  { href: '/insights/years', label: 'Years' },
-  { href: '/insights/firms', label: 'Firms' },
-  { href: '/insights/products', label: 'Products' },
-  { href: '/insights/types', label: 'Themes' },
-  { href: '/insights/year-products', label: 'Year + Product' },
-  { href: '/insights/firm-products', label: 'Firm + Product' },
-] as const;
+import type { ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
+import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
+import { MarketingHeader } from '@/components/marketing/marketing-header';
+import { RegComplaintsLockup } from '@/components/brand/regcomplaints-brand';
+
+const collections = [
+  { href: '/insights', detail: '', label: 'Overview' },
+  { href: '/insights/years', detail: '/insights/year/', label: 'Years' },
+  { href: '/insights/firms', detail: '/insights/firm/', label: 'Firms' },
+  { href: '/insights/products', detail: '/insights/product/', label: 'Products' },
+  { href: '/insights/types', detail: '/insights/type/', label: 'Themes' },
+  { href: '/insights/year-products', detail: '', label: 'Year + Product' },
+  { href: '/insights/firm-products', detail: '', label: 'Firm + Product' },
+];
 
 export function PublicInsightsShell({ children }: { children: ReactNode }) {
-  const workspaceHref = getWorkspaceEntryHref();
+  const pathname = usePathname() ?? '';
+  const segments = pathname.split('/');
+  const crossSection = segments[4] === 'product' && segments.length === 6;
+  const active = crossSection
+    ? segments[2] === 'year' ? '/insights/year-products' : '/insights/firm-products'
+    : collections.find(({ href, detail }) => pathname === href || (detail && pathname.startsWith(detail)))?.href;
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#faf8f2_0%,#f5f8ff_18%,#ffffff_46%,#f8fafc_100%)] text-slate-950">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-[rgba(255,255,255,0.86)] backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 md:px-8">
-          <div className="flex items-center gap-3">
-            <PublicTrackedLink href="/" eventName="public_nav_clicked" eventProps={{ source: 'insights_header', cta: 'brand_home' }} className="flex items-center gap-3">
-              <RegComplaintsWordmark tone="light" markWidth={40} subtitle="FOS Complaints Intelligence" />
+    <div className="min-h-screen bg-[linear-gradient(160deg,#f8f7ff_0%,#f5f8ff_24%,#fff_60%)] text-slate-950">
+      <MarketingHeader />
+      <div className="border-b border-slate-200 bg-white/70">
+        <nav aria-label="Browse evidence by" className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-1.5 px-4 py-2.5 md:px-6 xl:px-8">
+          {collections.map(({ href, label }) => (
+            <PublicTrackedLink
+              key={href}
+              href={href}
+              aria-current={active === href ? (pathname === href ? 'page' : 'location') : undefined}
+              eventName="public_nav_clicked"
+              eventProps={{ source: 'insights_header', cta: label }}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${active === href ? 'bg-violet-100 text-violet-900' : 'text-slate-700 hover:bg-slate-100'}`}
+            >
+              {label}
             </PublicTrackedLink>
-          </div>
-
-          <nav className="hidden items-center gap-6 md:flex">
-            {NAV_ITEMS.map((item) => (
-              <PublicTrackedLink key={item.href} href={item.href} eventName="public_nav_clicked" eventProps={{ source: 'insights_header', cta: item.label }} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">
-                {item.label}
-              </PublicTrackedLink>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <PublicTrackedLink href="/analysis" eventName="public_cta_clicked" eventProps={{ source: 'insights_header', cta: 'open_analysis' }} className="hidden h-8 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-900 shadow-sm transition hover:bg-slate-50 md:inline-flex">
-              Open analysis
-            </PublicTrackedLink>
-            <PublicTrackedLink href={workspaceHref} eventName="public_cta_clicked" eventProps={{ source: 'insights_header', cta: 'workspace' }} className="inline-flex h-8 items-center justify-center gap-2 rounded-full bg-[#0f1f4f] px-4 text-xs font-medium text-white shadow transition hover:bg-[#0c1940]">
-              Workspace
-              <ArrowRight className="h-4 w-4" />
-            </PublicTrackedLink>
-          </div>
-        </div>
-      </header>
-
+          ))}
+        </nav>
+      </div>
       <main>{children}</main>
-
       <footer className="border-t border-slate-200 bg-[#08162f] text-white">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-10 md:grid-cols-[1.1fr_0.9fr] md:px-8 md:py-12">
-          <div className="grid gap-6 md:grid-cols-[0.95fr_1.05fr] md:items-center">
-            <PublicIllustration variant="insight" className="border-white/10 bg-[linear-gradient(180deg,#fffdf7_0%,#eef4ff_100%)] shadow-none" />
-            <div>
-              <RegComplaintsLockup width={220} tone="on-dark" className="mb-3" />
-              <p className="text-xs uppercase tracking-[0.22em] text-[#f5daa3]/80">{BRAND_TAGLINE}</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">Public complaint analysis built on the same intelligence layer as the RegComplaints workspace.</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/72">
-                Search-friendly firm, product, year, and complaint-theme pages generated from the published Financial Ombudsman decision corpus, with cleaner ranked views, representative cases, and stronger public navigation into the workspace.
-              </p>
-            </div>
-          </div>
-          <div className="grid gap-3 text-sm text-white/70 md:grid-cols-2">
-            <PublicTrackedLink href="/insights/years" eventName="public_nav_clicked" eventProps={{ source: 'insights_footer', cta: 'years' }} className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3 transition hover:bg-white/10 hover:text-white">Browse annual analysis</PublicTrackedLink>
-            <PublicTrackedLink href="/insights/firms" eventName="public_nav_clicked" eventProps={{ source: 'insights_footer', cta: 'firms' }} className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3 transition hover:bg-white/10 hover:text-white">Browse firm analysis</PublicTrackedLink>
-            <PublicTrackedLink href="/insights/products" eventName="public_nav_clicked" eventProps={{ source: 'insights_footer', cta: 'products' }} className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3 transition hover:bg-white/10 hover:text-white">Browse product analysis</PublicTrackedLink>
-            <PublicTrackedLink href="/insights/types" eventName="public_nav_clicked" eventProps={{ source: 'insights_footer', cta: 'themes' }} className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3 transition hover:bg-white/10 hover:text-white">Browse complaint themes</PublicTrackedLink>
-            <PublicTrackedLink href="/insights/year-products" eventName="public_nav_clicked" eventProps={{ source: 'insights_footer', cta: 'year_products' }} className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3 transition hover:bg-white/10 hover:text-white">Browse year and product analysis</PublicTrackedLink>
-            <PublicTrackedLink href="/insights/firm-products" eventName="public_nav_clicked" eventProps={{ source: 'insights_footer', cta: 'firm_products' }} className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3 transition hover:bg-white/10 hover:text-white">Browse firm and product analysis</PublicTrackedLink>
-          </div>
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-7 sm:flex-row sm:items-center sm:justify-between md:px-6 xl:px-8">
+          <RegComplaintsLockup width={190} tone="on-dark" />
+          <p className="text-sm text-slate-300">Evidence from published Financial Ombudsman Service decisions.</p>
         </div>
       </footer>
     </div>

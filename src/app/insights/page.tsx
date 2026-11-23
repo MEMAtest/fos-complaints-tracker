@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ArrowRight } from 'lucide-react';
-import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import { PublicStatusBanner } from '@/components/public/public-status-banner';
+import { DecisionVolumeChart, DecisionVolumeTable } from '@/components/insights/decision-volume-visual';
 import { getInsightsLandingData } from '@/lib/insights/repository';
 import { absoluteUrl } from '@/lib/insights/seo';
 
@@ -58,8 +58,11 @@ export default async function InsightsHomePage() {
               ))}
             </div>
           </div>
-          <div className="grid gap-4">
-            <PublicIllustration variant="insight" className="rounded-[2.1rem]" />
+          <div className="grid content-start gap-4">
+            <DecisionVolumeChart
+              items={landing.yearTrend}
+              latestDecisionDate={landing.lastUpdated}
+            />
             <div className="grid gap-4 md:grid-cols-2">
               {landing.metrics.slice(2).map((metric, index) => (
                 <article key={metric.label} className={index === 0 ? 'rounded-[1.6rem] border border-violet-200 bg-[linear-gradient(180deg,#f7f2ff_0%,#ffffff_100%)] p-5 shadow-sm' : 'rounded-[1.6rem] border border-[#102a4e] bg-[#102a4e] p-5 text-white shadow-[0_24px_70px_rgba(16,42,78,0.22)]'}>
@@ -90,20 +93,17 @@ export default async function InsightsHomePage() {
       <section className="grid gap-5">
         {landing.collections.map((collection, index) => (
           <article key={collection.href} className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white/92 shadow-sm">
-            <div className="grid gap-0 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="grid items-start gap-0 xl:grid-cols-[0.95fr_1.05fr]">
               <div className={index % 2 === 0 ? 'border-b border-slate-200 bg-[linear-gradient(180deg,#fffdf7_0%,#f8fbff_100%)] p-6 md:p-8 xl:border-b-0 xl:border-r' : 'border-b border-slate-200 bg-[linear-gradient(180deg,#f2f9ff_0%,#ffffff_100%)] p-6 md:p-8 xl:border-b-0 xl:border-r'}>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Collection</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{collection.title}</h2>
                 <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">{collection.description}</p>
-                <div className="mt-6 max-w-sm">
-                  <PublicIllustration variant={index % 3 === 0 ? 'archive' : index % 3 === 1 ? 'firm' : 'reporting'} className="border-0 shadow-none" />
-                </div>
                 <Link href={collection.href} className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#0f1f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0c1940]">
                   Open archive
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
-              <div className="grid gap-4 p-6 md:grid-cols-2 md:p-8 xl:grid-cols-3">
+              {collection.href === '/insights/types' ? <div className="p-5 md:p-7"><DecisionVolumeTable items={landing.themeRanking} limit={6} /></div> : <div className="grid content-start gap-4 p-6 md:grid-cols-2 md:p-8 xl:grid-cols-3">
                 {collection.items.map((item) => (
                   <Link key={item.href} href={item.href} className="rounded-[1.4rem] border border-slate-200 bg-[#fbfcfe] p-4 transition hover:border-sky-200 hover:bg-sky-50/60">
                     <p className="text-[11px] uppercase tracking-[0.18em] text-sky-700">{item.highlight}</p>
@@ -111,7 +111,7 @@ export default async function InsightsHomePage() {
                     <p className="mt-2 text-sm leading-6 text-slate-600">{item.summary}</p>
                   </Link>
                 ))}
-              </div>
+              </div>}
             </div>
           </article>
         ))}

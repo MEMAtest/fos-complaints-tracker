@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, BarChart3, ClipboardList, GitCompare, Search as SearchIcon } from 'lucide-react';
+import { ArrowRight, BarChart3, ClipboardList, FileBarChart, GitCompare, Search as SearchIcon } from 'lucide-react';
 import { ExpandableCard } from '@/components/shared/expandable-card';
 import { useFosFilters } from '@/hooks/use-fos-filters';
 import { useFosDashboard, useCaseDetail } from '@/hooks/use-fos-dashboard';
@@ -108,22 +108,24 @@ export default function FOSComplaintsDashboardPage() {
           </div>
         </section>
 
-        <nav aria-label="Choose a task" className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-2 xl:grid-cols-4">
+        <nav aria-label="Choose a task" className="grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 shadow-sm sm:grid-cols-2 xl:grid-cols-3">
           {[
+            { href: '/complaints', label: 'Open complaint queue', helper: 'Cases, deadlines and actions', icon: ClipboardList },
+            { href: '/board-pack', label: 'Open board reports', helper: 'Build and export a board pack', icon: FileBarChart },
             { href: '#decision-search', label: 'Find a decision', helper: 'Search cases and firms', icon: SearchIcon },
             { href: '#trends', label: 'Understand trends', helper: 'Filter years and outcomes', icon: BarChart3 },
             { href: '/comparison', label: 'Compare firms', helper: 'Benchmark published outcomes', icon: GitCompare },
-            { href: '/complaints', label: 'Manage a complaint', helper: 'Evidence, actions and letters', icon: ClipboardList },
+            { href: '/insights/types', label: 'Explore complaint themes', helper: 'Browse tagged FOS decisions', icon: SearchIcon },
           ].map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.label} href={item.href} className="group flex items-center gap-3 border-b border-slate-200 px-4 py-3 transition hover:bg-teal-50/70 sm:odd:border-r xl:border-b-0 xl:border-r xl:last:border-r-0">
+              <Link key={item.label} href={item.href} className="group flex items-center gap-3 bg-white px-4 py-3 transition hover:bg-teal-50">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#102a4e] text-white transition group-hover:bg-teal-700">
                   <Icon className="h-4.5 w-4.5" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">{item.helper}</p>
+                  <p className="mt-0.5 text-xs text-slate-600">{item.helper}</p>
                 </div>
                 <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-teal-700" />
               </Link>

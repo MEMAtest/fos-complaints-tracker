@@ -1,18 +1,8 @@
 import { ArrowRight } from 'lucide-react';
 import { PublicTrackedLink } from '@/components/analytics/public-tracked-link';
-import { PublicIllustration } from '@/components/illustrations/public-illustration';
 import type { InsightPageData } from '@/lib/insights/types';
 import { buildBreadcrumbSchema, buildFaqSchema, buildWebPageSchema } from '@/lib/insights/seo';
 import { formatDate, formatNumber } from '@/lib/utils';
-
-const ILLUSTRATION_BY_KIND = {
-  year: 'insight',
-  firm: 'firm',
-  product: 'archive',
-  type: 'workflow',
-  'year-product': 'reporting',
-  'firm-product': 'firm',
-} as const;
 
 const METRIC_TONES = [
   'border-sky-200 bg-[linear-gradient(180deg,#f3f9ff_0%,#ffffff_100%)]',
@@ -31,7 +21,6 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
   const breadcrumbSchema = buildBreadcrumbSchema(page);
   const faqSchema = buildFaqSchema(page.faq);
   const webPageSchema = buildWebPageSchema(page);
-  const illustrationVariant = ILLUSTRATION_BY_KIND[page.kind];
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-10 md:px-8 md:py-14">
@@ -40,7 +29,7 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
       {faqSchema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} /> : null}
 
       <section className="overflow-hidden rounded-[2.35rem] border border-slate-200/70 bg-[linear-gradient(140deg,#fffdf7_0%,#f5f8ff_48%,#edf3ff_100%)] shadow-[0_30px_90px_rgba(15,23,42,0.10)]">
-        <div className="grid gap-6 p-6 md:p-10 xl:grid-cols-[1.02fr_0.98fr]">
+        <div className="grid items-start gap-6 p-6 md:p-8 xl:grid-cols-[1.02fr_0.98fr]">
           <div>
             <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
               {page.breadcrumbs.map((crumb, index) => (
@@ -53,52 +42,27 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">{page.hero.eyebrow}</p>
             <h1 className="mt-3 max-w-4xl text-4xl font-semibold tracking-tight text-slate-950 md:text-5xl md:leading-[1.02]">{page.hero.title}</h1>
             <p className="mt-5 max-w-3xl text-base leading-8 text-slate-600">{page.hero.dek}</p>
-            <div className="mt-8 grid gap-3 md:max-w-2xl md:grid-cols-2">
-              {page.metrics.slice(0, 2).map((metric, index) => (
+            <p className="mt-4 text-xs text-slate-600">
+              Source: published Financial Ombudsman Service decisions.
+              {page.lastUpdated ? ` Latest decision in this view: ${formatDate(page.lastUpdated)}.` : ''}
+            </p>
+            {page.representativeCases.length > 0 && (
+              <a href="#representative-decisions" className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#102a4e] px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800">
+                View supporting decisions <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+
+          <section aria-label="Decision metrics" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {page.metrics.map((metric, index) => (
                 <article key={metric.label} className={`rounded-[1.55rem] border p-5 shadow-sm ${METRIC_TONES[index % METRIC_TONES.length]}`}>
                   <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
                   <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
                   {metric.helper ? <p className="mt-2 text-sm leading-6 text-slate-600">{metric.helper}</p> : null}
                 </article>
               ))}
-            </div>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr] xl:items-start">
-            <div className="rounded-[1.9rem] border border-[#102a4e] bg-[#102a4e] p-6 text-white shadow-[0_24px_70px_rgba(16,42,78,0.22)]">
-              <p className="text-xs uppercase tracking-[0.2em] text-white/55">Page summary</p>
-              <p className="mt-4 text-sm leading-7 text-white/72">{page.description}</p>
-              <div className="mt-6 grid gap-3">
-                {page.metrics.slice(0, 2).map((metric) => (
-                  <div key={metric.label} className="rounded-[1.2rem] border border-white/10 bg-white/8 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-white/55">{metric.label}</p>
-                    <p className="mt-1 text-lg font-semibold text-white">{metric.value}</p>
-                    {metric.helper ? <p className="mt-1 text-xs leading-5 text-white/65">{metric.helper}</p> : null}
-                  </div>
-                ))}
-              </div>
-              <p className="mt-5 text-xs text-white/55">{page.lastUpdated ? `Latest published decision ${formatDate(page.lastUpdated)}` : 'Latest decision date unavailable'}</p>
-            </div>
-            <div className="grid gap-4">
-              <PublicIllustration variant={illustrationVariant} className="rounded-[1.9rem]" />
-              <div className="rounded-[1.7rem] border border-amber-200 bg-[linear-gradient(180deg,#fff8ed_0%,#ffffff_100%)] p-5 shadow-sm">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">How to use this page</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Read the metrics first, then the ranked view.</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-600">The top-line cards show scale and outcome context. The ranked view and representative decisions show where the slice is concentrated and what the published decision set actually looks like.</p>
-              </div>
-            </div>
-          </div>
+          </section>
         </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {page.metrics.map((metric, index) => (
-          <article key={metric.label} className={`rounded-[1.55rem] border p-5 shadow-sm ${METRIC_TONES[index % METRIC_TONES.length]}`}>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
-            <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
-            {metric.helper ? <p className="mt-2 text-sm leading-6 text-slate-600">{metric.helper}</p> : null}
-          </article>
-        ))}
       </section>
 
       <section className="grid gap-8 xl:grid-cols-[1.25fr_0.75fr]">
@@ -129,7 +93,7 @@ export function InsightDetailView({ page }: { page: InsightPageData }) {
             </article>
           ))}
 
-          <article className="rounded-[1.95rem] border border-slate-200 bg-white p-6 shadow-sm md:p-7">
+          <article id="representative-decisions" className="scroll-mt-24 rounded-[1.95rem] border border-slate-200 bg-white p-6 shadow-sm md:p-7">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Representative cases</p>

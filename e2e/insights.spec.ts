@@ -7,7 +7,7 @@ test('public insights pages render without auth', async ({ page }) => {
   const goto = (href: string) => page.goto(href, { waitUntil: 'domcontentloaded' });
 
   await goto('/insights');
-  await expect(page.getByRole('heading', { name: /Search-friendly ombudsman complaint analysis by year, firm, product, theme, and curated cross-section/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Explore Financial Ombudsman decisions/i })).toBeVisible();
 
   await goto('/insights/years');
   await expect(page.getByRole('heading', { name: /Annual ombudsman complaint analysis/i })).toBeVisible();

@@ -112,6 +112,8 @@ export type InsightLandingData = {
   };
   status: PublicDataStatus;
   metrics: InsightMetric[];
+  yearTrend: InsightArchiveItem[];
+  themeRanking: InsightArchiveItem[];
   featured: Array<{
     title: string;
     href: string;

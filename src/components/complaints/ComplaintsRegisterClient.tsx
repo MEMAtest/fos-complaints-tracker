@@ -116,7 +116,7 @@ export function ComplaintsRegisterClient() {
       <section className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Complaints Workspace</h1>
-          <p className="mt-1 text-sm text-slate-600">Operational complaints register, timeline tracking, and management actions alongside the FOS analytics product.</p>
+          <p className="mt-1 text-sm text-slate-600">Review deadlines and open a complaint to see its timeline, evidence and actions.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {canEdit ? <Link href="/imports/complaints" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300">
@@ -131,12 +131,12 @@ export function ComplaintsRegisterClient() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section aria-label="Complaint queue summary" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+        <MetricCard label="Overdue" value={data ? formatNumber(data.stats.overdueComplaints) : '—'} helper="Filter overdue complaints" tone="overdue" pressed={filters.slaState === 'overdue'} onClick={() => setFilters((current) => ({ ...current, slaState: current.slaState === 'overdue' ? 'all' : 'overdue', page: 1 }))} />
+        <MetricCard label="Due within 7 days" value={data ? formatNumber(data.stats.dueSoonComplaints) : '—'} helper="Filter upcoming deadlines" tone="due" pressed={filters.slaState === 'due_soon'} onClick={() => setFilters((current) => ({ ...current, slaState: current.slaState === 'due_soon' ? 'all' : 'due_soon', page: 1 }))} />
         <MetricCard label="Total complaints" value={formatNumber(data?.stats.totalComplaints || 0)} helper="Operational complaints records in workspace." />
         <MetricCard label="Open complaints" value={formatNumber(data?.stats.openComplaints || 0)} helper="Still in active workflow." />
         <MetricCard label="FOS referred" value={formatNumber(data?.stats.referredToFos || 0)} helper="Marked as escalated to FOS." />
-        <MetricCard label="Overdue" value={formatNumber(data?.stats.overdueComplaints || 0)} helper="Past 8-week response deadline." />
-        <MetricCard label="Due within 7 days" value={formatNumber(data?.stats.dueSoonComplaints || 0)} helper="Approaching 8-week deadline." />
         <MetricCard label="Urgent" value={formatNumber(data?.stats.urgentComplaints || 0)} helper="Priority tagged urgent." />
         <MetricCard label="Open actions" value={formatNumber(data?.stats.openActions || 0)} helper="Management and SLA actions still open." />
       </section>
@@ -262,13 +262,19 @@ export function ComplaintsRegisterClient() {
               <TableBody>
                 {(data?.records || []).map((record) => (
                   <TableRow key={record.id}>
-                    <TableCell className="font-medium text-slate-900">{record.complaintReference}</TableCell>
+                    <TableCell><Link href={`/complaints/${record.id}`} className="font-semibold text-teal-800 hover:underline">{record.complaintReference}</Link></TableCell>
                     <TableCell>{record.complainantName}</TableCell>
                     <TableCell>{record.firmName}</TableCell>
                     <TableCell><Badge className="bg-slate-100 text-slate-700">{record.status.replace(/_/g, ' ')}</Badge></TableCell>
                     <TableCell><Badge variant="outline">{record.priority}</Badge></TableCell>
                     <TableCell>{formatDate(record.receivedDate)}</TableCell>
-                    <TableCell>{record.slaSummary?.state ? record.slaSummary.state.replace(/_/g, ' ') : 'n/a'}</TableCell>
+                    <TableCell>
+                      {record.slaSummary ? (
+                        <Badge className={record.slaSummary.state === 'overdue' ? 'whitespace-nowrap bg-rose-100 text-rose-900' : record.slaSummary.state === 'due_soon' ? 'whitespace-nowrap bg-amber-100 text-amber-900' : 'whitespace-nowrap bg-slate-100 text-slate-700'}>
+                          {record.slaSummary.state.replace(/_/g, ' ')}
+                        </Badge>
+                      ) : '—'}
+                    </TableCell>
                     <TableCell>
                       {record.latestLetterStatus ? (
                         <div className="space-y-1">
@@ -326,13 +332,29 @@ export function ComplaintsRegisterClient() {
   );
 }
 
-function MetricCard({ label, value, helper }: { label: string; value: string; helper: string }) {
+function MetricCard({ label, value, helper, tone, onClick, pressed }: {
+  label: string;
+  value: string;
+  helper: string;
+  tone?: 'overdue' | 'due';
+  onClick?: () => void;
+  pressed?: boolean;
+}) {
+  if (onClick) {
+    return (
+      <button type="button" aria-pressed={pressed} onClick={onClick} className={`rounded-xl border p-3 text-left shadow-sm hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${tone === 'overdue' ? 'border-rose-200 bg-rose-50 text-rose-950' : 'border-amber-200 bg-amber-50 text-amber-950'} ${pressed ? 'ring-2 ring-inset ring-current' : ''}`}>
+        <span className="block text-sm font-semibold">{label}</span>
+        <span className="block text-2xl font-semibold tabular-nums">{value}</span>
+        <span className="block text-xs">{helper}</span>
+      </button>
+    );
+  }
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</CardTitle>
+      <CardHeader className="px-3 pb-1 pt-3">
+        <CardTitle className="text-sm text-slate-700">{label}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 pb-3">
         <div className="text-2xl font-semibold text-slate-900">{value}</div>
         <p className="mt-1 text-xs text-slate-500">{helper}</p>
       </CardContent>

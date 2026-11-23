@@ -38,7 +38,6 @@ function SearchPreview({ step }: { step: HomepageDemoStep }) {
       <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2.5 shadow-sm">
         <Search className="h-4 w-4 text-violet-600" />
         <span className="text-xs font-medium text-slate-700">Search firms, products, years or themes</span>
-        <span className="ml-auto rounded-md bg-slate-100 px-2 py-1 text-[10px] text-slate-500">⌘ K</span>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {step.metrics.map((metric, index) => (
@@ -68,36 +67,15 @@ function SearchPreview({ step }: { step: HomepageDemoStep }) {
 }
 
 function ComparePreview({ step }: { step: HomepageDemoStep }) {
-  const firms = [step.metrics[0]?.value || 'Selected firm', 'Wider published corpus'];
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap gap-2">
-        {firms.map((firm, index) => (
-          <span key={firm} className={cn('rounded-full border px-3 py-1.5 text-[10px] font-semibold', index === 0 ? 'border-violet-300 bg-violet-50 text-violet-900' : 'border-slate-200 bg-white text-slate-600')}>
-            {firm}
-          </span>
-        ))}
-        <span className="rounded-full border border-dashed border-slate-300 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500">+ Add firm</span>
-      </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {firms.map((firm, firmIndex) => (
-          <article key={firm} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="truncate text-xs font-semibold text-slate-900">{firm}</p>
-            <div className="mt-4 flex h-24 items-end justify-center gap-3 border-b border-slate-200 px-3">
-              {[firmIndex === 0 ? 38 : 58, firmIndex === 0 ? 76 : 42].map((height, index) => (
-                <div key={index} className="w-10 rounded-t-lg bg-gradient-to-t from-violet-600 to-violet-300" style={{ height: `${height}%`, opacity: index === 0 ? 1 : 0.48 }} />
-              ))}
-            </div>
-            <div className="mt-2 grid grid-cols-2 text-center text-[9px] text-slate-500"><span>Upheld</span><span>Not upheld</span></div>
+        {step.previewRows.slice(0, 2).map((row) => (
+          <article key={row.label} className="rounded-xl border border-violet-200 bg-white p-3 shadow-sm">
+            <GitCompare className="mb-2 h-4 w-4 text-violet-700" aria-hidden="true" />
+            <p className="text-sm font-semibold text-slate-900">{row.label}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{row.value}</p>
           </article>
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {step.metrics.slice(0, 3).map((metric) => (
-          <div key={metric.label} className="rounded-lg bg-slate-100 px-2.5 py-2">
-            <p className="text-[8px] uppercase tracking-[0.14em] text-slate-400">{metric.label}</p>
-            <p className="mt-1 truncate text-[11px] font-semibold text-slate-800">{metric.value}</p>
-          </div>
         ))}
       </div>
     </div>
@@ -259,7 +237,7 @@ export function GuidedDemoPanel({ steps, updatedAt }: GuidedDemoPanelProps) {
         <div key={activeStep.key} className="rc-carousel-slide grid overflow-hidden rounded-[1.45rem] bg-white lg:grid-cols-[0.72fr_1.28fr]" role="tabpanel" aria-live="polite">
           <div className="relative overflow-hidden bg-[linear-gradient(145deg,#111f4c_0%,#273c7a_60%,#5b36b6_130%)] p-5 text-white">
             <div className="absolute -bottom-16 -left-10 h-40 w-40 rounded-full bg-violet-400/20 blur-2xl" />
-            <div className="relative flex h-full min-h-[285px] flex-col">
+            <div className="relative flex h-full flex-col">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/12">
                   <ActiveIcon className="h-5 w-5" />
@@ -277,7 +255,7 @@ export function GuidedDemoPanel({ steps, updatedAt }: GuidedDemoPanelProps) {
                   </li>
                 ))}
               </ul>
-              <PublicTrackedLink href={activeStep.href} eventName="public_cta_clicked" eventProps={{ source: 'homepage_capability_carousel', cta: activeStep.key }} className="mt-auto inline-flex w-fit items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#102a4e] transition hover:bg-violet-50">
+              <PublicTrackedLink href={activeStep.href} eventName="public_cta_clicked" eventProps={{ source: 'homepage_capability_carousel', cta: activeStep.key }} className="mt-4 inline-flex w-fit items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#102a4e] transition hover:bg-violet-50">
                 {activeStep.actionLabel}
                 <ArrowRight className="h-3.5 w-3.5" />
               </PublicTrackedLink>
@@ -286,10 +264,11 @@ export function GuidedDemoPanel({ steps, updatedAt }: GuidedDemoPanelProps) {
           <div className="relative bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.12),transparent_32%),linear-gradient(180deg,#faf9ff_0%,#eef3ff_100%)] p-4 md:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-violet-700">Interactive preview</p>
                 <p className="mt-0.5 text-xs font-semibold text-slate-900">{activeStep.label}</p>
               </div>
-              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[9px] font-semibold text-teal-800">Live public data</span>
+              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-semibold text-teal-800">
+                {activeStep.key === 'search' || activeStep.key === 'compare' ? 'Published FOS evidence' : 'Example workflow'}
+              </span>
             </div>
             <SlidePreview step={activeStep} />
           </div>

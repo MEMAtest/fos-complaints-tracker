@@ -1,6 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { getInsightsLandingData } from '@/lib/insights/repository';
-import { getWorkspaceEntryHref } from './config';
+import { getAppHref, getWorkspaceEntryHref } from './config';
 import type { HomepageSnapshot } from './types';
 import { getIngestionStatus } from '@/lib/fos/repository';
 
@@ -126,8 +126,8 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         title: 'Transition into the workspace when the complaint needs handling depth.',
         caption:
           'The workspace holds complaint detail, evidence, correspondence, approvals, and actions together so the operating trail stays connected from start to finish.',
-        href: workspaceHref,
-        actionLabel: 'Open management platform',
+        href: getAppHref('/complaints'),
+        actionLabel: 'Open complaint queue',
         eyebrow: 'Operational complaint handling',
         metrics: [
           { label: 'Workspace focus', value: 'Evidence + letters', helper: 'Operational complaint handling' },
@@ -151,8 +151,8 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
         title: 'Finish with outputs leadership can actually use.',
         caption:
           'Board packs and appendix material are built from the same complaint and insight layer, so the reporting story stays consistent instead of fragmenting across decks and spreadsheets.',
-        href: workspaceHref,
-        actionLabel: 'See reporting flow',
+        href: getAppHref('/board-pack'),
+        actionLabel: 'Open board reports',
         eyebrow: 'Board-ready reporting',
         metrics: [
           { label: 'Outputs', value: 'PDF + PPTX', helper: 'Export-ready board reporting' },
@@ -213,7 +213,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Reviewer notes and version history visible',
           'Deadlines and actions kept in the same operating thread',
         ],
-        href: workspaceHref,
+        href: getAppHref('/complaints'),
         ctaLabel: 'Open complaints flow',
         accentMetric: 'Investigation-ready workflow',
       },
@@ -228,7 +228,7 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
           'Appendix material from evidence and letters',
           'Leadership reporting built on complaint evidence',
         ],
-        href: workspaceHref,
+        href: getAppHref('/board-pack'),
         ctaLabel: 'See reporting flow',
         accentMetric: 'Board-ready outputs',
       },
@@ -273,4 +273,4 @@ export const getHomepageSnapshot = unstable_cache(async (): Promise<HomepageSnap
     })),
     updatedAt: ingestion?.dataThrough || landing.lastUpdated,
   };
-}, ['marketing-homepage-snapshot-v3'], { revalidate: REVALIDATE_SECONDS });
+}, ['marketing-homepage-snapshot-v4'], { revalidate: REVALIDATE_SECONDS });
