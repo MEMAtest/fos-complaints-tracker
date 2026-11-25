@@ -132,18 +132,45 @@ const LANDING_COLLECTIONS = [
   },
 ] as const;
 
-const getYearArchive = unstable_cache(async () => queryArchiveWithFallback('year', queryYearArchive), ['insights-year-archive'], { revalidate: REVALIDATE_SECONDS });
-const getFirmArchive = unstable_cache(async () => queryArchiveWithFallback('firm', queryFirmArchive), ['insights-firm-archive'], { revalidate: REVALIDATE_SECONDS });
-const getProductArchive = unstable_cache(async () => queryArchiveWithFallback('product', queryProductArchive), ['insights-product-archive'], { revalidate: REVALIDATE_SECONDS });
-const getTypeArchive = unstable_cache(async () => queryArchiveWithFallback('type', queryTypeArchive), ['insights-type-archive'], { revalidate: REVALIDATE_SECONDS });
-const getYearProductArchive = unstable_cache(async () => queryArchiveWithFallback('year-product', queryYearProductArchive), ['insights-year-product-archive'], { revalidate: REVALIDATE_SECONDS });
-const getFirmProductArchive = unstable_cache(async () => queryArchiveWithFallback('firm-product', queryFirmProductArchive), ['insights-firm-product-archive'], { revalidate: REVALIDATE_SECONDS });
-const getYearArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('year', queryYearArchive), ['insights-year-archive-state'], { revalidate: REVALIDATE_SECONDS });
-const getFirmArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('firm', queryFirmArchive), ['insights-firm-archive-state'], { revalidate: REVALIDATE_SECONDS });
-const getProductArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('product', queryProductArchive), ['insights-product-archive-state'], { revalidate: REVALIDATE_SECONDS });
-const getTypeArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('type', queryTypeArchive), ['insights-type-archive-state'], { revalidate: REVALIDATE_SECONDS });
-const getYearProductArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('year-product', queryYearProductArchive), ['insights-year-product-archive-state'], { revalidate: REVALIDATE_SECONDS });
-const getFirmProductArchiveState = unstable_cache(async () => queryArchiveStateWithFallback('firm-product', queryFirmProductArchive), ['insights-firm-product-archive-state'], { revalidate: REVALIDATE_SECONDS });
+class InsightNotFoundError extends Error {
+  constructor(message = 'Insight page not found') {
+    super(message);
+    this.name = 'InsightNotFoundError';
+  }
+}
+
+async function unwrapInsightPage(loader: () => Promise<InsightPageData>): Promise<InsightPageData | null> {
+  try {
+    return await loader();
+  } catch (error) {
+    if (error instanceof InsightNotFoundError || (error instanceof Error && error.name === 'InsightNotFoundError')) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+// Cache ONLY successful non-empty archive queries; thrown DB errors are never cached by unstable_cache.
+const getYearArchiveStrict = unstable_cache(queryYearArchive, ['insights-year-archive-v2'], { revalidate: REVALIDATE_SECONDS });
+const getFirmArchiveStrict = unstable_cache(queryFirmArchive, ['insights-firm-archive-v2'], { revalidate: REVALIDATE_SECONDS });
+const getProductArchiveStrict = unstable_cache(queryProductArchive, ['insights-product-archive-v2'], { revalidate: REVALIDATE_SECONDS });
+const getTypeArchiveStrict = unstable_cache(queryTypeArchive, ['insights-type-archive-v2'], { revalidate: REVALIDATE_SECONDS });
+const getYearProductArchiveStrict = unstable_cache(queryYearProductArchive, ['insights-year-product-archive-v2'], { revalidate: REVALIDATE_SECONDS });
+const getFirmProductArchiveStrict = unstable_cache(queryFirmProductArchive, ['insights-firm-product-archive-v2'], { revalidate: REVALIDATE_SECONDS });
+
+const getYearArchive = () => queryArchiveWithFallback('year', getYearArchiveStrict);
+const getFirmArchive = () => queryArchiveWithFallback('firm', getFirmArchiveStrict);
+const getProductArchive = () => queryArchiveWithFallback('product', getProductArchiveStrict);
+const getTypeArchive = () => queryArchiveWithFallback('type', getTypeArchiveStrict);
+const getYearProductArchive = () => queryArchiveWithFallback('year-product', getYearProductArchiveStrict);
+const getFirmProductArchive = () => queryArchiveWithFallback('firm-product', getFirmProductArchiveStrict);
+
+const getYearArchiveState = () => queryArchiveStateWithFallback('year', getYearArchiveStrict);
+const getFirmArchiveState = () => queryArchiveStateWithFallback('firm', getFirmArchiveStrict);
+const getProductArchiveState = () => queryArchiveStateWithFallback('product', getProductArchiveStrict);
+const getTypeArchiveState = () => queryArchiveStateWithFallback('type', getTypeArchiveStrict);
+const getYearProductArchiveState = () => queryArchiveStateWithFallback('year-product', getYearProductArchiveStrict);
+const getFirmProductArchiveState = () => queryArchiveStateWithFallback('firm-product', getFirmProductArchiveStrict);
 let publicationOverridesPromise: Promise<InsightPublicationOverride[]> | null = null;
 const loggedPublicFallbacks = new Set<string>();
 
@@ -470,13 +497,13 @@ export async function resolveInsightHref(kind: InsightArchiveItem['kind'], entit
   return archives.find((item) => item.entityKey === entityKey)?.href || null;
 }
 
-export const getYearInsightPage = unstable_cache(async (year: number): Promise<InsightPageData | null> => {
-  const years = await getYearArchive();
+const getYearInsightPageCached = unstable_cache(async (year: number): Promise<InsightPageData> => {
+  const years = await getYearArchiveStrict();
   const current = years.find((item) => item.entityKey === String(year));
-  if (!current) return null;
-  const overrides = await getPublicationOverrides();
+  if (!current) throw new InsightNotFoundError(`year:${year}`);
+  const overrides = await getPublicationOverrides().catch(() => [] as InsightPublicationOverride[]);
   const override = findOverride(overrides, current.kind, current.entityKey);
-  if (override && !override.isPublished) return null;
+  if (override && !override.isPublished) throw new InsightNotFoundError(`year:${year}:unpublished`);
 
   const filters = { ...EMPTY_FILTERS, years: [year] };
   const [dashboard, analysis] = await Promise.all([
@@ -615,17 +642,25 @@ export const getYearInsightPage = unstable_cache(async (year: number): Promise<I
     },
     lastUpdated: current.latestDecisionDate,
   }), override);
-}, ['insights-year-page'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-year-page-v2'], { revalidate: REVALIDATE_SECONDS });
 
-export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [firms, products] = await Promise.all([getFirmArchive(), getProductArchive()]);
-  const [types, years] = await Promise.all([getTypeArchive(), getYearArchive()]);
-  const firmProducts = await getFirmProductArchive();
+export async function getYearInsightPage(year: number): Promise<InsightPageData | null> {
+  return unwrapInsightPage(() => getYearInsightPageCached(year));
+}
+
+const getFirmInsightPageCached = unstable_cache(async (slug: string): Promise<InsightPageData> => {
+  const firms = await getFirmArchiveStrict();
   const current = firms.find((item) => item.slug === slug);
-  if (!current) return null;
-  const overrides = await getPublicationOverrides();
+  if (!current) throw new InsightNotFoundError(`firm:${slug}`);
+  const overrides = await getPublicationOverrides().catch(() => [] as InsightPublicationOverride[]);
   const override = findOverride(overrides, current.kind, current.entityKey);
-  if (override && !override.isPublished) return null;
+  if (override && !override.isPublished) throw new InsightNotFoundError(`firm:${slug}:unpublished`);
+  const [products, types, years, firmProducts] = await Promise.all([
+    getProductArchive(),
+    getTypeArchive(),
+    getYearArchive(),
+    getFirmProductArchive(),
+  ]);
 
   const filters = { ...EMPTY_FILTERS, firms: [current.title] };
   const [dashboard, comparison] = await Promise.all([
@@ -751,26 +786,26 @@ export const getFirmInsightPage = unstable_cache(async (slug: string): Promise<I
     },
     lastUpdated: current.latestDecisionDate,
   }), override);
-}, ['insights-firm-page'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-firm-page-v2'], { revalidate: REVALIDATE_SECONDS });
 
-export const getProductInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [products, firms] = await Promise.all([
-    getProductArchive(),
+export async function getFirmInsightPage(slug: string): Promise<InsightPageData | null> {
+  return unwrapInsightPage(() => getFirmInsightPageCached(slug));
+}
+
+const getProductInsightPageCached = unstable_cache(async (slug: string): Promise<InsightPageData> => {
+  const products = await getProductArchiveStrict();
+  const current = products.find((item) => item.slug === slug);
+  if (!current) throw new InsightNotFoundError(`product:${slug}`);
+  const overrides = await getPublicationOverrides().catch(() => [] as InsightPublicationOverride[]);
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) throw new InsightNotFoundError(`product:${slug}:unpublished`);
+  const [firms, types, years, yearProducts, firmProducts] = await Promise.all([
     getFirmArchive(),
-  ]);
-  const [types, years] = await Promise.all([
     getTypeArchive(),
     getYearArchive(),
-  ]);
-  const [yearProducts, firmProducts] = await Promise.all([
     getYearProductArchive(),
     getFirmProductArchive(),
   ]);
-  const current = products.find((item) => item.slug === slug);
-  if (!current) return null;
-  const overrides = await getPublicationOverrides();
-  const override = findOverride(overrides, current.kind, current.entityKey);
-  if (override && !override.isPublished) return null;
 
   const filters = { ...EMPTY_FILTERS, products: [current.title] };
   const [dashboard, analysis] = await Promise.all([
@@ -904,19 +939,27 @@ export const getProductInsightPage = unstable_cache(async (slug: string): Promis
     },
     lastUpdated: current.latestDecisionDate,
   }), override);
-}, ['insights-product-page'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-product-page-v2'], { revalidate: REVALIDATE_SECONDS });
 
-export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<InsightPageData | null> => {
-  const [types, firms] = await Promise.all([getTypeArchive(), getFirmArchive()]);
-  const [products, years] = await Promise.all([getProductArchive(), getYearArchive()]);
+export async function getProductInsightPage(slug: string): Promise<InsightPageData | null> {
+  return unwrapInsightPage(() => getProductInsightPageCached(slug));
+}
+
+const getTypeInsightPageCached = unstable_cache(async (slug: string): Promise<InsightPageData> => {
+  const types = await getTypeArchiveStrict();
   const current = types.find((item) => item.slug === slug);
-  if (!current) return null;
-  const overrides = await getPublicationOverrides();
+  if (!current) throw new InsightNotFoundError(`type:${slug}`);
+  const overrides = await getPublicationOverrides().catch(() => [] as InsightPublicationOverride[]);
   const override = findOverride(overrides, current.kind, current.entityKey);
-  if (override && !override.isPublished) return null;
+  if (override && !override.isPublished) throw new InsightNotFoundError(`type:${slug}:unpublished`);
 
-  const data = await queryTypeInsightData(current.title);
-  if (!data) return null;
+  const [data, firms, products, years] = await Promise.all([
+    queryTypeInsightData(current.title),
+    getFirmArchive(),
+    getProductArchive(),
+    getYearArchive(),
+  ]);
+  if (!data) throw new InsightNotFoundError(`type:${slug}:nodata`);
 
   const topFirm = data.firms[0];
   const topProduct = data.products[0];
@@ -1033,31 +1076,32 @@ export const getTypeInsightPage = unstable_cache(async (slug: string): Promise<I
     },
     lastUpdated: current.latestDecisionDate,
   }), override);
-}, ['insights-type-page'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-type-page-v2'], { revalidate: REVALIDATE_SECONDS });
 
-export const getYearProductInsightPage = unstable_cache(async (year: number, productSlug: string): Promise<InsightPageData | null> => {
+export async function getTypeInsightPage(slug: string): Promise<InsightPageData | null> {
+  return unwrapInsightPage(() => getTypeInsightPageCached(slug));
+}
+
+const getYearProductInsightPageCached = unstable_cache(async (year: number, productSlug: string): Promise<InsightPageData> => {
   const path = `/insights/year/${year}/product/${productSlug}`;
-  const [yearProducts, years] = await Promise.all([
-    getYearProductArchive(),
-    getYearArchive(),
-  ]);
-  const [products, firms] = await Promise.all([
-    getProductArchive(),
-    getFirmArchive(),
-  ]);
-  const [types, firmProducts] = await Promise.all([
-    getTypeArchive(),
-    getFirmProductArchive(),
-  ]);
+  const yearProducts = await getYearProductArchiveStrict();
   const current = yearProducts.find((item) => item.href === path);
-  if (!current) return null;
-  const overrides = await getPublicationOverrides();
+  if (!current) throw new InsightNotFoundError(`year-product:${path}`);
+  const overrides = await getPublicationOverrides().catch(() => [] as InsightPublicationOverride[]);
   const override = findOverride(overrides, current.kind, current.entityKey);
-  if (override && !override.isPublished) return null;
+  if (override && !override.isPublished) throw new InsightNotFoundError(`year-product:${path}:unpublished`);
 
   const { left: yearKey, right: product } = splitCompositeKey(current.entityKey);
   const parsedYear = Number.parseInt(yearKey, 10);
-  if (!Number.isFinite(parsedYear)) return null;
+  if (!Number.isFinite(parsedYear)) throw new InsightNotFoundError(`year-product:${path}:invalid-year`);
+
+  const [years, products, firms, types, firmProducts] = await Promise.all([
+    getYearArchive(),
+    getProductArchive(),
+    getFirmArchive(),
+    getTypeArchive(),
+    getFirmProductArchive(),
+  ]);
 
   const filters = { ...EMPTY_FILTERS, years: [parsedYear], products: [product] };
   const [dashboard, analysis] = await Promise.all([
@@ -1190,24 +1234,26 @@ export const getYearProductInsightPage = unstable_cache(async (year: number, pro
     },
     lastUpdated: current.latestDecisionDate,
   }), override);
-}, ['insights-year-product-page'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-year-product-page-v2'], { revalidate: REVALIDATE_SECONDS });
 
-export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string, productSlug: string): Promise<InsightPageData | null> => {
+export async function getYearProductInsightPage(year: number, productSlug: string): Promise<InsightPageData | null> {
+  return unwrapInsightPage(() => getYearProductInsightPageCached(year, productSlug));
+}
+
+const getFirmProductInsightPageCached = unstable_cache(async (firmSlug: string, productSlug: string): Promise<InsightPageData> => {
   const path = `/insights/firm/${firmSlug}/product/${productSlug}`;
-  const [firmProducts, firms] = await Promise.all([
-    getFirmProductArchive(),
+  const firmProducts = await getFirmProductArchiveStrict();
+  const current = firmProducts.find((item) => item.href === path);
+  if (!current) throw new InsightNotFoundError(`firm-product:${path}`);
+  const overrides = await getPublicationOverrides().catch(() => [] as InsightPublicationOverride[]);
+  const override = findOverride(overrides, current.kind, current.entityKey);
+  if (override && !override.isPublished) throw new InsightNotFoundError(`firm-product:${path}:unpublished`);
+  const [firms, products, types, yearProducts] = await Promise.all([
     getFirmArchive(),
-  ]);
-  const [products, types] = await Promise.all([
     getProductArchive(),
     getTypeArchive(),
+    getYearProductArchive(),
   ]);
-  const yearProducts = await getYearProductArchive();
-  const current = firmProducts.find((item) => item.href === path);
-  if (!current) return null;
-  const overrides = await getPublicationOverrides();
-  const override = findOverride(overrides, current.kind, current.entityKey);
-  if (override && !override.isPublished) return null;
 
   const { left: firm, right: product } = splitCompositeKey(current.entityKey);
   const filters = { ...EMPTY_FILTERS, firms: [firm], products: [product] };
@@ -1341,7 +1387,11 @@ export const getFirmProductInsightPage = unstable_cache(async (firmSlug: string,
     },
     lastUpdated: current.latestDecisionDate,
   }), override);
-}, ['insights-firm-product-page'], { revalidate: REVALIDATE_SECONDS });
+}, ['insights-firm-product-page-v2'], { revalidate: REVALIDATE_SECONDS });
+
+export async function getFirmProductInsightPage(firmSlug: string, productSlug: string): Promise<InsightPageData | null> {
+  return unwrapInsightPage(() => getFirmProductInsightPageCached(firmSlug, productSlug));
+}
 
 async function queryYearArchive(): Promise<InsightArchiveItem[]> {
   const rows = await queryArchiveRows(

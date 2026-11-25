@@ -77,11 +77,11 @@ function delay(ms: number): Promise<void> {
 const DATABASE_URL = process.env.DATABASE_URL;
 const DB_POOL_MAX = parseIntEnv(process.env.DB_POOL_MAX, 8, 1, 200);
 const DB_IDLE_TIMEOUT_MS = parseIntEnv(process.env.DB_IDLE_TIMEOUT_MS, 30_000, 1_000, 300_000);
-const DB_CONNECT_TIMEOUT_MS = parseIntEnv(process.env.DB_CONNECT_TIMEOUT_MS, 5_000, 500, 120_000);
+const DB_CONNECT_TIMEOUT_MS = parseIntEnv(process.env.DB_CONNECT_TIMEOUT_MS, 12_000, 500, 120_000);
 const DB_QUERY_TIMEOUT_MS = parseIntEnv(process.env.DB_QUERY_TIMEOUT_MS, 15_000, 1_000, 300_000);
 const DB_IDLE_IN_TX_TIMEOUT_MS = parseIntEnv(process.env.DB_IDLE_IN_TX_TIMEOUT_MS, 10_000, 1_000, 300_000);
 const DB_MAX_USES = parseIntEnv(process.env.DB_MAX_USES, 7_500, 0, 1_000_000);
-const DB_CONNECT_RETRIES = parseIntEnv(process.env.DB_CONNECT_RETRIES, 2, 0, 10);
+const DB_CONNECT_RETRIES = parseIntEnv(process.env.DB_CONNECT_RETRIES, 3, 0, 10);
 const DB_RETRY_BASE_MS = parseIntEnv(process.env.DB_RETRY_BASE_MS, 200, 50, 10_000);
 const DB_RETRY_MAX_MS = parseIntEnv(process.env.DB_RETRY_MAX_MS, 2_000, 100, 120_000);
 
