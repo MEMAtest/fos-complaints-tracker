@@ -340,3 +340,56 @@ button:focus {
     transform: translate(234px, -2px);
   }
 }
+
+
+/* Native modal dialog scroll-containment & backdrop styling (modern-web-guidance) */
+dialog.rc-native-dialog:modal {
+  overscroll-behavior: contain;
+  max-height: 90dvh;
+  overflow: auto;
+  margin: auto;
+}
+
+dialog.rc-native-dialog::backdrop {
+  background: rgba(8, 22, 47, 0.62);
+  backdrop-filter: blur(3px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Native <details> accordion marker & progressive-enhancement transition */
+.rc-accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rc-accordion-summary::before {
+  content: '';
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  flex-shrink: 0;
+  border-inline-end: 2px solid #c9971a;
+  border-block-end: 2px solid #c9971a;
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+
+.rc-accordion details[open] > .rc-accordion-summary::before {
+  transform: rotate(45deg);
+}
+
+.rc-accordion details::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+
+.rc-accordion details:not([open])::details-content {
+  block-size: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rc-accordion details::details-content {
+    transition: block-size 0.25s ease, content-visibility 0.25s ease;
+    transition-behavior: allow-discrete;
+  }
+}

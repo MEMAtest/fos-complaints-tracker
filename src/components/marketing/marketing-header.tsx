@@ -12,6 +12,7 @@ const publicLinks = [
   { href: '/check', label: 'Outcome Estimator', event: 'outcome_estimator' },
   { href: '/comparison', label: 'Compare Firms', event: 'comparison' },
   { href: '/advisor', label: 'Advisor', event: 'advisor' },
+  { href: '/cmc', label: 'CMCs & Claims', event: 'cmc_claims' },
 ];
 
 export function MarketingHeader() {

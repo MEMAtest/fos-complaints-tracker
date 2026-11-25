@@ -25,6 +25,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/root-causes',
     '/comparison',
     '/advisor',
+    '/cmc',
     '/insights',
     '/insights/years',
     '/insights/firms',

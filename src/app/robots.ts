@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
-      allow: ['/', '/analysis', '/root-causes', '/comparison', '/advisor', '/check', '/insights', '/insights/', '/insights/*'],
+      allow: ['/', '/analysis', '/root-causes', '/comparison', '/advisor', '/check', '/cmc', '/insights', '/insights/', '/insights/*'],
       disallow: ['/login', '/complaints', '/board-pack', '/imports', '/api/'],
     },
     sitemap: absoluteUrl('/sitemap.xml'),

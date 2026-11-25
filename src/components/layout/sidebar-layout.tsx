@@ -11,7 +11,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
-  if (pathname === '/' || pathname === '/login' || pathname.startsWith('/insights') || pathname.startsWith('/check') || pathname.startsWith('/advisor') || pathname.startsWith('/comparison')) {
+  if (pathname === '/' || pathname === '/login' || pathname.startsWith('/insights') || pathname.startsWith('/check') || pathname.startsWith('/advisor') || pathname.startsWith('/comparison') || pathname.startsWith('/cmc')) {
     return <TooltipProvider delayDuration={200}>{children}</TooltipProvider>;
   }
 
