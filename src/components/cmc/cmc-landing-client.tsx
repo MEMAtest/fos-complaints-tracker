@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   BarChart3,
@@ -373,10 +373,13 @@ export function CmcLandingClient({ workspaceHref }: { workspaceHref: string }) {
   const readinessTitleId = useId();
   const demoTitleId = useId();
 
-  const closeModal = () => setActiveModal(null);
-  const calcDialogRef = useNativeDialog(activeModal === 'calculator', closeModal);
-  const readinessDialogRef = useNativeDialog(activeModal === 'readiness', closeModal);
-  const demoDialogRef = useNativeDialog(activeModal === 'demo', closeModal);
+  const closeModal = useCallback(() => setActiveModal(null), []);
+  const closeCalc = useCallback(() => setActiveModal((curr) => (curr === 'calculator' ? null : curr)), []);
+  const closeReadiness = useCallback(() => setActiveModal((curr) => (curr === 'readiness' ? null : curr)), []);
+  const closeDemo = useCallback(() => setActiveModal((curr) => (curr === 'demo' ? null : curr)), []);
+  const calcDialogRef = useNativeDialog(activeModal === 'calculator', closeCalc);
+  const readinessDialogRef = useNativeDialog(activeModal === 'readiness', closeReadiness);
+  const demoDialogRef = useNativeDialog(activeModal === 'demo', closeDemo);
 
   const currentTab = useMemo(
     () => WORKSPACE_TABS.find((t) => t.key === activeTab) || WORKSPACE_TABS[0],
