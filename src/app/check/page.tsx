@@ -63,7 +63,7 @@ export default async function CheckPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f7f2] text-slate-950">
+    <div className="min-h-screen bg-[#f6f8fc] text-slate-950">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
       <MarketingHeader />
       <main className="overflow-hidden">

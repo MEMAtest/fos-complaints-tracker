@@ -2,6 +2,15 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
   ArrowRight,
   BarChart3,
   BriefcaseBusiness,
@@ -347,7 +356,16 @@ function useNativeDialog(open: boolean, onClose: () => void) {
 
 export function CmcLandingClient({ workspaceHref }: { workspaceHref: string }) {
   const [activeTab, setActiveTab] = useState<WorkspaceTabKey>('intel');
-  const [activeModal, setActiveModal] = useState<'calculator' | 'readiness' | 'demo' | null>(null);
+  const [activeModal, setActiveModal] = useState<'calculator' | 'readiness' | 'demo' | 'detail' | null>(null);
+  const [detailModal, setDetailModal] = useState<{
+    eyebrow: string;
+    title: string;
+    body: string;
+    bullets: string[];
+    href?: string;
+    ctaLabel?: string;
+    switchToModal?: 'calculator' | 'readiness' | 'demo';
+  } | null>(null);
 
   // Calculator state
   const [casesPerMonth, setCasesPerMonth] = useState(5);
@@ -377,9 +395,16 @@ export function CmcLandingClient({ workspaceHref }: { workspaceHref: string }) {
   const closeCalc = useCallback(() => setActiveModal((curr) => (curr === 'calculator' ? null : curr)), []);
   const closeReadiness = useCallback(() => setActiveModal((curr) => (curr === 'readiness' ? null : curr)), []);
   const closeDemo = useCallback(() => setActiveModal((curr) => (curr === 'demo' ? null : curr)), []);
+  const closeDetail = useCallback(() => setActiveModal((curr) => (curr === 'detail' ? null : curr)), []);
   const calcDialogRef = useNativeDialog(activeModal === 'calculator', closeCalc);
   const readinessDialogRef = useNativeDialog(activeModal === 'readiness', closeReadiness);
   const demoDialogRef = useNativeDialog(activeModal === 'demo', closeDemo);
+  const detailDialogRef = useNativeDialog(activeModal === 'detail', closeDetail);
+
+  const openDetailCard = useCallback((payload: NonNullable<typeof detailModal>) => {
+    setDetailModal(payload);
+    setActiveModal('detail');
+  }, []);
 
   const currentTab = useMemo(
     () => WORKSPACE_TABS.find((t) => t.key === activeTab) || WORKSPACE_TABS[0],
@@ -556,95 +581,232 @@ export function CmcLandingClient({ workspaceHref }: { workspaceHref: string }) {
         </div>
       </section>
 
-      {/* 2. COMPACT 4-METRIC PROOF BAR + FCA CLAIMS HANDLING SPOTLIGHT */}
-      <section className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">
+      {/* 2. COMPACT 4-METRIC INTERACTIVE PROOF BAR + FCA CLAIMS HANDLING SPOTLIGHT & LIVE CHART */}
+      <section className="mx-auto w-full max-w-7xl px-4 py-5 md:px-8">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: 'Published Ombudsman decisions', value: '395,692', sub: '14-year searchable UK corpus', dark: true },
-            { label: 'Public insight pages', value: '366', sub: 'Years, firms, products & root causes', dark: false },
-            { label: '2026/27 Representative fee', value: '£260 / £80', sub: 'Standard vs qualifying reduced fee*', dark: false },
-            { label: 'FCA & FOS GI priority', value: 'Claims Handling', sub: 'Delays, TPAs & Consumer Duty', dark: false },
+            {
+              label: 'Published Ombudsman decisions',
+              value: '395,692',
+              sub: 'Click to inspect corpus scope',
+              dark: true,
+              onClick: () =>
+                openDetailCard({
+                  eyebrow: 'Published FOS Corpus',
+                  title: '395,692+ Published Ombudsman Decisions',
+                  body: 'Searchable 14-year Financial Ombudsman archive indexed by firm, product, decision year, root cause, and cited precedent — updated continuously.',
+                  bullets: [
+                    'Filter by firm name, product sector, decision year, and root-cause theme.',
+                    'Inspect real upheld vs not-upheld sample sizes alongside every benchmark.',
+                    'Ground pre-referral CMC reviews and insurer quality audits in live rulings.',
+                  ],
+                  href: '/insights',
+                  ctaLabel: 'Open Evidence Explorer',
+                }),
+            },
+            {
+              label: 'Public insight pages',
+              value: '366',
+              sub: 'Click for live sector shortcuts',
+              dark: false,
+              onClick: () =>
+                openDetailCard({
+                  eyebrow: 'Public Intelligence Index',
+                  title: '366 Live Year, Firm, Product & Root-Cause Pages',
+                  body: 'Instant public summaries for major UK banks, insurers, lenders, and complaint themes so teams can verify context before opening a file.',
+                  bullets: [
+                    'Dedicated pages for Delay in Claim Handling, Insurance, Motor, and Banking.',
+                    'Firm-by-product upheld breakdowns with multi-year trend context.',
+                    'One-click handoff into the Complaint Outcome Estimator and Firm Comparison.',
+                  ],
+                  href: '/comparison',
+                  ctaLabel: 'Open Firm Comparison',
+                }),
+            },
+            {
+              label: '2026/27 Representative fee',
+              value: '£260 / £80',
+              sub: 'Click to open fee calculator',
+              dark: false,
+              onClick: () => setActiveModal('calculator'),
+            },
+            {
+              label: 'FCA & FOS GI priority',
+              value: 'Claims Handling',
+              sub: 'Click to launch 7-point self-check',
+              dark: false,
+              onClick: () => setActiveModal('readiness'),
+            },
           ].map((stat) => (
-            <article
+            <button
               key={stat.label}
+              type="button"
+              onClick={stat.onClick}
               className={cn(
-                'rounded-2xl border px-4 py-3.5 shadow-sm',
+                'group rounded-2xl border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
                 stat.dark
-                  ? 'border-[#0f1f4f] bg-[#0f1f4f] text-white'
-                  : 'border-slate-200 bg-white text-slate-950'
+                  ? 'border-[#0f1f4f] bg-[#0f1f4f] text-white hover:bg-[#0b183d]'
+                  : 'border-slate-200 bg-white text-slate-950 hover:border-[#0f1f4f]/30'
               )}
             >
-              <p className={cn('text-[10px] font-semibold uppercase tracking-[0.16em]', stat.dark ? 'text-[#f5daa3]' : 'text-slate-500')}>
-                {stat.label}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className={cn('text-[10px] font-semibold uppercase tracking-[0.16em]', stat.dark ? 'text-[#f5daa3]' : 'text-slate-500')}>
+                  {stat.label}
+                </p>
+                <ArrowRight className={cn('h-3.5 w-3.5 transition group-hover:translate-x-0.5', stat.dark ? 'text-[#e2b12f]' : 'text-slate-400 group-hover:text-[#0f1f4f]')} aria-hidden="true" />
+              </div>
               <p className="mt-1 text-2xl font-semibold tracking-tight">{stat.value}</p>
               <p className={cn('mt-0.5 text-xs', stat.dark ? 'text-white/75' : 'text-slate-600')}>{stat.sub}</p>
-            </article>
+            </button>
           ))}
         </div>
 
-        {/* FCA Insurance Claims Handling Spotlight Strip */}
-        <div className="mt-4 rounded-2xl border border-[#0f1f4f]/15 bg-[#08162f] p-5 text-white shadow-sm md:p-6">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-            <div className="max-w-3xl">
+        {/* FCA Insurance Claims Handling Spotlight Strip + Real Interactive Chart */}
+        <div className="mt-4 rounded-2xl border border-[#0f1f4f]/15 bg-[#08162f] p-5 text-white shadow-sm">
+          <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr] lg:items-center">
+            <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#e2b12f]">
                 FCA &amp; FOS Joint Claims-Handling Scrutiny · Home, Travel &amp; General Insurance
               </p>
-              <h2 className="mt-1.5 text-xl font-semibold tracking-tight md:text-2xl">
+              <h2 className="mt-1 text-xl font-semibold tracking-tight md:text-2xl">
                 Firms can outsource claims handling, but they cannot outsource regulatory responsibility.
               </h2>
-              <p className="mt-1.5 text-xs leading-6 text-white/75 md:text-sm">
-                Following targeted home and travel insurance reviews, the FCA and FOS called on firms to eliminate avoidable delays, improve updates for vulnerable customers, tighten oversight of third-party administrators (loss adjusters &amp; repairers), and evidence fair treatment on storm claims and cash settlements.
+              <p className="mt-1.5 text-xs leading-5 text-white/75">
+                Following targeted home and travel insurance reviews, the FCA and FOS called on firms to eliminate avoidable delays, improve updates for vulnerable customers, tighten oversight of TPAs (loss adjusters &amp; repairers), and evidence fair treatment on storm claims and cash settlements.
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('readiness')}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#e2b12f] px-4 py-2 text-xs font-semibold text-[#08162f] transition hover:bg-[#f5daa3]"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                  Run 7-point self-check
+                </button>
+                <a
+                  href="https://www.fca.org.uk/news/news-stories/insurance-firms-called-improve-claims-handling"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/15"
+                >
+                  Read FCA release
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+              </div>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveModal('readiness')}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#e2b12f] px-4 py-2 text-xs font-semibold text-[#08162f] transition hover:bg-[#f5daa3]"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                Run 7-point self-check
-              </button>
-              <a
-                href="https://www.fca.org.uk/news/news-stories/insurance-firms-called-improve-claims-handling"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/15"
-              >
-                Read FCA release
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
+
+            {/* Real Interactive Recharts Benchmark Visual */}
+            <div className="rounded-xl border border-white/12 bg-white/6 p-3.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-white">Claims-Handling Friction Index (FCA Focus)</p>
+                <span className="rounded-full bg-[#e2b12f]/20 px-2 py-0.5 text-[10px] font-semibold text-[#f5daa3]">Interactive</span>
+              </div>
+              <div className="h-[130px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[
+                      { area: 'Delays', uphold: 44 },
+                      { area: 'TPA / Repair', uphold: 39 },
+                      { area: 'Storm', uphold: 36 },
+                      { area: 'Travel', uphold: 34 },
+                    ]}
+                    margin={{ top: 6, right: 6, left: -22, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" vertical={false} />
+                    <XAxis dataKey="area" tick={{ fontSize: 10, fill: '#cbd5e1' }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 60]} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(v: number) => `${v}%`} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(v: unknown) => [`${v}% illustrative uphold pressure`, 'FCA Focus']}
+                      contentStyle={{ backgroundColor: '#0f1f4f', borderColor: 'rgba(255,255,255,0.15)', borderRadius: '8px', fontSize: '11px', color: '#fff' }}
+                    />
+                    <Bar dataKey="uphold" fill="#e2b12f" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
           <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { step: '01', title: 'Keep claims moving', body: 'Spot high-uphold delay patterns early and remove handoff bottlenecks.' },
-              { step: '02', title: 'Clear, timely updates', body: 'Keep customers informed during vulnerable moments under Consumer Duty.' },
-              { step: '03', title: 'Own third-party oversight', body: 'Monitor loss adjusters, repairers & TPAs with auditable SLA governance.' },
-              { step: '04', title: 'Evidence fair treatment', body: 'Document storm-damage & cash-settlement controls across the full lifecycle.' },
+              {
+                step: '01',
+                title: 'Keep claims moving',
+                body: 'Spot high-uphold delay patterns early and remove handoff bottlenecks.',
+                bullets: [
+                  'Track stage-aging delays across home, travel, and motor insurance claims.',
+                  'Benchmark delay-in-claim-handling uphold rates against published FOS decisions.',
+                  'Flag stalled third-party repair or validation handoffs before FOS escalation.',
+                ],
+              },
+              {
+                step: '02',
+                title: 'Clear, timely updates',
+                body: 'Keep customers informed during vulnerable moments under Consumer Duty.',
+                bullets: [
+                  'Log proactive communication milestones on every open claim or complaint.',
+                  'Identify Consumer Duty vulnerability indicators early in the claim lifecycle.',
+                  'Audit explanation clarity on declinatures, exclusions, and cash settlements.',
+                ],
+              },
+              {
+                step: '03',
+                title: 'Own third-party oversight',
+                body: 'Monitor loss adjusters, repairers & TPAs with auditable SLA governance.',
+                bullets: [
+                  'FCA & FOS explicitly reiterate that regulatory responsibility cannot be outsourced.',
+                  'Track TPA-attributed delays, quality failures, and repeat root causes by supplier.',
+                  'Include delegated-authority SLA breaches in board-level MI packs.',
+                ],
+              },
+              {
+                step: '04',
+                title: 'Evidence fair treatment',
+                body: 'Document storm-damage & cash-settlement controls across the full lifecycle.',
+                bullets: [
+                  'Audit settlement rationales end-to-end — not only at final closure.',
+                  'Cross-check storm-damage and wear-and-tear declinatures against FOS precedents.',
+                  'Preserve human sign-off records for FCA supervisory inspection.',
+                ],
+              },
             ].map((pillar) => (
-              <div key={pillar.step} className="rounded-xl border border-white/10 bg-white/6 p-3.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-[#e2b12f]">{pillar.step}</span>
-                  <h3 className="text-sm font-semibold text-white">{pillar.title}</h3>
+              <button
+                key={pillar.step}
+                type="button"
+                onClick={() =>
+                  openDetailCard({
+                    eyebrow: `FCA & FOS Pillar ${pillar.step}`,
+                    title: pillar.title,
+                    body: pillar.body,
+                    bullets: pillar.bullets,
+                    href: '/insights/type/delay-in-claim-handling',
+                    ctaLabel: 'Inspect live delay-in-handling data',
+                    switchToModal: 'readiness',
+                  })
+                }
+                className="group rounded-xl border border-white/10 bg-white/6 p-3 text-left transition hover:border-[#e2b12f]/50 hover:bg-white/10"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-[#e2b12f]">{pillar.step}</span>
+                    <h3 className="text-sm font-semibold text-white">{pillar.title}</h3>
+                  </div>
+                  <ArrowRight className="h-3.5 w-3.5 text-white/40 transition group-hover:translate-x-0.5 group-hover:text-[#e2b12f]" aria-hidden="true" />
                 </div>
                 <p className="mt-1 text-xs leading-5 text-white/70">{pillar.body}</p>
-              </div>
+              </button>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 3. COMPACT 6-CARD CAPABILITIES GRID */}
-      <section className="mx-auto w-full max-w-7xl px-4 py-4 md:px-8">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      {/* 3. COMPACT 6-CARD INTERACTIVE CAPABILITIES GRID (EVERY CARD OPENS A MODAL) */}
+      <section className="mx-auto w-full max-w-7xl px-4 py-3 md:px-8">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Built for claims teams &amp; CMCs
+              Built for claims teams &amp; CMCs · Click any card to inspect
             </p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#08162f] md:text-3xl">
+            <h2 className="mt-0.5 text-2xl font-semibold tracking-tight text-[#08162f]">
               Spend less time researching. Make every merits review count.
             </h2>
           </div>
@@ -658,50 +820,52 @@ export function CmcLandingClient({ workspaceHref }: { workspaceHref: string }) {
           </button>
         </div>
 
-        <div className="grid gap-3.5 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {CAPABILITIES.map((cap) => {
             const Icon = cap.icon;
             return (
-              <article
+              <button
                 key={cap.title}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                type="button"
+                onClick={() => {
+                  if ('modal' in cap) {
+                    setActiveModal(cap.modal);
+                  } else {
+                    openDetailCard({
+                      eyebrow: cap.badge,
+                      title: cap.title,
+                      body: cap.body,
+                      bullets: [
+                        'Backed directly by 395,692+ published Financial Ombudsman Service decisions.',
+                        'Designed for CMCs, claims solicitors, and insurer claims-handling oversight teams.',
+                        'Preserves human-in-the-loop sign-off with zero automated claim rejections.',
+                      ],
+                      href: cap.href,
+                      ctaLabel: cap.cta,
+                      switchToModal: 'demo',
+                    });
+                  }
+                }}
+                className="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f1f4f]/30 hover:shadow-md"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0f1f4f] text-[#f5daa3]">
-                      <Icon className="h-5 w-5" aria-hidden="true" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#0f1f4f] text-[#f5daa3]">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                       {cap.badge}
                     </span>
                   </div>
-                  <h3 className="mt-3 text-base font-semibold text-[#08162f]">{cap.title}</h3>
-                  <p className="mt-1.5 text-xs leading-5 text-slate-600">{cap.body}</p>
+                  <h3 className="mt-2.5 text-sm font-semibold text-[#08162f]">{cap.title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{cap.body}</p>
                 </div>
 
-                <div className="mt-3.5 pt-2">
-                  {'href' in cap ? (
-                    <PublicTrackedLink
-                      href={cap.href}
-                      eventName="public_cta_clicked"
-                      eventProps={{ source: 'cmc_capabilities', cta: cap.title }}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0f1f4f] hover:text-sky-800"
-                    >
-                      {cap.cta}
-                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </PublicTrackedLink>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setActiveModal(cap.modal)}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0f1f4f] hover:text-sky-800"
-                    >
-                      {cap.cta}
-                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  )}
+                <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-[#0f1f4f] group-hover:text-sky-800">
+                  {cap.cta}
+                  <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" aria-hidden="true" />
                 </div>
-              </article>
+              </button>
             );
           })}
         </div>
@@ -1175,6 +1339,72 @@ export function CmcLandingClient({ workspaceHref }: { workspaceHref: string }) {
             </p>
           )}
         </form>
+      </dialog>
+
+      {/* ==================== MODAL 4: INTERACTIVE CARD DETAIL MODAL ==================== */}
+      <dialog
+        ref={detailDialogRef}
+        {...({ closedby: 'any' } as Record<string, string>)}
+        className="rc-native-dialog w-[min(560px,calc(100%-24px))] rounded-2xl border border-slate-200 bg-white p-0 text-slate-950 shadow-2xl"
+      >
+        {detailModal && (
+          <>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-[#08162f] px-6 py-4 text-white">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#e2b12f]">{detailModal.eyebrow}</p>
+                <h1 className="mt-1 text-xl font-semibold">{detailModal.title}</h1>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                aria-label="Close detail modal"
+                className="rounded-lg p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm leading-6 text-slate-600">{detailModal.body}</p>
+              <ul className="mt-4 space-y-2">
+                {detailModal.bullets.map((b) => (
+                  <li key={b} className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#0f1f4f]" aria-hidden="true" />
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                {detailModal.switchToModal ? (
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal(detailModal.switchToModal || 'demo')}
+                    className="text-xs font-semibold text-[#0f1f4f] underline decoration-[#e2b12f] decoration-2 underline-offset-4 hover:text-sky-900"
+                  >
+                    {detailModal.switchToModal === 'readiness'
+                      ? 'Open 7-point FCA & CMCOB self-check'
+                      : detailModal.switchToModal === 'calculator'
+                        ? 'Open FOS fee calculator'
+                        : 'Book a personalised walkthrough'}
+                  </button>
+                ) : (
+                  <span />
+                )}
+                {detailModal.href && detailModal.ctaLabel && (
+                  <PublicTrackedLink
+                    href={detailModal.href}
+                    onClick={closeModal}
+                    eventName="public_cta_clicked"
+                    eventProps={{ source: 'cmc_detail_modal', cta: detailModal.title }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#0f1f4f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#08162f]"
+                  >
+                    {detailModal.ctaLabel}
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </PublicTrackedLink>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </dialog>
     </div>
   );

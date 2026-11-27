@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { ArrowRight, AlertCircle, BookOpen, Loader2, Search, Sparkles } from 'lucide-react';
 import { useCheckEstimator } from '@/hooks/use-check-estimator';
@@ -94,7 +94,49 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
   const [product, setProduct] = useState('');
   const [rootCause, setRootCause] = useState('');
   const [firm, setFirm] = useState('');
+  const [firmSuggestions, setFirmSuggestions] = useState<Array<{ firm: string; totalCases: number }>>([]);
+  const [firmSearchLoading, setFirmSearchLoading] = useState(false);
+  const [firmDropdownOpen, setFirmDropdownOpen] = useState(false);
+  const firmBoxRef = useRef<HTMLDivElement | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    const query = firm.trim();
+    if (!firmDropdownOpen) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setFirmSearchLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (query) params.set('q', query);
+        params.set('limit', '10');
+        const res = await fetch(`/api/fos/firms?${params.toString()}`, { signal: controller.signal });
+        const payload = await res.json().catch(() => ({}));
+        if (!controller.signal.aborted) {
+          setFirmSuggestions(Array.isArray(payload.results) ? payload.results : []);
+        }
+      } catch {
+        if (!controller.signal.aborted) setFirmSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setFirmSearchLoading(false);
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [firm, firmDropdownOpen]);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (firmBoxRef.current && !firmBoxRef.current.contains(e.target as Node)) {
+        setFirmDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
 
   const exampleChips = useMemo(() => buildExampleChips(options), [options]);
   const activeExampleLabel = useMemo(
@@ -213,10 +255,10 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
         </div>
       </section>
 
-      <div className="mx-auto -mt-6 w-full max-w-7xl px-4 md:px-8">
+      <div className="mx-auto w-full max-w-7xl px-4 pt-6 md:px-8">
         <PublicStatusBanner status={status} className="mb-6" />
         <section className="relative z-10 grid items-start gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-[2.3rem] border border-slate-200 bg-white/96 p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] md:p-8">
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <Sparkles className="h-4 w-4 text-amber-500" />
               Guided estimate
@@ -269,20 +311,64 @@ export function CheckEstimatorPage({ status, liveStats }: CheckEstimatorPageProp
                   <p className="mt-2 text-xs leading-5 text-slate-500">Use this when you want a narrower complaint-theme or operational pattern.</p>
                 </div>
 
-                <div>
+                <div ref={firmBoxRef} className="relative">
                   <label htmlFor="check-firm" className="block text-sm font-medium text-slate-700">
-                    Firm name <span className="text-slate-400">(optional)</span>
+                    Firm name <span className="text-slate-400">(optional · live database match)</span>
                   </label>
-                  <input
-                    id="check-firm"
-                    type="text"
-                    value={firm}
-                    onChange={(event) => setFirm(event.target.value)}
-                    placeholder="e.g. Barclays, Lloyds Bank PLC"
-                    maxLength={200}
-                    className="mt-2 block w-full rounded-[1rem] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  <p className="mt-2 text-xs leading-5 text-slate-500">If the published corpus has enough matching decisions, you will see a firm overlay against the wider product context.</p>
+                  <div className="relative mt-2">
+                    <input
+                      id="check-firm"
+                      type="text"
+                      value={firm}
+                      autoComplete="off"
+                      role="combobox"
+                      aria-expanded={firmDropdownOpen}
+                      aria-autocomplete="list"
+                      aria-controls="check-firm-suggestions"
+                      onFocus={() => setFirmDropdownOpen(true)}
+                      onChange={(event) => {
+                        setFirm(event.target.value);
+                        setFirmDropdownOpen(true);
+                      }}
+                      placeholder="Start typing a firm (e.g. Barclays, Lloyds)..."
+                      maxLength={200}
+                      className="block w-full rounded-[1rem] border border-slate-300 bg-white px-4 py-3 pr-9 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                    {firmSearchLoading && (
+                      <Loader2 className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 animate-spin text-slate-400" aria-hidden="true" />
+                    )}
+                    {firmDropdownOpen && (firmSuggestions.length > 0 || (firm.trim().length > 0 && !firmSearchLoading)) && (
+                      <ul
+                        id="check-firm-suggestions"
+                        role="listbox"
+                        className="absolute left-0 right-0 z-30 mt-1.5 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+                      >
+                        {firmSuggestions.length === 0 ? (
+                          <li className="px-3.5 py-2 text-xs text-slate-500">No matching firms in database for &ldquo;{firm.trim()}&rdquo;</li>
+                        ) : (
+                          firmSuggestions.map((item) => (
+                            <li key={item.firm} role="option" aria-selected={firm === item.firm}>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setFirm(item.firm);
+                                  setFirmDropdownOpen(false);
+                                }}
+                                className="flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left text-xs transition hover:bg-slate-50"
+                              >
+                                <span className="truncate font-medium text-slate-900">{item.firm}</span>
+                                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-slate-600">
+                                  {item.totalCases.toLocaleString()} cases
+                                </span>
+                              </button>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Type to match exact firm names from the published FOS database.</p>
                 </div>
               </div>
 

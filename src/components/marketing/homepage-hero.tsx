@@ -10,12 +10,8 @@ type HomepageHeroProps = {
 
 export function HomepageHero({ snapshot }: HomepageHeroProps) {
   return (
-    <section className="relative overflow-hidden border-b border-violet-200/60 bg-[radial-gradient(circle_at_top_left,rgba(249,168,212,0.16),transparent_30%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.18),transparent_32%),linear-gradient(180deg,#fbfbff_0%,#f2f5ff_58%,#fffaf7_100%)]">
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 opacity-70" aria-hidden="true">
-        <div className="absolute -bottom-16 -left-[8%] h-32 w-[62%] rotate-3 rounded-[50%] bg-gradient-to-r from-violet-200/70 via-fuchsia-100/60 to-transparent blur-sm" />
-        <div className="absolute -bottom-14 right-[-8%] h-32 w-[66%] -rotate-3 rounded-[50%] bg-gradient-to-l from-indigo-200/70 via-orange-100/60 to-transparent blur-sm" />
-      </div>
-      <div className="relative mx-auto grid w-full max-w-7xl gap-7 px-4 pb-10 pt-7 md:px-8 md:pb-12 md:pt-10 lg:grid-cols-[0.78fr_1.22fr] lg:items-center">
+    <section className="relative overflow-hidden border-b border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(226,177,47,0.12),transparent_30%),radial-gradient(circle_at_top_right,rgba(15,31,79,0.10),transparent_34%),linear-gradient(180deg,#fbfcff_0%,#f2f5fb_65%,#f6f8fc_100%)]">
+      <div className="relative mx-auto grid w-full max-w-7xl gap-7 px-4 pb-8 pt-6 md:px-8 md:pb-10 md:pt-8 lg:grid-cols-[0.78fr_1.22fr] lg:items-center">
         <div className="relative z-10">
           <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-700">{snapshot.hero.eyebrow}</p>
           <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-[1.04] tracking-[-0.03em] text-slate-950 md:text-5xl lg:text-[3.2rem]">
