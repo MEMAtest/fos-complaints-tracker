@@ -6,9 +6,10 @@ import { FOSOutcome } from '@/lib/fos/types';
 
 interface OutcomeDonutChartProps {
   distribution: { outcome: string; count: number }[];
+  compact?: boolean;
 }
 
-export function OutcomeDonutChart({ distribution }: OutcomeDonutChartProps) {
+export function OutcomeDonutChart({ distribution, compact = false }: OutcomeDonutChartProps) {
   const data = distribution
     .filter((d) => d.count > 0)
     .map((d) => ({
@@ -22,14 +23,14 @@ export function OutcomeDonutChart({ distribution }: OutcomeDonutChartProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={compact ? 116 : 220}>
       <PieChart>
         <Pie
           data={data}
           cx="50%"
-          cy="50%"
-          innerRadius={50}
-          outerRadius={85}
+          cy={compact ? '44%' : '50%'}
+          innerRadius={compact ? 24 : 50}
+          outerRadius={compact ? 38 : 85}
           paddingAngle={2}
           dataKey="value"
           nameKey="name"
@@ -41,8 +42,9 @@ export function OutcomeDonutChart({ distribution }: OutcomeDonutChartProps) {
         <Tooltip formatter={(value) => Number(value || 0).toLocaleString()} />
         <Legend
           verticalAlign="bottom"
-          height={36}
-          formatter={(value: string) => <span className="text-xs text-slate-600">{value}</span>}
+          height={compact ? 22 : 36}
+          iconSize={compact ? 8 : 10}
+          formatter={(value: string) => <span className={compact ? 'text-[10px] text-slate-600' : 'text-xs text-slate-600'}>{value}</span>}
         />
       </PieChart>
     </ResponsiveContainer>

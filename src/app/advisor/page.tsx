@@ -377,12 +377,10 @@ export default function AdvisorPage() {
                   </span>
                 </button>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:col-span-2 lg:col-span-1">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:col-span-2 lg:col-span-1">
                   <p className="mb-1 text-xs font-semibold text-[#08162f]">Outcome distribution</p>
                   {brief.outcomeDistribution && brief.outcomeDistribution.length > 0 ? (
-                    <div className="h-[110px]">
-                      <OutcomeDonutChart distribution={brief.outcomeDistribution} />
-                    </div>
+                    <OutcomeDonutChart distribution={brief.outcomeDistribution} compact />
                   ) : (
                     <p className="pt-6 text-xs text-slate-400">Distribution unavailable</p>
                   )}
